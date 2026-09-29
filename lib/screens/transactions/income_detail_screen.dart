@@ -243,6 +243,7 @@ class _IncomeEditSheetState extends State<IncomeEditSheet> {
   late String _category;
   late DateTime _date;
   bool _saving = false;
+  String? _saveError;
 
   bool get _isEditing => widget.existing != null;
 
@@ -369,6 +370,24 @@ class _IncomeEditSheetState extends State<IncomeEditSheet> {
 
               const SizedBox(height: AppSpacing.lg),
 
+              if (_saveError != null) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(AppSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: colorScheme.errorContainer,
+                    borderRadius: AppRadii.smallRadius,
+                  ),
+                  child: Text(
+                    _saveError!,
+                    style: textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onErrorContainer,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+              ],
+
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
@@ -414,15 +433,23 @@ class _IncomeEditSheetState extends State<IncomeEditSheet> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
 
     final provider = context.read<TransactionProvider>();
     final description = _descriptionController.text.trim().isEmpty
         ? CategoryRegistry.metaForIncome(_category).name
         : _descriptionController.text.trim();
 
+    // addTransaction/updateTransaction report whether the write reached
+    // storage. Ignoring that and popping regardless is what used to lose a
+    // failed save: the sheet closed, the typed amount was gone, and the only
+    // trace was an error on the screen underneath the sheet.
+    final bool saved;
     if (_isEditing) {
-      await provider.updateTransaction(
+      saved = await provider.updateTransaction(
         widget.existing!.copyWith(
           amount: double.parse(_amountController.text),
           category: _category,
@@ -430,19 +457,30 @@ class _IncomeEditSheetState extends State<IncomeEditSheet> {
           date: _date,
         ),
       );
-      if (mounted) Navigator.pop(context);
+    } else {
+      saved = await provider.addTransaction(
+        Income(
+          amount: double.parse(_amountController.text),
+          category: _category,
+          description: description,
+          date: _date,
+        ),
+      );
+    }
+
+    if (!mounted) return;
+
+    if (!saved) {
+      // Keep the sheet open with the entered values intact so the user can
+      // retry, instead of leaving a spinner that never stops.
+      setState(() {
+        _saving = false;
+        _saveError = provider.error ?? 'Could not save. Please try again.';
+      });
       return;
     }
 
-    await provider.addTransaction(
-      Income(
-        amount: double.parse(_amountController.text),
-        category: _category,
-        description: description,
-        date: _date,
-      ),
-    );
-    if (mounted) Navigator.pop(context);
+    Navigator.pop(context);
   }
 }
 

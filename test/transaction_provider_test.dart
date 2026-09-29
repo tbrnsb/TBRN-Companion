@@ -525,6 +525,92 @@ void main() {
     });
   });
 
+  group('write outcome and month isolation', () {
+    test('addTransaction reports that the write succeeded', () async {
+      final provider = await _providerFor(2024, 1);
+
+      final ok = await provider.addTransaction(
+        _expense(100, ExpenseCategory.food),
+      );
+
+      expect(ok, isTrue);
+      expect(provider.error, isNull);
+    });
+
+    test(
+      'a record dated in another month is not appended to the loaded month',
+      () async {
+        final provider = await _providerFor(2024, 1);
+        await provider.addTransaction(
+          _expense(100, ExpenseCategory.food),
+        );
+
+        // The income sheet lets the user pick any past date, so a save can land
+        // outside the month currently on screen. Appending it anyway would put
+        // a foreign row into January's totals, chart and list — and that row
+        // would silently vanish on the next month reload.
+        await provider.addTransaction(
+          _income(500, 'salary', date: DateTime(2024, 2, 5)),
+        );
+
+        expect(provider.transactions.length, 1);
+        expect(provider.totalIncome, 0);
+        expect(provider.balance, -100);
+
+        // Still written to storage — the fix is about the in-memory month view,
+        // never about dropping the user's record.
+        final all = await StorageService().getAllTransactions();
+        expect(all.length, 2);
+        expect(
+          all.whereType<Income>().single.date,
+          DateTime(2024, 2, 5),
+        );
+
+        // And it shows up when the user navigates to its own month.
+        await provider.loadTransactionsForMonth(2024, 2);
+        expect(provider.transactions.length, 1);
+        expect(provider.totalIncome, 500);
+      },
+    );
+
+    test(
+      'an edit that moves a record to another month clears it from this one',
+      () async {
+        final provider = await _providerFor(2024, 1);
+        final income = _income(200, 'salary');
+        await provider.addTransaction(income);
+        expect(provider.transactions.length, 1);
+
+        await provider.updateTransaction(
+          income.copyWith(date: DateTime(2024, 3, 2)),
+        );
+
+        // Re-dating a record used to leave the old January row in place, so the
+        // same income was counted twice in the UI until the month reloaded.
+        expect(provider.transactions, isEmpty);
+        expect(provider.totalIncome, 0);
+
+        await provider.loadTransactionsForMonth(2024, 3);
+        expect(provider.transactions.length, 1);
+        expect(provider.totalIncome, 200);
+      },
+    );
+
+    test('an edit that moves a record into the loaded month adds it', () async {
+      final provider = await _providerFor(2024, 1);
+      final income = _income(200, 'salary', date: DateTime(2023, 12, 2));
+      await provider.addTransaction(income);
+      expect(provider.transactions, isEmpty);
+
+      await provider.updateTransaction(
+        income.copyWith(date: DateTime(2024, 1, 9)),
+      );
+
+      expect(provider.transactions.length, 1);
+      expect(provider.totalIncome, 200);
+    });
+  });
+
   group('money formatting', () {
     test('the currency symbol is not spaced twice', () {
       expect(AppFormat.money(1234.5, symbol: 'Rs. '), 'Rs. 1,234.5');

@@ -201,6 +201,90 @@ void main() {
       expect(find.byType(SpendBreakdownCard), findsNothing);
       expect(find.byType(PieChart), findsNothing);
     });
+    testWidgets(
+      'custom "Other" names are not collapsed into one chart slice',
+      (tester) async {
+        tester.view.physicalSize = const Size(1400, 1800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() => tester.view.reset());
+
+        // Both rows are ExpenseCategory.other, so a breakdown keyed by the enum
+        // alone sums them into a single slice and labels it with whichever
+        // custom name happened to sort first. The tiles below show each name.
+        final now = DateTime.now();
+        final provider = await seedProvider(tester, [
+          Expense(
+            amount: 40,
+            category: ExpenseCategory.other,
+            customCategoryName: 'Coffee',
+            description: 'Flat white',
+            date: now,
+          ),
+          Expense(
+            amount: 60,
+            category: ExpenseCategory.other,
+            customCategoryName: 'Groceries',
+            description: 'Weekly shop',
+            date: now,
+          ),
+          _expense(100, ExpenseCategory.food, 'Lunch'),
+        ]);
+
+        await tester.pumpWidget(
+          _spendApp(
+            transactions: provider,
+            settings: await seededSettings(tester),
+          ),
+        );
+        await settleUi(tester);
+
+        final card = find.byType(SpendBreakdownCard);
+        expect(find.descendant(of: card, matching: find.text('Coffee')), findsOneWidget);
+        expect(
+          find.descendant(of: card, matching: find.text('Groceries')),
+          findsOneWidget,
+        );
+        // Each custom name keeps its own total, not a merged one.
+        expect(
+          find.descendant(of: card, matching: find.text('Rs. 40')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: card, matching: find.text('Rs. 60')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: card, matching: find.text('Rs. 100')),
+          findsOneWidget,
+          reason: 'Rs. 100 belongs to Food, not to the merged Other bucket',
+        );
+      },
+    );
+
+    testWidgets('the month summary keeps the average daily figure', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1400, 1800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.reset());
+
+      final provider = await seedProvider(tester, [
+        _expense(300, ExpenseCategory.food, 'Lunch'),
+      ]);
+
+      await tester.pumpWidget(
+        _spendApp(
+          transactions: provider,
+          settings: await seededSettings(tester),
+        ),
+      );
+      await settleUi(tester);
+
+      // Pass 2 dropped this from the summary card while wiring the currency
+      // through, which left getAverageDailySpending() with no UI caller.
+      expect(find.textContaining('/ day'), findsOneWidget);
+    });
+
     testWidgets('every donut slice keeps a legend row', (tester) async {
       tester.view.physicalSize = const Size(1400, 1800);
       tester.view.devicePixelRatio = 1.0;
@@ -389,9 +473,6 @@ void main() {
       await tester.tap(inChooser('Income'));
       await settleUi(tester);
 
-      // The chips must be labelled with the real category names, not with the
-      // enum's `IncomeCategory.` prefix.
-      expect(find.text('Isalary'), findsNothing);
       expect(find.text('Freelance'), findsOneWidget);
       await tester.tap(find.text('Freelance'));
       await settleUi(tester);

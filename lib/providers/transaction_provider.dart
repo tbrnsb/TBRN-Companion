@@ -203,28 +203,70 @@ class TransactionProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> addTransaction(Transaction transaction) async {
+  /// True when [date] falls inside the month currently on screen.
+  ///
+  /// [transactions] is the *month view*, not a global list, so anything outside
+  /// [currentMonth] must not be folded into it.
+  bool _isInLoadedMonth(DateTime date) {
+    final month = _currentMonth;
+    if (month == null) return false;
+    return date.year == month.year && date.month == month.month;
+  }
+
+  /// Writes [transaction] and folds it into the loaded month view.
+  ///
+  /// Returns whether the write actually reached storage. Callers may ignore the
+  /// result, but the add/edit sheets must not: the write used to fail silently
+  /// into [error] while the sheet popped anyway, so a failed save threw away
+  /// the amount the user had just typed and left the button disabled forever.
+  ///
+  /// A record dated outside [currentMonth] is deliberately NOT appended to
+  /// [transactions]. The add sheets let the user pick any past date, so this is
+  /// routine — and appending anyway put a foreign row into this month's totals,
+  /// breakdown chart and list, which then disagreed with storage until the month
+  /// was reloaded. The write still happens, so the record is there when the user
+  /// visits the month it belongs to.
+  Future<bool> addTransaction(Transaction transaction) async {
     try {
       await _storageService.addTransaction(transaction);
-      _transactions.add(transaction);
+      if (_isInLoadedMonth(transaction.date)) {
+        _transactions.add(transaction);
+      }
       notifyListeners();
+      return true;
     } catch (e) {
       _error = 'Failed to add transaction: $e';
       notifyListeners();
+      return false;
     }
   }
 
-  Future<void> updateTransaction(Transaction transaction) async {
+  /// Writes [transaction] and keeps the loaded month view consistent.
+  ///
+  /// Re-dating a record out of [currentMonth] drops the stale row, and re-dating
+  /// one into it adds the new row. Both directions used to leave the month view
+  /// disagreeing with storage: the first left a duplicate counting towards the
+  /// totals, the second made a just-saved record invisible.
+  Future<bool> updateTransaction(Transaction transaction) async {
     try {
       await _storageService.updateTransaction(transaction);
       final index = _transactions.indexWhere((t) => t.id == transaction.id);
-      if (index != -1) {
-        _transactions[index] = transaction;
-        notifyListeners();
+
+      if (_isInLoadedMonth(transaction.date)) {
+        if (index == -1) {
+          _transactions.add(transaction);
+        } else {
+          _transactions[index] = transaction;
+        }
+      } else if (index != -1) {
+        _transactions.removeAt(index);
       }
+      notifyListeners();
+      return true;
     } catch (e) {
       _error = 'Failed to update transaction: $e';
       notifyListeners();
+      return false;
     }
   }
 
@@ -310,6 +352,37 @@ class TransactionProvider extends ChangeNotifier {
     final entries = spending.entries.where((entry) => entry.value > 0).toList();
     entries.sort((a, b) => b.value.compareTo(a.value));
     return entries;
+  }
+
+  /// Expense breakdown resolved to real, distinct slices, largest first.
+  ///
+  /// `ExpenseCategory.other` rows can each carry their own custom name
+  /// ("Coffee", "Groceries"), so they are deliberately NOT merged into one
+  /// bucket: a breakdown keyed by the enum alone summed them together and
+  /// labelled the slice with whichever name happened to sort first, which made
+  /// the chart disagree with the transaction tiles. Rows under `.other` with no
+  /// custom name still share the single literal "Other" slice, because that is
+  /// genuinely what they are.
+  ///
+  /// [getSpendingBreakdown] remains available as the category-level roll-up.
+  List<CategorySlice> getSpendingBreakdownSlices() {
+    final slices = <String, CategorySlice>{};
+
+    for (final t in _transactions.whereType<Expense>()) {
+      if (!t.amount.isFinite || t.amount <= 0) continue;
+      // `metaFor` gives every custom name its own `custom:<name>` id, so
+      // distinct names stay distinct slices.
+      final meta = t.categoryMeta;
+      final existing = slices[meta.id];
+      slices[meta.id] = CategorySlice(
+        meta: meta,
+        amount: (existing?.amount ?? 0) + t.amount,
+      );
+    }
+
+    final result = slices.values.toList()
+      ..sort((a, b) => b.amount.compareTo(a.amount));
+    return List.unmodifiable(result);
   }
 
   /// Income totals keyed by income category id (`salary`, `freelance`, …), so
