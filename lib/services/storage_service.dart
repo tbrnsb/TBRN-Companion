@@ -81,12 +81,20 @@ class StorageService {
 
   Future<void> deleteChecklist(String id) async {
     await _checklistsBox.delete(id);
-    // Delete associated items
-    final itemsToDelete = _checklistItemsBox.values
-        .where((item) => item['checklistId'] == id)
+    // Delete associated items.
+    //
+    // The box *key* has to be what gets deleted, and it is not reachable from
+    // the value: `_checklistItemsBox.values` yields each item's field map, whose
+    // first key is 'id', not the key Hive stored it under. Deleting
+    // `item.keys.first` therefore passed a field name to the box, deleted
+    // nothing, and left every item of the deleted checklist in storage
+    // forever. `_toMap()` gives the real key for each value.
+    final orphanedKeys = _checklistItemsBox.toMap().entries
+        .where((entry) => entry.value['checklistId'] == id)
+        .map((entry) => entry.key)
         .toList();
-    for (var item in itemsToDelete) {
-      await _checklistItemsBox.delete(item.keys.first);
+    for (final key in orphanedKeys) {
+      await _checklistItemsBox.delete(key);
     }
   }
 
@@ -194,6 +202,10 @@ class StorageService {
 
   Future<void> updateLocationLog(LocationLog log) async {
     await _locationLogsBox.put(log.id, Map<String, dynamic>.from(log.toJson()));
+  }
+
+  Future<void> deleteLocationLog(String id) async {
+    await _locationLogsBox.delete(id);
   }
 
   Future<LocationLog?> getActiveLocationLog(String locationId) async {

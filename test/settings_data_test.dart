@@ -108,6 +108,54 @@ void main() {
     });
   });
 
+  group('deleting a checklist removes its items', () {
+    test('items do not survive their checklist in storage', () async {
+      final checklist = Checklist(name: 'Pack', description: '');
+      await StorageService().addChecklist(checklist);
+      await StorageService().addChecklistItem(
+        ChecklistItem(name: 'Boots', checklistId: checklist.id),
+      );
+      await StorageService().addChecklistItem(
+        ChecklistItem(name: 'Map', checklistId: checklist.id),
+      );
+
+      var counts = await StorageService().getStorageCounts();
+      expect(counts.checklistItems, 2);
+
+      await StorageService().deleteChecklist(checklist.id);
+
+      // This used to leave both items in the box. deleteChecklist passed a
+      // field name ('id', 'name', ...) to the box instead of the key the item
+      // was stored under, so the deletes were silent no-ops and the rows
+      // accumulated for the life of the install.
+      counts = await StorageService().getStorageCounts();
+      expect(counts.checklists, 0);
+      expect(counts.checklistItems, 0);
+    });
+
+    test('another checklist\'s items are left alone', () async {
+      final keep = Checklist(name: 'Keep', description: '');
+      final drop = Checklist(name: 'Drop', description: '');
+      await StorageService().addChecklist(keep);
+      await StorageService().addChecklist(drop);
+      await StorageService().addChecklistItem(
+        ChecklistItem(name: 'Keep this', checklistId: keep.id),
+      );
+      await StorageService().addChecklistItem(
+        ChecklistItem(name: 'Drop this', checklistId: drop.id),
+      );
+
+      await StorageService().deleteChecklist(drop.id);
+
+      final remaining = await StorageService().getAllChecklists();
+      expect(remaining.map((c) => c.name), ['Keep']);
+      expect(remaining.single.items.map((i) => i.name), ['Keep this']);
+
+      final counts = await StorageService().getStorageCounts();
+      expect(counts.checklistItems, 1);
+    });
+  });
+
   group('CSV export', () {
     test('the file name is the month being exported', () {
       expect(
