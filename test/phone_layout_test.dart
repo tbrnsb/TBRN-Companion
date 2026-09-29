@@ -1,0 +1,347 @@
+import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:flutter_application_1/models/index.dart';
+import 'package:flutter_application_1/providers/checklist_provider.dart';
+import 'package:flutter_application_1/providers/journey_provider.dart';
+import 'package:flutter_application_1/providers/location_provider.dart';
+import 'package:flutter_application_1/providers/settings_provider.dart';
+import 'package:flutter_application_1/providers/transaction_provider.dart';
+import 'package:flutter_application_1/screens/journeys/journey_detail_screen.dart';
+import 'package:flutter_application_1/screens/transactions/add_expense_sheet.dart';
+import 'package:flutter_application_1/services/storage_service.dart';
+import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:flutter_application_1/widgets/app_stat_tile.dart';
+import 'package:flutter_application_1/widgets/spend_breakdown_card.dart';
+
+import 'test_viewports.dart';
+import 'visual_smoke_test.dart' show initTestStorage;
+
+/// Wide enough for the three-across branch, used to prove the breakpoint is a
+/// real branch and not a one-way switch.
+const Size _wide = Size(820, 900);
+
+Future<void> settleUi(WidgetTester tester) async {
+  for (var i = 0; i < 12; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
+/// The five providers every screen under test watches.
+typedef SeededProviders = ({
+  JourneyProvider journeys,
+  ChecklistProvider checklists,
+  LocationProvider locations,
+  TransactionProvider transactions,
+  SettingsProvider settings,
+});
+
+/// Seeds a journey with a checklist, a place and an expense, then loads the
+/// providers from storage.
+///
+/// Every step runs in real async: Hive does real file IO, which cannot complete
+/// inside the fake-async zone of a `testWidgets` body.
+Future<SeededProviders> _seed(WidgetTester tester) async {
+  return (await tester.runAsync(() async {
+    await StorageService().clear();
+
+    final journey = Journey(
+      destination: 'Pokhara',
+      origin: 'Kathmandu',
+      startTime: DateTime.now().subtract(const Duration(days: 2)),
+    );
+    await StorageService().addJourney(journey);
+
+    final checklist = Checklist(
+      name: 'Pack',
+      description: 'Pack list',
+      journeyId: journey.id,
+    );
+    await StorageService().addChecklist(checklist);
+    for (final name in ['Boots', 'Jacket', 'Map']) {
+      await StorageService().addChecklistItem(
+        ChecklistItem(
+          name: name,
+          checklistId: checklist.id,
+          isChecked: name == 'Boots',
+        ),
+      );
+    }
+
+    await StorageService().addLocation(
+      Location(
+        name: 'Phewa Lake',
+        latitude: 28.2096,
+        longitude: 83.9856,
+        description: 'Lakeside',
+        journeyId: journey.id,
+      ),
+    );
+
+    // A four-figure amount is the case that clipped to "Rs. 1,2…".
+    await StorageService().addTransaction(
+      Expense(
+        amount: 1250.50,
+        category: ExpenseCategory.travel,
+        description: 'Bus to the trailhead',
+        journeyId: journey.id,
+        date: DateTime.now().subtract(const Duration(days: 1)),
+      ),
+    );
+
+    final journeys = JourneyProvider();
+    final checklists = ChecklistProvider();
+    final locations = LocationProvider();
+    final transactions = TransactionProvider();
+    final settings = SettingsProvider();
+    await journeys.initialize();
+    await checklists.initialize();
+    await locations.initialize();
+    await transactions.initialize();
+    await settings.load();
+
+    return (
+      journeys: journeys,
+      checklists: checklists,
+      locations: locations,
+      transactions: transactions,
+      settings: settings,
+    );
+  }))!;
+}
+
+Widget _app(SeededProviders p, Widget home) {
+  return MultiProvider(
+    providers: [
+      ChangeNotifierProvider<JourneyProvider>.value(value: p.journeys),
+      ChangeNotifierProvider<ChecklistProvider>.value(value: p.checklists),
+      ChangeNotifierProvider<LocationProvider>.value(value: p.locations),
+      ChangeNotifierProvider<TransactionProvider>.value(value: p.transactions),
+      ChangeNotifierProvider<SettingsProvider>.value(value: p.settings),
+    ],
+    child: MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      home: home,
+    ),
+  );
+}
+
+void main() {
+  setUpAll(() async {
+    await initTestStorage();
+  });
+
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+  });
+
+  group('journey stat tiles', () {
+    testWidgets('a 360dp phone puts the money tile on its own full-width row', (
+      tester,
+    ) async {
+      usePhoneLayout(
+        tester,
+        TestViewports.phoneSmall,
+        because: 'three tiles across clipped the amount to "Rs. 1,2…"',
+      );
+
+      final p = await _seed(tester);
+      final journey = p.journeys.journeys.single;
+      await tester.pumpWidget(_app(p, JourneyDetailScreen(journey: journey)));
+      await settleUi(tester);
+
+      expect(find.byType(AppStatTile), findsNWidgets(3));
+
+      final rects = [
+        for (var i = 0; i < 3; i++)
+          tester.getRect(find.byType(AppStatTile).at(i)),
+      ];
+
+      // Tiles 0 and 1 share a row; the money tile sits below them.
+      expect(rects[0].top, moreOrLessEquals(rects[1].top));
+      expect(
+        rects[2].top,
+        greaterThan(rects[0].bottom),
+        reason: 'the Spent tile must drop to its own row below 600dp',
+      );
+      expect(
+        rects[2].width,
+        greaterThan(rects[0].width),
+        reason: 'the money tile takes the whole measure, not a third of it',
+      );
+    });
+
+    testWidgets('a wide viewport keeps all three tiles on one row', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, _wide);
+
+      final p = await _seed(tester);
+      final journey = p.journeys.journeys.single;
+      await tester.pumpWidget(_app(p, JourneyDetailScreen(journey: journey)));
+      await settleUi(tester);
+
+      final rects = [
+        for (var i = 0; i < 3; i++)
+          tester.getRect(find.byType(AppStatTile).at(i)),
+      ];
+
+      expect(rects[0].top, moreOrLessEquals(rects[2].top));
+      expect(rects[0].width, moreOrLessEquals(rects[2].width));
+      expect(rects[0].right, lessThan(rects[1].left));
+    });
+
+    testWidgets('the full amount is not truncated at 360dp', (tester) async {
+      usePhoneLayout(tester, TestViewports.phoneSmall);
+
+      final p = await _seed(tester);
+      final journey = p.journeys.journeys.single;
+      await tester.pumpWidget(_app(p, JourneyDetailScreen(journey: journey)));
+      await settleUi(tester);
+
+      // The seeded expense is 1250.50, so the whole formatted amount has to be
+      // present as one piece of text rather than an ellipsised prefix.
+      expect(find.text('Rs. 1,250.5'), findsOneWidget);
+    });
+  });
+
+  group('spend breakdown card', () {
+    BreakdownSegment segment(String name, double amount, Color color) {
+      return BreakdownSegment(
+        meta: CategoryMeta(
+          id: name,
+          name: name,
+          icon: Icons.circle,
+          color: color,
+          popularity: 0,
+        ),
+        amount: amount,
+      );
+    }
+
+    Widget card(String symbol) {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: ListView(
+            padding: AppSpacing.screenPadding,
+            children: [
+              SpendBreakdownCard(
+                title: 'Spending by category',
+                currencySymbol: symbol,
+                segments: [
+                  segment('Food', 1234.50, AppColors.carafe),
+                  segment('Travel', 890.25, AppColors.khaki),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    testWidgets('at 360dp the donut stacks above a full-width legend', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phoneSmall);
+
+      await tester.pumpWidget(card('€ '));
+      await settleUi(tester);
+
+      final donut = tester.getRect(find.byType(PieChart));
+      final legend = tester.getRect(find.text('Food'));
+
+      expect(
+        legend.top,
+        greaterThanOrEqualTo(donut.bottom),
+        reason: 'below 400dp the donut and the legend must not share a row',
+      );
+      // The whole measure is available, so a long amount is not cut.
+      expect(find.text('€ 1,234.5'), findsOneWidget);
+    });
+
+    testWidgets('a wide viewport keeps the donut beside the legend', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, _wide);
+
+      await tester.pumpWidget(card('€ '));
+      await settleUi(tester);
+
+      final donut = tester.getRect(find.byType(PieChart));
+      final legend = tester.getRect(find.text('Food'));
+
+      expect(
+        legend.left,
+        greaterThanOrEqualTo(donut.right),
+        reason: 'at or above 400dp the legend sits to the right of the donut',
+      );
+    });
+  });
+
+  group('add expense context chips', () {
+    testWidgets('a very long journey title cannot widen the menu past its cap', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phoneSmall);
+
+      final p = await _seed(tester);
+      // Rename the seeded journey to something far wider than a phone.
+      final journey = p.journeys.journeys.single;
+      await tester.runAsync(() async {
+        await StorageService().updateJourney(
+          journey.copyWith(
+            destination:
+                'Kathmandu to Pokhara via the Annapurna conservation corridor',
+          ),
+        );
+        await p.journeys.initialize();
+      });
+
+      await tester.pumpWidget(
+        _app(
+          p,
+          Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: FilledButton(
+                  onPressed: () => AddExpenseSheet.show(context),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await settleUi(tester);
+
+      await tester.tap(find.text('open'));
+      await settleUi(tester);
+
+      expect(find.byType(AddExpenseSheet), findsOneWidget);
+
+      final menu = tester.getRect(
+        find
+            .descendant(
+              of: find.byType(AddExpenseSheet),
+              // Matched by predicate: the chip is a DropdownMenu<String?>, and
+              // naming the exact generic argument would make this test brittle.
+              matching: find.byWidgetPredicate((w) => w is DropdownMenu),
+            )
+            .first,
+      );
+
+      expect(
+        menu.width,
+        lessThanOrEqualTo(220),
+        reason: 'a long title must not size the chip past its own cap',
+      );
+    });
+  });
+}

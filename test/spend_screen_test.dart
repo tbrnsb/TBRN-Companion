@@ -17,6 +17,7 @@ import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:flutter_application_1/widgets/spend_breakdown_card.dart';
 
 import 'visual_smoke_test.dart' show initTestStorage;
+import 'test_viewports.dart';
 
 /// Advances frames in bounded steps.
 ///
@@ -27,6 +28,22 @@ Future<void> settleUi(WidgetTester tester) async {
   for (var i = 0; i < 12; i++) {
     await tester.pump(const Duration(milliseconds: 100));
   }
+}
+
+/// Scrolls the primary scrollable until [finder] is built and on screen.
+///
+/// At phone sizes the transaction rows sit below the fold, so a bare
+/// `find.text` fails on layout position rather than on the behaviour under
+/// test. Scrolling is what a user does to reach them, and the assertion that
+/// follows is unchanged.
+Future<void> scrollTo(WidgetTester tester, Finder finder) async {
+  await tester.scrollUntilVisible(
+    finder,
+    150,
+    scrollable: find.byType(Scrollable).first,
+    maxScrolls: 60,
+  );
+  await settleUi(tester);
 }
 
 /// Hive writes hit the real filesystem, and a `testWidgets` body runs in a
@@ -101,9 +118,7 @@ void main() {
     testWidgets('shows a spending chart and an income chart for both types', (
       tester,
     ) async {
-      tester.view.physicalSize = const Size(1400, 1800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() => tester.view.reset());
+      usePhoneLayout(tester, TestViewports.phonePortrait);
 
       final provider = await seedProvider(tester, [
         _expense(120, ExpenseCategory.food, 'Lunch'),
@@ -131,9 +146,7 @@ void main() {
     testWidgets('the Expenses filter shows only the spending chart', (
       tester,
     ) async {
-      tester.view.physicalSize = const Size(1400, 1800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() => tester.view.reset());
+      usePhoneLayout(tester, TestViewports.phonePortrait);
 
       final provider = await seedProvider(tester, [
         _expense(120, ExpenseCategory.food, 'Lunch'),
@@ -159,9 +172,7 @@ void main() {
     testWidgets('the Income filter shows only the income chart', (
       tester,
     ) async {
-      tester.view.physicalSize = const Size(1400, 1800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() => tester.view.reset());
+      usePhoneLayout(tester, TestViewports.phonePortrait);
 
       final provider = await seedProvider(tester, [
         _expense(120, ExpenseCategory.food, 'Lunch'),
@@ -184,9 +195,7 @@ void main() {
     });
 
     testWidgets('no chart is shown when nothing is recorded', (tester) async {
-      tester.view.physicalSize = const Size(1400, 1800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() => tester.view.reset());
+      usePhoneLayout(tester, TestViewports.phonePortrait);
 
       final provider = await seedProvider(tester, const []);
 
@@ -204,9 +213,7 @@ void main() {
     testWidgets(
       'custom "Other" names are not collapsed into one chart slice',
       (tester) async {
-        tester.view.physicalSize = const Size(1400, 1800);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(() => tester.view.reset());
+        usePhoneLayout(tester, TestViewports.phonePortrait);
 
         // Both rows are ExpenseCategory.other, so a breakdown keyed by the enum
         // alone sums them into a single slice and labels it with whichever
@@ -264,9 +271,7 @@ void main() {
     testWidgets('the month summary keeps the average daily figure', (
       tester,
     ) async {
-      tester.view.physicalSize = const Size(1400, 1800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() => tester.view.reset());
+      usePhoneLayout(tester, TestViewports.phonePortrait);
 
       final provider = await seedProvider(tester, [
         _expense(300, ExpenseCategory.food, 'Lunch'),
@@ -286,9 +291,7 @@ void main() {
     });
 
     testWidgets('every donut slice keeps a legend row', (tester) async {
-      tester.view.physicalSize = const Size(1400, 1800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() => tester.view.reset());
+      usePhoneLayout(tester, TestViewports.phonePortrait);
 
       // All six expense categories, which is more than a `take(5)` legend.
       final provider = await seedProvider(tester, [
@@ -321,9 +324,7 @@ void main() {
     testWidgets('the FAB offers an explicit Expense or Income choice', (
       tester,
     ) async {
-      tester.view.physicalSize = const Size(1400, 1800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() => tester.view.reset());
+      usePhoneLayout(tester, TestViewports.phonePortrait);
 
       final provider = await seedProvider(tester, const []);
 
@@ -349,9 +350,7 @@ void main() {
     testWidgets(
       'choosing Income opens the income form with income categories',
       (tester) async {
-        tester.view.physicalSize = const Size(1400, 1800);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(() => tester.view.reset());
+        usePhoneLayout(tester, TestViewports.phonePortrait);
 
         final provider = await seedProvider(tester, const []);
 
@@ -381,9 +380,7 @@ void main() {
     testWidgets(
       'choosing Expense opens the expense form with expense categories',
       (tester) async {
-        tester.view.physicalSize = const Size(1400, 1800);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(() => tester.view.reset());
+        usePhoneLayout(tester, TestViewports.phonePortrait);
 
         final provider = await seedProvider(tester, const []);
 
@@ -413,9 +410,7 @@ void main() {
     testWidgets('an amount entered as Income is persisted as Income', (
       tester,
     ) async {
-      tester.view.physicalSize = const Size(1400, 1800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() => tester.view.reset());
+      usePhoneLayout(tester, TestViewports.phonePortrait);
 
       final provider = await seedProvider(tester, const []);
 
@@ -454,9 +449,7 @@ void main() {
     testWidgets('picking an income category stores the category id', (
       tester,
     ) async {
-      tester.view.physicalSize = const Size(1400, 1800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() => tester.view.reset());
+      usePhoneLayout(tester, TestViewports.phonePortrait);
 
       final provider = await seedProvider(tester, const []);
 
@@ -510,9 +503,7 @@ void main() {
     testWidgets('amounts render with the rupee symbol by default', (
       tester,
     ) async {
-      tester.view.physicalSize = const Size(1400, 1800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() => tester.view.reset());
+      usePhoneLayout(tester, TestViewports.phonePortrait);
 
       final provider = await seedProvider(tester, [
         _expense(120, ExpenseCategory.food, 'Lunch'),
@@ -533,9 +524,7 @@ void main() {
     });
 
     testWidgets('switching currency changes what is rendered', (tester) async {
-      tester.view.physicalSize = const Size(1400, 1800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() => tester.view.reset());
+      usePhoneLayout(tester, TestViewports.phonePortrait);
 
       final provider = await seedProvider(tester, [
         _expense(120, ExpenseCategory.food, 'Lunch'),
@@ -557,9 +546,7 @@ void main() {
 
   group('sign convention', () {
     testWidgets('expenses render negative and income positive', (tester) async {
-      tester.view.physicalSize = const Size(1400, 1800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() => tester.view.reset());
+      usePhoneLayout(tester, TestViewports.phonePortrait);
 
       final provider = await seedProvider(tester, [
         _expense(120, ExpenseCategory.food, 'Lunch'),
@@ -574,6 +561,7 @@ void main() {
       );
       await settleUi(tester);
 
+      await scrollTo(tester, find.text('-Rs. 120'));
       expect(find.text('-Rs. 120'), findsOneWidget);
       expect(find.text('+Rs. 900'), findsOneWidget);
     });
