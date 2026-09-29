@@ -26,6 +26,19 @@ class SpendBreakdownCard extends StatelessWidget {
     required this.currencySymbol,
   });
 
+  /// Narrowest measure at which the donut and the legend still sit side by
+  /// side. Below this the legend gets too little width for a formatted amount
+  /// such as "€ 1,234.50" and the row is stacked instead.
+  ///
+  /// The old layout was an unconditional 132px donut plus an Expanded legend.
+  /// At 360dp that left the legend roughly 148dp, which is not enough for a
+  /// long amount, so the two collided. A fixed guess is wrong because the card
+  /// is used in a padded list; [LayoutBuilder] measures the real constraint.
+  static const double sideBySideBreakpoint = 400;
+
+  /// The donut is square, so its edge sets the height of the side-by-side row.
+  static const double _donutSize = 132;
+
   final String title;
   final List<BreakdownSegment> segments;
   final String currencySymbol;
@@ -53,52 +66,86 @@ class SpendBreakdownCard extends StatelessWidget {
                   ?.copyWith(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: AppSpacing.md),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                SizedBox(
-                  height: 132,
-                  width: 132,
-                  child: PieChart(
-                    PieChartData(
-                      sectionsSpace: 2,
-                      centerSpaceRadius: 38,
-                      startDegreeOffset: -90,
-                      pieTouchData: PieTouchData(enabled: false),
-                      sections: [
-                        for (final segment in drawable)
-                          PieChartSectionData(
-                            value: segment.amount,
-                            color: segment.meta.color,
-                            radius: 20,
-                            showTitle: false,
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final legend = Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Every segment gets a row. There are only six categories
+                    // per type, and truncating the list here would leave a
+                    // donut slice the user cannot identify.
+                    for (final segment in drawable)
+                      _LegendRow(
+                        meta: segment.meta,
+                        amount: segment.amount,
+                        total: total,
+                        currencySymbol: currencySymbol,
+                      ),
+                  ],
+                );
+
+                if (constraints.maxWidth >= sideBySideBreakpoint) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // Every segment gets a row. There are only six categories
-                      // per type, and truncating the list here would leave a
-                      // donut slice the user cannot identify.
-                      for (final segment in drawable)
-                        _LegendRow(
-                          meta: segment.meta,
-                          amount: segment.amount,
-                          total: total,
-                          currencySymbol: currencySymbol,
-                        ),
+                      SizedBox(
+                        height: _donutSize,
+                        width: _donutSize,
+                        child: _Donut(drawable: drawable),
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(child: legend),
                     ],
-                  ),
-                ),
-              ],
+                  );
+                }
+
+                // Narrow: the donut goes above and the legend gets the whole
+                // measure, so an amount is never truncated to fit beside it.
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: SizedBox(
+                        height: _donutSize,
+                        width: _donutSize,
+                        child: _Donut(drawable: drawable),
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    legend,
+                  ],
+                );
+              },
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _Donut extends StatelessWidget {
+  const _Donut({required this.drawable});
+
+  final List<BreakdownSegment> drawable;
+
+  @override
+  Widget build(BuildContext context) {
+    return PieChart(
+      PieChartData(
+        sectionsSpace: 2,
+        centerSpaceRadius: 38,
+        startDegreeOffset: -90,
+        pieTouchData: PieTouchData(enabled: false),
+        sections: [
+          for (final segment in drawable)
+            PieChartSectionData(
+              value: segment.amount,
+              color: segment.meta.color,
+              radius: 20,
+              showTitle: false,
+            ),
+        ],
       ),
     );
   }
@@ -145,16 +192,29 @@ class _LegendRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: AppSpacing.xs),
-          Text(
-            '${percent.toStringAsFixed(0)}%',
-            style: textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
+          // Both figures are Flexible so a long amount shrinks the label
+          // rather than overflowing the row. The amount keeps its width
+          // first, because it is the number the user is here for.
+          Flexible(
+            child: Text(
+              '${percent.toStringAsFixed(0)}%',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.end,
+              style: textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
           const SizedBox(width: AppSpacing.xs),
-          Text(
-            AppFormat.money(amount, symbol: currencySymbol),
-            style: textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+          Flexible(
+            child: Text(
+              AppFormat.money(amount, symbol: currencySymbol),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.end,
+              style: textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
           ),
         ],
       ),

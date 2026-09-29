@@ -732,32 +732,51 @@ class _ContextMenuChip<T> extends StatelessWidget {
   final List<DropdownMenuItem<T>> items;
   final ValueChanged<T> onChanged;
 
+  /// Widest a context chip is allowed to become.
+  ///
+  /// [DropdownMenu] sizes itself to its longest entry, so a long journey or
+  /// place title made the chip claim the whole width available inside the
+  /// sheet (measured at 312dp on a 360dp phone) and pushed its siblings onto
+  /// their own lines. The chip caps itself instead.
+  static const double maxChipWidth = 220;
+
   @override
   Widget build(BuildContext context) {
-    return DropdownMenu<T>(
-      initialSelection: value,
-      onSelected: (v) => onChanged(v as T),
-      dropdownMenuEntries: items
-          .map(
-            (item) => DropdownMenuEntry<T>(
-              value: item.value as T,
-              label: (item.child as Text).data ?? '',
-            ),
-          )
-          .toList(),
-      inputDecorationTheme: const InputDecorationTheme(
-        isDense: true,
-        contentPadding: EdgeInsets.symmetric(
-          horizontal: AppSpacing.sm,
-          vertical: 0,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: maxChipWidth),
+      child: DropdownMenu<T>(
+        initialSelection: value,
+        onSelected: (v) => onChanged(v as T),
+        dropdownMenuEntries: items
+            .map(
+              (item) => DropdownMenuEntry<T>(
+                value: item.value as T,
+                label: (item.child as Text).data ?? '',
+              ),
+            )
+            .toList(),
+        // Without a cap the selected value is drawn at its natural width,
+        // which is what let the menu claim the whole row.
+        maxLines: 1,
+        inputDecorationTheme: const InputDecorationTheme(
+          isDense: true,
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: 0,
+          ),
         ),
-      ),
-      leadingIcon: Icon(icon, size: 18),
-      hintText: label,
-      textStyle: Theme.of(context).textTheme.labelLarge,
-      menuStyle: MenuStyle(
-        shape: WidgetStatePropertyAll(
-          RoundedRectangleBorder(borderRadius: AppRadii.smallRadius),
+        leadingIcon: Icon(icon, size: 18),
+        hintText: label,
+        textStyle: Theme.of(context).textTheme.labelLarge,
+        menuStyle: MenuStyle(
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: AppRadii.smallRadius),
+          ),
+          // The open menu gets the same cap, so a long entry scrolls inside a
+          // popup rather than producing a popup wider than the screen.
+          maximumSize: WidgetStatePropertyAll(
+            const Size(maxChipWidth, double.infinity),
+          ),
         ),
       ),
     );

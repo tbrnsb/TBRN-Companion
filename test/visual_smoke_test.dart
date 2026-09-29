@@ -13,6 +13,8 @@ import 'package:flutter_application_1/services/storage_service.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:flutter_application_1/screens/home_screen.dart';
 
+import 'test_viewports.dart';
+
 Future<void> initTestStorage() async {
   final dir = Directory.systemTemp.createTempSync('hive_test');
   await StorageService().initialize(hivePath: dir.path);
@@ -49,9 +51,7 @@ void main() {
   testWidgets('main app shows home screen without debug banner', (
     tester,
   ) async {
-    tester.view.physicalSize = const Size(1280, 860);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(() => tester.view.reset());
+    usePhoneLayout(tester, TestViewports.phonePortrait);
 
     await tester.pumpWidget(_testApp());
     await tester.pump();
@@ -64,9 +64,7 @@ void main() {
   });
 
   testWidgets('navigation taps work', (tester) async {
-    tester.view.physicalSize = const Size(1280, 860);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(() => tester.view.reset());
+    usePhoneLayout(tester, TestViewports.phonePortrait);
 
     await tester.pumpWidget(_testApp());
     await tester.pumpAndSettle();

@@ -21,6 +21,10 @@ import 'package:flutter_application_1/widgets/widgets.dart';
 class JourneyDetailScreen extends StatelessWidget {
   const JourneyDetailScreen({super.key, required this.journey});
 
+  /// Widest content measure at which three stat tiles still fit an amount
+  /// without clipping. Below it the row becomes two-plus-one.
+  static const double _threeTileBreakpoint = 600;
+
   final Journey journey;
 
   @override
@@ -88,32 +92,62 @@ class JourneyDetailScreen extends StatelessWidget {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: AppStatTile(
+                  // Three tiles across only once there is room for the money
+                  // value to render whole. On a 360dp phone three across left
+                  // each tile ~101dp — about 77dp of text — and the amount
+              // clipped to "Rs. 1,2…", which is worse than showing fewer tiles.
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final tiles = <Widget>[
+                        AppStatTile(
                           icon: Icons.backpack_rounded,
                           label: 'Packed',
-                          value: totalItems == 0 ? '—' : '$packed/$totalItems',
+                          value: totalItems == 0
+                              ? '—'
+                              : '$packed/$totalItems',
                         ),
-                      ),
-                      const SizedBox(width: AppSpacing.sm),
-                      Expanded(
-                        child: AppStatTile(
+                        AppStatTile(
                           icon: Icons.place_rounded,
                           label: 'Places',
                           value: '${places.length}',
                         ),
-                      ),
-                      const SizedBox(width: AppSpacing.sm),
-                      Expanded(
-                        child: AppStatTile(
+                        AppStatTile(
                           icon: Icons.payments_rounded,
                           label: 'Spent',
-                          value: AppFormat.money(spent, symbol: currencySymbol),
+                          value: AppFormat.money(
+                            spent,
+                            symbol: currencySymbol,
+                          ),
                         ),
-                      ),
-                    ],
+                      ];
+
+                      if (constraints.maxWidth >= _threeTileBreakpoint) {
+                        return Row(
+                          children: [
+                            for (var i = 0; i < tiles.length; i++) ...[
+                              if (i > 0) const SizedBox(width: AppSpacing.sm),
+                              Expanded(child: tiles[i]),
+                            ],
+                          ],
+                        );
+                      }
+
+                      // Two across, then the money tile on its own full-width
+                      // row so the amount has the whole measure to itself.
+                      return Column(
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(child: tiles[0]),
+                              const SizedBox(width: AppSpacing.sm),
+                              Expanded(child: tiles[1]),
+                            ],
+                          ),
+                          const SizedBox(height: AppSpacing.sm),
+                          tiles[2],
+                        ],
+                      );
+                    },
                   ),
                   if (expenses.isNotEmpty) ...[
                     const SizedBox(height: AppSpacing.lg),
