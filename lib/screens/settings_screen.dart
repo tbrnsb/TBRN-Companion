@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'package:flutter_application_1/providers/checklist_provider.dart';
+import 'package:flutter_application_1/providers/journey_provider.dart';
+import 'package:flutter_application_1/providers/location_provider.dart';
 import 'package:flutter_application_1/providers/settings_provider.dart';
 import 'package:flutter_application_1/providers/transaction_provider.dart';
+import 'package:flutter_application_1/services/csv_export.dart';
+import 'package:flutter_application_1/services/storage_service.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -17,8 +22,6 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         padding: AppSpacing.screenPadding,
         children: [
-          const SizedBox(height: AppSpacing.md),
-
           _SettingsSection(
             title: 'Currency',
             child: Column(
@@ -66,6 +69,10 @@ class SettingsScreen extends StatelessWidget {
               ],
             ),
           ),
+
+          const SizedBox(height: AppSpacing.lg),
+
+          const _DataSection(),
 
           const SizedBox(height: AppSpacing.lg),
 
@@ -142,18 +149,11 @@ class _ThemeOption extends StatelessWidget {
     final isSelected = mode == selected;
     final colorScheme = Theme.of(context).colorScheme;
 
-    String label;
-    switch (mode) {
-      case ThemeMode.light:
-        label = 'Light';
-        break;
-      case ThemeMode.dark:
-        label = 'Dark';
-        break;
-      case ThemeMode.system:
-        label = 'System';
-        break;
-    }
+    final label = switch (mode) {
+      ThemeMode.light => 'Light',
+      ThemeMode.dark => 'Dark',
+      ThemeMode.system => 'System',
+    };
 
     return ListTile(
       leading: Icon(Icons.brightness_6_rounded, color: colorScheme.primary),
@@ -162,6 +162,258 @@ class _ThemeOption extends StatelessWidget {
           ? Icon(Icons.check, color: colorScheme.primary)
           : null,
       onTap: () => onSelect(mode),
+    );
+  }
+}
+
+/// Storage counts, CSV export, and the full destructive wipe.
+class _DataSection extends StatefulWidget {
+  const _DataSection();
+
+  @override
+  State<_DataSection> createState() => _DataSectionState();
+}
+
+class _DataSectionState extends State<_DataSection> {
+  StorageCounts? _counts;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCounts();
+  }
+
+  Future<void> _loadCounts() async {
+    final counts = await StorageService().getStorageCounts();
+    if (!mounted) return;
+    setState(() => _counts = counts);
+  }
+
+  /// Empties every box, then reloads each provider.
+  ///
+  /// Without the reload the wipe would leave the app showing the records it
+  /// just deleted until something else happened to trigger a refresh.
+  Future<void> _removeAllData() async {
+    setState(() => _busy = true);
+
+    // Read every provider before awaiting anything. A BuildContext must not be
+    // used across an async gap, and the wipe has several.
+    final checklists = context.read<ChecklistProvider>();
+    final journeys = context.read<JourneyProvider>();
+    final locations = context.read<LocationProvider>();
+    final transactions = context.read<TransactionProvider>();
+
+    await StorageService().clear();
+    await Future.wait([
+      checklists.loadChecklists(),
+      journeys.loadJourneys(),
+      locations.loadLocations(),
+      // Reloads the month on screen, which is where a deleted transaction
+      // would otherwise linger.
+      transactions.goToCurrentMonth(),
+    ]);
+    await _loadCounts();
+
+    if (!mounted) return;
+    setState(() => _busy = false);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('All data removed.')));
+  }
+
+  Future<void> _confirmRemoveAll() async {
+    final counts = _counts;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove all data?'),
+        content: Text(
+          counts == null
+              ? 'This permanently deletes every record this app stores: '
+                    'all checklists and their items, all places and location '
+                    'logs, all transactions, all journeys, and your saved '
+                    'custom expense categories. It cannot be undone.'
+              : 'This permanently deletes everything this app stores:\n\n'
+                    '• ${counts.checklists} checklists '
+                    '(${counts.checklistItems} items)\n'
+                    '• ${counts.locations} places '
+                    '(${counts.locationLogs} location logs)\n'
+                    '• ${counts.transactions} transactions\n'
+                    '• ${counts.journeys} journeys\n'
+                    '• ${counts.customCategories} custom categories\n\n'
+                    'It cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Remove everything'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    await _removeAllData();
+  }
+
+  Future<void> _exportCsv() async {
+    setState(() => _busy = true);
+    // Read before the async gap for the same reason as the wipe above.
+    final provider = context.read<TransactionProvider>();
+    final message = await _exportMessageFor(provider);
+
+    if (!mounted) return;
+    setState(() => _busy = false);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// What to tell the user, whether the export worked, had nothing to do, or
+  /// failed. A share sheet is a platform channel, so the failure has to become
+  /// a sentence rather than an unhandled error.
+  Future<String> _exportMessageFor(TransactionProvider provider) async {
+    try {
+      final result = await CsvExport.shareCurrentMonth(provider);
+      return result.shared
+          ? 'Shared ${result.fileName}.'
+          : 'No transactions recorded this month.';
+    } catch (e) {
+      return 'Could not export: $e';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final counts = _counts;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Data',
+          style: textTheme.titleMedium?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  counts == null
+                      ? 'Checking what is stored…'
+                      : 'Stored on this device:',
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                if (counts != null) ...[
+                  _CountLine(label: 'Checklists', value: counts.checklists),
+                  _CountLine(
+                    label: 'Checklist items',
+                    value: counts.checklistItems,
+                  ),
+                  _CountLine(label: 'Places', value: counts.locations),
+                  _CountLine(
+                    label: 'Location logs',
+                    value: counts.locationLogs,
+                  ),
+                  _CountLine(label: 'Transactions', value: counts.transactions),
+                  _CountLine(label: 'Journeys', value: counts.journeys),
+                  _CountLine(
+                    label: 'Custom categories',
+                    value: counts.customCategories,
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.sm),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _busy ? null : _exportCsv,
+                    icon: const Icon(Icons.ios_share_rounded),
+                    label: const Text('Export this month as CSV'),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    // Disabled when nothing is stored, rather than offering a
+                    // wipe that has nothing to do.
+                    onPressed: _busy || (counts?.isEmpty ?? false)
+                        ? null
+                        : _confirmRemoveAll,
+                    icon: Icon(
+                      Icons.delete_forever_rounded,
+                      color: _busy || (counts?.isEmpty ?? false)
+                          ? null
+                          : colorScheme.error,
+                    ),
+                    label: Text(
+                      'Remove all data',
+                      style: TextStyle(
+                        color: _busy || (counts?.isEmpty ?? false)
+                            ? null
+                            : colorScheme.error,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(
+                        color: colorScheme.error.withValues(alpha: 0.4),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CountLine extends StatelessWidget {
+  const _CountLine({required this.label, required this.value});
+
+  final String label;
+  final int value;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxs),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: textTheme.bodySmall),
+          Text(
+            '$value',
+            style: textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: value == 0 ? colorScheme.onSurfaceVariant : null,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -205,7 +457,7 @@ class _DemoSectionState extends State<_DemoSection> {
           'Demo Data',
           style: theme.textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w600,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
         const SizedBox(height: AppSpacing.xs),
@@ -216,8 +468,8 @@ class _DemoSectionState extends State<_DemoSection> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Test data for demo purposes.',
-                  style: TextStyle(fontSize: 14),
+                  'Sample records for trying the app out. Every demo record is '
+                  'labelled "[Demo]" so you can tell them apart from your own.',
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 Row(
@@ -226,7 +478,7 @@ class _DemoSectionState extends State<_DemoSection> {
                       child: OutlinedButton.icon(
                         onPressed: _loading ? null : _addDemo,
                         icon: const Icon(Icons.add_rounded),
-                        label: const Text('Add Demo Data'),
+                        label: const Text('Add demo data'),
                       ),
                     ),
                     const SizedBox(width: AppSpacing.sm),
@@ -234,7 +486,7 @@ class _DemoSectionState extends State<_DemoSection> {
                       child: OutlinedButton.icon(
                         onPressed: _loading ? null : _clearDemo,
                         icon: const Icon(Icons.delete_outline_rounded),
-                        label: const Text('Clear Data'),
+                        label: const Text('Clear demo data'),
                       ),
                     ),
                   ],
@@ -254,11 +506,11 @@ class _AddDemoDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Add Demo Data?'),
+      title: const Text('Add demo data?'),
       content: const Text(
-        'This will add sample expenses and incomes '
-        'for testing purposes. These are clearly labeled as demo data '
-        'and can be removed via the Clear Data button.',
+        'This adds sample checklists, journeys, places, expenses and income '
+        'for the current month. Every record is labelled so you can find and '
+        'remove it later with "Clear demo data".',
       ),
       actions: [
         TextButton(
@@ -270,7 +522,7 @@ class _AddDemoDialog extends StatelessWidget {
             await context.read<TransactionProvider>().addDemoData();
             if (context.mounted) Navigator.pop(context);
           },
-          child: const Text('Add Demo Data'),
+          child: const Text('Add demo data'),
         ),
       ],
     );
@@ -283,10 +535,10 @@ class _ClearDemoDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Clear All Data?'),
+      title: const Text('Clear demo data?'),
       content: const Text(
-        'This will remove all transactions (both demo and real). '
-        'Use with caution.',
+        'This removes only the records created by "Add demo data", across every '
+        'section and every month. Anything you added yourself is left alone.',
       ),
       actions: [
         TextButton(
@@ -298,7 +550,7 @@ class _ClearDemoDialog extends StatelessWidget {
             await context.read<TransactionProvider>().clearDemoData();
             if (context.mounted) Navigator.pop(context);
           },
-          child: const Text('Clear All'),
+          child: const Text('Clear demo data'),
         ),
       ],
     );
