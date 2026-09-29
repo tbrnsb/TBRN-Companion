@@ -60,6 +60,7 @@ class TransactionsScreen extends StatelessWidget {
                   totalIncome: totalIncome,
                   totalExpenses: totalExpenses,
                   balance: balance,
+                  averageDaily: provider.getAverageDailySpending(),
                   currencySymbol: currencySymbol,
                   count: provider.transactions.length,
                   onPrevious: provider.previousMonth,
@@ -139,28 +140,15 @@ class TransactionsScreen extends StatelessWidget {
 
   /// Expense breakdown, resolved to real expense categories.
   ///
-  /// `ExpenseCategory.other` rows can carry a custom name ("Coffee"), so the
-  /// first custom name in the month is preferred over the generic "Other" —
-  /// otherwise the chart would disagree with the transaction tiles.
+  /// The provider owns the slicing: `ExpenseCategory.other` rows can each carry
+  /// a different custom name ("Coffee", "Groceries"), so they arrive here as
+  /// separate segments that match the transaction tiles. Picking a single name
+  /// for the whole bucket is what used to make the chart disagree with them.
   List<BreakdownSegment> _expenseSegments(TransactionProvider provider) {
-    final customNameForOther = provider.transactions
-        .whereType<Expense>()
-        .where((e) => e.category == ExpenseCategory.other)
-        .map((e) => e.customCategoryName)
-        .firstWhere(
-          (name) => name != null && name.isNotEmpty,
-          orElse: () => null,
-        );
-
-    return provider.getSpendingBreakdown().map((entry) {
-      final meta = entry.key == ExpenseCategory.other
-          ? CategoryRegistry.metaFor(
-              ExpenseCategory.other,
-              customName: customNameForOther,
-            )
-          : CategoryRegistry.metaFor(entry.key);
-      return BreakdownSegment(meta: meta, amount: entry.value);
-    }).toList();
+    return provider
+        .getSpendingBreakdownSlices()
+        .map((slice) => BreakdownSegment(meta: slice.meta, amount: slice.amount))
+        .toList(growable: false);
   }
 
   /// Income breakdown, keyed by income category id so metadata resolves.
@@ -272,6 +260,7 @@ class _MonthSummaryCard extends StatelessWidget {
     required this.totalIncome,
     required this.totalExpenses,
     required this.balance,
+    required this.averageDaily,
     required this.currencySymbol,
     required this.count,
     required this.onPrevious,
@@ -282,6 +271,7 @@ class _MonthSummaryCard extends StatelessWidget {
   final double totalIncome;
   final double totalExpenses;
   final double balance;
+  final double averageDaily;
   final String currencySymbol;
   final int count;
   final VoidCallback onPrevious;
@@ -373,6 +363,16 @@ class _MonthSummaryCard extends StatelessWidget {
                 ],
               ),
             ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          // Pass 2 replaced this line's slot with the currency parameter and
+          // dropped the figure entirely, leaving getAverageDailySpending() with
+          // no UI caller at all.
+          Text(
+            'Avg. ${AppFormat.money(averageDaily, symbol: currencySymbol)} / day',
+            style: textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),

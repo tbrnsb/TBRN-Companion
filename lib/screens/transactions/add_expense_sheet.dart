@@ -48,6 +48,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
   String? _locationId;
   String? _journeyId;
   bool _saving = false;
+  String? _saveError;
 
   bool get _isEditing => widget.existing != null;
 
@@ -261,6 +262,24 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
               ),
               const SizedBox(height: AppSpacing.lg),
 
+              if (_saveError != null) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(AppSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: colorScheme.errorContainer,
+                    borderRadius: AppRadii.smallRadius,
+                  ),
+                  child: Text(
+                    _saveError!,
+                    style: textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onErrorContainer,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+              ],
+
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
@@ -306,7 +325,10 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
 
     final provider = context.read<TransactionProvider>();
     final description = _descriptionController.text.trim().isEmpty
@@ -316,8 +338,11 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
           ).name
         : _descriptionController.text.trim();
 
+    // See IncomeEditSheet._save: the write reports whether it reached storage,
+    // and a failed save must keep the sheet open rather than discard what the
+    // user typed.
     if (_isEditing) {
-      await provider.updateTransaction(
+      final saved = await provider.updateTransaction(
         widget.existing!.copyWith(
           amount: double.parse(_amountController.text),
           category: _category,
@@ -332,7 +357,15 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
           clearJourney: _journeyId == null,
         ),
       );
-      if (mounted) Navigator.pop(context);
+      if (!mounted) return;
+      if (!saved) {
+        setState(() {
+          _saving = false;
+          _saveError = provider.error ?? 'Could not save. Please try again.';
+        });
+        return;
+      }
+      Navigator.pop(context);
       return;
     }
 
@@ -355,7 +388,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
       }
     }
 
-    await provider.addTransaction(
+    final saved = await provider.addTransaction(
       Expense(
         amount: double.parse(_amountController.text),
         category: _category,
@@ -371,7 +404,15 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
         date: _date,
       ),
     );
-    if (mounted) Navigator.pop(context);
+    if (!mounted) return;
+    if (!saved) {
+      setState(() {
+        _saving = false;
+        _saveError = provider.error ?? 'Could not save. Please try again.';
+      });
+      return;
+    }
+    Navigator.pop(context);
   }
 
   Future<Position?> _tryCapturePosition() async {

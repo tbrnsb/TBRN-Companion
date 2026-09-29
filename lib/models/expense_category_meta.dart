@@ -21,6 +21,20 @@ class CategoryMeta {
   final int popularity;
 }
 
+/// One slice of a category breakdown: a resolved category plus the total
+/// recorded against it.
+///
+/// Lives in the model layer so a provider can build a breakdown without
+/// depending on a widget type. [meta] is the real category the user sees, so
+/// two `ExpenseCategory.other` rows with different custom names become two
+/// distinct slices rather than one anonymous bucket.
+class CategorySlice {
+  const CategorySlice({required this.meta, required this.amount});
+
+  final CategoryMeta meta;
+  final double amount;
+}
+
 class CategoryRegistry {
   CategoryRegistry._();
 
