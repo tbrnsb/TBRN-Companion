@@ -332,4 +332,56 @@ class StorageService {
     await _journeysBox.clear();
     await _expenseCategoriesBox.clear();
   }
+
+  /// How many records each box holds, so the settings screen can show the user
+  /// what a wipe is about to destroy before they confirm it.
+  ///
+  /// Read-only. Counts the records themselves rather than deserialising them,
+  /// so this stays cheap enough to call while the screen is being built.
+  Future<StorageCounts> getStorageCounts() async {
+    return StorageCounts(
+      checklists: _checklistsBox.length,
+      checklistItems: _checklistItemsBox.length,
+      locations: _locationsBox.length,
+      locationLogs: _locationLogsBox.length,
+      transactions: _transactionsBox.length,
+      journeys: _journeysBox.length,
+      customCategories: _expenseCategoriesBox.length,
+    );
+  }
+}
+
+/// Record counts for every box [StorageService] owns.
+class StorageCounts {
+  const StorageCounts({
+    required this.checklists,
+    required this.checklistItems,
+    required this.locations,
+    required this.locationLogs,
+    required this.transactions,
+    required this.journeys,
+    required this.customCategories,
+  });
+
+  final int checklists;
+  final int checklistItems;
+  final int locations;
+  final int locationLogs;
+  final int transactions;
+  final int journeys;
+  final int customCategories;
+
+  /// Everything [StorageService.clear] would delete.
+  int get total =>
+      checklists +
+      checklistItems +
+      locations +
+      locationLogs +
+      transactions +
+      journeys +
+      customCategories;
+
+  /// True when there is nothing to lose, so a destructive action can be
+  /// disabled instead of offering a wipe that does nothing.
+  bool get isEmpty => total == 0;
 }
