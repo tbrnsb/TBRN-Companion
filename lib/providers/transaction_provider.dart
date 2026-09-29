@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_application_1/models/index.dart';
+import 'package:flutter_application_1/services/demo_data_service.dart';
 import 'package:flutter_application_1/services/storage_service.dart';
 
 enum TransactionFilter { all, expenses, income }
@@ -449,80 +450,22 @@ class TransactionProvider extends ChangeNotifier {
     return getSpendingByCategory();
   }
 
-  Future<void> addDemoData() async {
-    final now = DateTime.now();
-
-    final expenses = [
-      Expense(
-        amount: 150.00,
-        category: ExpenseCategory.food,
-        description: '[Demo] Grocery shopping',
-        date: _demoDate(now, 1),
-      ),
-      Expense(
-        amount: 75.50,
-        category: ExpenseCategory.travel,
-        description: '[Demo] Gas for weekend trip',
-        date: _demoDate(now, 3),
-      ),
-      Expense(
-        amount: 45.00,
-        category: ExpenseCategory.entertainment,
-        description: '[Demo] Movie tickets',
-        date: _demoDate(now, 5),
-      ),
-      Expense(
-        amount: 120.00,
-        category: ExpenseCategory.utilities,
-        description: '[Demo] Electric bill',
-        date: _demoDate(now, 10),
-      ),
-    ];
-
-    final incomes = [
-      Income(
-        amount: 500.00,
-        category: 'salary',
-        description: '[Demo] Monthly salary',
-        date: DateTime(now.year, now.month, 1),
-      ),
-      Income(
-        amount: 150.00,
-        category: 'freelance',
-        description: '[Demo] Freelance project',
-        date: _demoDate(now, 4),
-      ),
-      Income(
-        amount: 75.00,
-        category: 'gift',
-        description: '[Demo] Birthday gift',
-        date: _demoDate(now, 14),
-      ),
-    ];
-
-    for (final expense in expenses) {
-      await addTransaction(expense);
-    }
-
-    for (final income in incomes) {
-      await addTransaction(income);
-    }
-  }
-
-  /// [daysAgo] days before [now], but never leaving the current month.
+  /// Seeds one batch of sample data across checklists, journeys, places and
+  /// transactions.
   ///
-  /// `DateTime(y, m, now.day - n)` normalises overflow into the previous month
-  /// — on the 3rd, `day - 5` lands in the prior month and the entry vanishes
-  /// from the current-month view. Clamping the day to 1 keeps demo rows
-  /// visible in the month they were added.
-  static DateTime _demoDate(DateTime now, int daysAgo) {
-    final day = (now.day - daysAgo).clamp(1, now.day);
-    return DateTime(now.year, now.month, day);
-  }
+  /// Delegated to [DemoDataService] so the demo records for the whole app live
+  /// in one place, rather than spend-only seeding hidden on this provider.
+  /// The caller is responsible for reloading the providers afterwards; nothing
+  /// runs on app start.
+  Future<void> addDemoData() => DemoDataService.seedAll();
 
-  Future<void> clearDemoData() async {
-    for (final transaction in [..._transactions]) {
-      await deleteTransaction(transaction.id);
-    }
-  }
+  /// Removes every demo record, in every month and every section.
+  ///
+  /// This used to iterate [transactions] — only the loaded month — and delete
+  /// every one of them, demo and real alike, while its dialog claimed "Clear
+  /// All Data". It removed neither all the demo data nor only the demo data.
+  /// The real user's records were the ones at risk. It now delegates to
+  /// [DemoDataService.clearAll], which reads every box and matches on the demo
+  /// id prefix, so nothing the user created can be caught by it.
+  Future<int> clearDemoData() => DemoDataService.clearAll();
 }

@@ -197,22 +197,11 @@ class _DataSectionState extends State<_DataSection> {
   Future<void> _removeAllData() async {
     setState(() => _busy = true);
 
-    // Read every provider before awaiting anything. A BuildContext must not be
-    // used across an async gap, and the wipe has several.
-    final checklists = context.read<ChecklistProvider>();
-    final journeys = context.read<JourneyProvider>();
-    final locations = context.read<LocationProvider>();
-    final transactions = context.read<TransactionProvider>();
-
+    final providers = _DataProviders.read(context);
     await StorageService().clear();
-    await Future.wait([
-      checklists.loadChecklists(),
-      journeys.loadJourneys(),
-      locations.loadLocations(),
-      // Reloads the month on screen, which is where a deleted transaction
-      // would otherwise linger.
-      transactions.goToCurrentMonth(),
-    ]);
+    // Without this the UI would keep showing the records that were just
+    // deleted, in every provider that caches them.
+    await providers.reload();
     await _loadCounts();
 
     if (!mounted) return;
@@ -509,8 +498,8 @@ class _AddDemoDialog extends StatelessWidget {
       title: const Text('Add demo data?'),
       content: const Text(
         'This adds sample checklists, journeys, places, expenses and income '
-        'for the current month. Every record is labelled so you can find and '
-        'remove it later with "Clear demo data".',
+        'for the current month. Every record is labelled "[Demo]" so you can '
+        'tell it from your own, and "Clear demo data" removes all of it again.',
       ),
       actions: [
         TextButton(
@@ -519,7 +508,9 @@ class _AddDemoDialog extends StatelessWidget {
         ),
         FilledButton(
           onPressed: () async {
-            await context.read<TransactionProvider>().addDemoData();
+            final providers = _DataProviders.read(context);
+            await providers.transactions.addDemoData();
+            await providers.reload();
             if (context.mounted) Navigator.pop(context);
           },
           child: const Text('Add demo data'),
@@ -547,7 +538,9 @@ class _ClearDemoDialog extends StatelessWidget {
         ),
         FilledButton(
           onPressed: () async {
-            await context.read<TransactionProvider>().clearDemoData();
+            final providers = _DataProviders.read(context);
+            await providers.transactions.clearDemoData();
+            await providers.reload();
             if (context.mounted) Navigator.pop(context);
           },
           child: const Text('Clear demo data'),
@@ -555,4 +548,40 @@ class _ClearDemoDialog extends StatelessWidget {
       ],
     );
   }
+}
+
+/// The providers that cache records from storage.
+///
+/// Captured before an await so no BuildContext is read across an async gap,
+/// which is what the `use_build_context_synchronously` lint exists to catch.
+class _DataProviders {
+  const _DataProviders(
+    this.checklists,
+    this.journeys,
+    this.locations,
+    this.transactions,
+  );
+
+  final ChecklistProvider checklists;
+  final JourneyProvider journeys;
+  final LocationProvider locations;
+  final TransactionProvider transactions;
+
+  static _DataProviders read(BuildContext context) => _DataProviders(
+    context.read<ChecklistProvider>(),
+    context.read<JourneyProvider>(),
+    context.read<LocationProvider>(),
+    context.read<TransactionProvider>(),
+  );
+
+  /// Re-reads every box-backed list. Needed after any change made straight to
+  /// storage, otherwise the UI keeps showing what was there before.
+  Future<void> reload() => Future.wait([
+    checklists.loadChecklists(),
+    journeys.loadJourneys(),
+    locations.loadLocations(),
+    // Reloads the month on screen, which is where a deleted transaction
+    // would otherwise linger.
+    transactions.goToCurrentMonth(),
+  ]);
 }
