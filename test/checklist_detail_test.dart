@@ -102,101 +102,105 @@ void main() {
       );
     });
 
-    testWidgets('an item added through the provider appears on the open screen', (
-      tester,
-    ) async {
-      usePhoneLayout(tester, TestViewports.phonePortrait);
+    testWidgets(
+      'an item added through the provider appears on the open screen',
+      (tester) async {
+        usePhoneLayout(tester, TestViewports.phonePortrait);
 
-      final provider = await _seed(tester);
-      final checklist = provider.checklists.single;
+        final provider = await _seed(tester);
+        final checklist = provider.checklists.single;
 
-      await tester.pumpWidget(_app(provider));
-      await settleUi(tester);
+        await tester.pumpWidget(_app(provider));
+        await settleUi(tester);
 
-      expect(find.text('Map'), findsOneWidget);
-      expect(find.text('Tent'), findsNothing);
+        expect(find.text('Map'), findsOneWidget);
+        expect(find.text('Tent'), findsNothing);
 
-      await tester.runAsync(() async {
-        await provider.addItemToChecklist(
-          checklist.id,
-          ChecklistItem(checklistId: checklist.id, name: 'Tent'),
-        );
-      });
-      await settleUi(tester);
+        await tester.runAsync(() async {
+          await provider.addItemToChecklist(
+            checklist.id,
+            ChecklistItem(checklistId: checklist.id, name: 'Tent'),
+          );
+        });
+        await settleUi(tester);
 
-      expect(find.text('Tent'), findsOneWidget);
-      expect(find.text('1 of 4 items checked'), findsOneWidget);
-    });
+        expect(find.text('Tent'), findsOneWidget);
+        expect(find.text('1 of 4 items checked'), findsOneWidget);
+      },
+    );
 
-    testWidgets('an item deleted through the provider disappears from the open screen', (
-      tester,
-    ) async {
-      usePhoneLayout(tester, TestViewports.phonePortrait);
+    testWidgets(
+      'an item deleted through the provider disappears from the open screen',
+      (tester) async {
+        usePhoneLayout(tester, TestViewports.phonePortrait);
 
-      final provider = await _seed(tester);
-      final checklist = provider.checklists.single;
+        final provider = await _seed(tester);
+        final checklist = provider.checklists.single;
 
-      await tester.pumpWidget(_app(provider));
-      await settleUi(tester);
+        await tester.pumpWidget(_app(provider));
+        await settleUi(tester);
 
-      final map = checklist.items.firstWhere((i) => i.name == 'Map');
+        final map = checklist.items.firstWhere((i) => i.name == 'Map');
 
-      await tester.runAsync(() async {
-        await provider.deleteChecklistItem(map.id);
-      });
-      await settleUi(tester);
+        await tester.runAsync(() async {
+          await provider.deleteChecklistItem(map.id);
+        });
+        await settleUi(tester);
 
-      expect(find.text('Map'), findsNothing);
-      expect(find.text('Boots'), findsOneWidget);
-      expect(find.text('1 of 2 items checked'), findsOneWidget);
-    });
+        expect(find.text('Map'), findsNothing);
+        expect(find.text('Boots'), findsOneWidget);
+        expect(find.text('1 of 2 items checked'), findsOneWidget);
+      },
+    );
 
-    testWidgets('a checklist cleared through the provider empties the open screen', (
-      tester,
-    ) async {
-      usePhoneLayout(tester, TestViewports.phonePortrait);
+    testWidgets(
+      'a checklist cleared through the provider empties the open screen',
+      (tester) async {
+        usePhoneLayout(tester, TestViewports.phonePortrait);
 
-      final provider = await _seed(tester);
-      final checklist = provider.checklists.single;
+        final provider = await _seed(tester);
+        final checklist = provider.checklists.single;
 
-      await tester.pumpWidget(_app(provider));
-      await settleUi(tester);
+        await tester.pumpWidget(_app(provider));
+        await settleUi(tester);
 
-      await tester.runAsync(() async {
-        await provider.clearCompletedItems(checklist.id);
-      });
-      await settleUi(tester);
+        await tester.runAsync(() async {
+          await provider.clearCompletedItems(checklist.id);
+        });
+        await settleUi(tester);
 
-      // The old code also rebuilt a private copy here, so the screen and the
-      // provider each held their own item list.
-      expect(find.text('Boots'), findsNothing);
-      expect(find.text('Jacket'), findsOneWidget);
-      expect(find.text('Map'), findsOneWidget);
-      expect(find.text('0 of 2 items checked'), findsOneWidget);
-    });
+        // The old code also rebuilt a private copy here, so the screen and the
+        // provider each held their own item list.
+        expect(find.text('Boots'), findsNothing);
+        expect(find.text('Jacket'), findsOneWidget);
+        expect(find.text('Map'), findsOneWidget);
+        expect(find.text('0 of 2 items checked'), findsOneWidget);
+      },
+    );
 
-    testWidgets('the screen survives the checklist being deleted underneath it', (
-      tester,
-    ) async {
-      usePhoneLayout(tester, TestViewports.phonePortrait);
+    testWidgets(
+      'the screen survives the checklist being deleted underneath it',
+      (tester) async {
+        usePhoneLayout(tester, TestViewports.phonePortrait);
 
-      final provider = await _seed(tester);
-      final checklist = provider.checklists.single;
+        final provider = await _seed(tester);
+        final checklist = provider.checklists.single;
 
-      await tester.pumpWidget(_app(provider));
-      await settleUi(tester);
+        await tester.pumpWidget(_app(provider));
+        await settleUi(tester);
 
-      await tester.runAsync(() async {
-        await provider.deleteChecklist(checklist.id);
-      });
-      await settleUi(tester);
+        await tester.runAsync(() async {
+          await provider.deleteChecklist(checklist.id);
+        });
+        await settleUi(tester);
 
-      // Deriving by id means there is nothing left to derive, so the screen
-      // falls back to the checklist it was handed rather than reading a
-      // deleted record out of the provider.
-      expect(tester.takeException(), isNull);
-      expect(find.byType(ChecklistDetailScreen), findsOneWidget);
-    });
+        // Deriving by id means there is nothing left to derive, so the screen
+        // falls back to the checklist it was handed rather than reading a
+        // deleted record out of the provider.
+        expect(tester.takeException(), isNull);
+        expect(find.byType(ChecklistDetailScreen), findsOneWidget);
+      },
+    );
   });
 
   group('popup menu', () {
@@ -247,11 +251,16 @@ void main() {
 
       await tester.tap(find.byType(PopupMenuButton<String>));
       await settleUi(tester);
-      await tester.tap(find.widgetWithText(PopupMenuItem<String>, 'Uncheck all'));
+      await tester.tap(
+        find.widgetWithText(PopupMenuItem<String>, 'Uncheck all'),
+      );
       await settleUi(tester);
 
       expect(find.text('Reset Checklist?'), findsOneWidget);
-      expect(find.text('This will uncheck all items. Are you sure?'), findsOneWidget);
+      expect(
+        find.text('This will uncheck all items. Are you sure?'),
+        findsOneWidget,
+      );
       // Exactly one dialog: the switch cases do not fall through. Dart inserts
       // an implicit break when a case ends in a void-returning call, which is
       // why the analyzer is silent about the missing `break`s here.

@@ -541,9 +541,7 @@ void main() {
       'a record dated in another month is not appended to the loaded month',
       () async {
         final provider = await _providerFor(2024, 1);
-        await provider.addTransaction(
-          _expense(100, ExpenseCategory.food),
-        );
+        await provider.addTransaction(_expense(100, ExpenseCategory.food));
 
         // The income sheet lets the user pick any past date, so a save can land
         // outside the month currently on screen. Appending it anyway would put
@@ -561,10 +559,7 @@ void main() {
         // never about dropping the user's record.
         final all = await StorageService().getAllTransactions();
         expect(all.length, 2);
-        expect(
-          all.whereType<Income>().single.date,
-          DateTime(2024, 2, 5),
-        );
+        expect(all.whereType<Income>().single.date, DateTime(2024, 2, 5));
 
         // And it shows up when the user navigates to its own month.
         await provider.loadTransactionsForMonth(2024, 2);

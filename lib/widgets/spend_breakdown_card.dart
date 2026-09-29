@@ -54,71 +54,70 @@ class SpendBreakdownCard extends StatelessWidget {
 
     final total = drawable.fold<double>(0, (sum, s) => sum + s.amount);
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: Theme.of(context).textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final legend = Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Every segment gets a row. There are only six categories
-                    // per type, and truncating the list here would leave a
-                    // donut slice the user cannot identify.
-                    for (final segment in drawable)
-                      _LegendRow(
-                        meta: segment.meta,
-                        amount: segment.amount,
-                        total: total,
-                        currencySymbol: currencySymbol,
-                      ),
-                  ],
-                );
-
-                if (constraints.maxWidth >= sideBySideBreakpoint) {
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      SizedBox(
-                        height: _donutSize,
-                        width: _donutSize,
-                        child: _Donut(drawable: drawable),
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(child: legend),
-                    ],
-                  );
-                }
-
-                // Narrow: the donut goes above and the legend gets the whole
-                // measure, so an amount is never truncated to fit beside it.
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: SizedBox(
-                        height: _donutSize,
-                        width: _donutSize,
-                        child: _Donut(drawable: drawable),
-                      ),
+    // Grouped content, not the screen's headline: the raised tier.
+    return AppSurface(
+      tier: AppSurfaceTier.raised,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleSmall
+                ?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final legend = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Every segment gets a row. There are only six categories
+                  // per type, and truncating the list here would leave a
+                  // donut slice the user cannot identify.
+                  for (final segment in drawable)
+                    _LegendRow(
+                      meta: segment.meta,
+                      amount: segment.amount,
+                      total: total,
+                      currencySymbol: currencySymbol,
                     ),
-                    const SizedBox(height: AppSpacing.md),
-                    legend,
+                ],
+              );
+
+              if (constraints.maxWidth >= sideBySideBreakpoint) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      height: _donutSize,
+                      width: _donutSize,
+                      child: _Donut(drawable: drawable),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(child: legend),
                   ],
                 );
-              },
-            ),
-          ],
-        ),
+              }
+
+              // Narrow: the donut goes above and the legend gets the whole
+              // measure, so an amount is never truncated to fit beside it.
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: SizedBox(
+                      height: _donutSize,
+                      width: _donutSize,
+                      child: _Donut(drawable: drawable),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  legend,
+                ],
+              );
+            },
+          ),
+        ],
       ),
     );
   }

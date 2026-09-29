@@ -5,6 +5,7 @@ import 'package:flutter_application_1/providers/checklist_provider.dart';
 import 'package:flutter_application_1/screens/checklists/add_checklist_screen.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:flutter_application_1/utils/iterable_ext.dart';
+import 'package:flutter_application_1/widgets/widgets.dart';
 
 /// One checklist, derived from [ChecklistProvider].
 ///
@@ -122,20 +123,19 @@ class ChecklistDetailScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Progress', style: textTheme.titleMedium),
+                    Text('Progress', style: textTheme.titleSmall),
+                    // The one number this screen is about, so it is the one
+                    // number allowed to be large.
                     Text(
                       '${(shown.getProgress() * 100).toStringAsFixed(0)}%',
-                      style: textTheme.titleMedium,
+                      style: textTheme.headlineMedium,
                     ),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.sm),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(AppSpacing.xs),
-                  child: LinearProgressIndicator(
-                    value: shown.getProgress(),
-                    minHeight: AppSpacing.xxs,
-                  ),
+                AppProgressBar(
+                  value: shown.getProgress(),
+                  minHeight: AppSpacing.xs,
                 ),
                 const SizedBox(height: AppSpacing.xs),
                 Text(
@@ -154,7 +154,11 @@ class ChecklistDetailScreen extends StatelessWidget {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.done_all, size: 64, color: colorScheme.onSurfaceVariant),
+                        Icon(
+                          Icons.done_all,
+                          size: 64,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
                         const SizedBox(height: AppSpacing.md),
                         Text('No items yet', style: textTheme.titleMedium),
                       ],
@@ -165,10 +169,8 @@ class ChecklistDetailScreen extends StatelessWidget {
                       horizontal: AppSpacing.md,
                     ),
                     itemCount: shown.items.length,
-                    separatorBuilder: (_, index) => Divider(
-                      height: 1,
-                      color: colorScheme.outlineVariant,
-                    ),
+                    separatorBuilder: (_, index) =>
+                        Divider(height: 1, color: colorScheme.outlineVariant),
                     itemBuilder: (context, index) {
                       return _buildItemTile(
                         context,
@@ -201,15 +203,7 @@ class ChecklistDetailScreen extends StatelessWidget {
         // screen from the new record. No local write is needed or wanted.
         onChanged: (value) => provider.toggleItem(item.id),
       ),
-      title: Text(
-        item.name,
-        style: TextStyle(
-          color: item.isChecked
-              ? Theme.of(context).colorScheme.onSurfaceVariant
-              : null,
-          decoration: item.isChecked ? TextDecoration.lineThrough : null,
-        ),
-      ),
+      title: AppCheckableLabel(text: item.name, checked: item.isChecked),
       trailing: IconButton(
         icon: Icon(
           Icons.delete_outline_rounded,

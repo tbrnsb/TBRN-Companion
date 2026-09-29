@@ -4,6 +4,7 @@ import 'package:flutter_application_1/models/index.dart';
 import 'package:flutter_application_1/providers/checklist_provider.dart';
 import 'package:flutter_application_1/providers/journey_provider.dart';
 import 'package:flutter_application_1/providers/location_provider.dart';
+import 'package:flutter_application_1/theme/app_theme.dart';
 
 class AddChecklistScreen extends StatefulWidget {
   final Checklist? checklist;
@@ -56,7 +57,7 @@ class _AddChecklistScreenState extends State<AddChecklistScreen> {
         elevation: 0,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -135,7 +136,9 @@ class _AddChecklistScreenState extends State<AddChecklistScreen> {
               ),
               const SizedBox(height: 24),
             ],
-            Card(
+            AppSurface(
+              tier: AppSurfaceTier.raised,
+              padding: EdgeInsets.zero,
               child: CheckboxListTile(
                 title: const Text('Everyday Essentials'),
                 subtitle: const Text(

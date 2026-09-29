@@ -89,7 +89,9 @@ class StorageService {
     // `item.keys.first` therefore passed a field name to the box, deleted
     // nothing, and left every item of the deleted checklist in storage
     // forever. `_toMap()` gives the real key for each value.
-    final orphanedKeys = _checklistItemsBox.toMap().entries
+    final orphanedKeys = _checklistItemsBox
+        .toMap()
+        .entries
         .where((entry) => entry.value['checklistId'] == id)
         .map((entry) => entry.key)
         .toList();

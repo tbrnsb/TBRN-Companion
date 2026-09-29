@@ -95,16 +95,14 @@ class JourneyDetailScreen extends StatelessWidget {
                   // Three tiles across only once there is room for the money
                   // value to render whole. On a 360dp phone three across left
                   // each tile ~101dp — about 77dp of text — and the amount
-              // clipped to "Rs. 1,2…", which is worse than showing fewer tiles.
+                  // clipped to "Rs. 1,2…", which is worse than showing fewer tiles.
                   LayoutBuilder(
                     builder: (context, constraints) {
                       final tiles = <Widget>[
                         AppStatTile(
                           icon: Icons.backpack_rounded,
                           label: 'Packed',
-                          value: totalItems == 0
-                              ? '—'
-                              : '$packed/$totalItems',
+                          value: totalItems == 0 ? '—' : '$packed/$totalItems',
                         ),
                         AppStatTile(
                           icon: Icons.place_rounded,
@@ -114,10 +112,7 @@ class JourneyDetailScreen extends StatelessWidget {
                         AppStatTile(
                           icon: Icons.payments_rounded,
                           label: 'Spent',
-                          value: AppFormat.money(
-                            spent,
-                            symbol: currencySymbol,
-                          ),
+                          value: AppFormat.money(spent, symbol: currencySymbol),
                         ),
                       ];
 

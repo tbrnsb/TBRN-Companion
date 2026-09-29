@@ -50,6 +50,129 @@ class AppSpacing {
   static const EdgeInsets screenPadding = EdgeInsets.all(md);
 }
 
+/// Motion durations. Nothing here exceeds 250ms: an app that takes half a
+/// second to acknowledge a tap feels slow rather than smooth.
+class AppMotion {
+  AppMotion._();
+
+  /// Progress bars, check/uncheck, and other small state changes.
+  static const Duration fast = Duration(milliseconds: 180);
+
+  /// Sheets and larger reveals.
+  static const Duration medium = Duration(milliseconds: 220);
+}
+
+/// The three surface tiers the app is allowed to use.
+///
+/// Every screen previously used `Card(` with the same elevation, radius and
+/// border, so a page of grouped content read as a page of identical flat boxes
+/// with no hierarchy at all. Three tiers, used deliberately, give each screen
+/// a reading order:
+///
+/// - [flat]   no border, tonal fill — list rows and list sections
+/// - [raised] subtle border, tonal fill — grouped content
+/// - [accent] primaryContainer fill — the single most important element on the
+///   screen
+///
+/// [accent] is meant to be rare. If most things on a screen are accent, the
+/// accent means nothing, which is the flat-everything problem wearing a
+/// different hat.
+enum AppSurfaceTier { flat, raised, accent }
+
+/// Builds a surface from a tier, resolved against the current [ColorScheme].
+///
+/// Lives in the theme rather than in each screen so the tiers cannot drift.
+class AppSurfaces {
+  AppSurfaces._();
+
+  /// Fill and border for a tier.
+  static ({Color color, BorderSide border}) specFor(
+    AppSurfaceTier tier,
+    ColorScheme scheme, {
+    Brightness? brightness,
+  }) {
+    final isDark = (brightness ?? scheme.brightness) == Brightness.dark;
+
+    return switch (tier) {
+      AppSurfaceTier.flat => (
+        color: isDark ? AppColors.darkSurfaceHigh : scheme.surface,
+        border: BorderSide.none,
+      ),
+      AppSurfaceTier.raised => (
+        color: isDark ? AppColors.darkSurface : Colors.white,
+        border: BorderSide(color: scheme.outlineVariant),
+      ),
+      AppSurfaceTier.accent => (
+        color: scheme.primaryContainer,
+        border: BorderSide.none,
+      ),
+    };
+  }
+}
+
+/// A surface at one of the three [AppSurfaceTier]s.
+///
+/// Built on [Material] rather than a decorated [Container] on purpose. A
+/// Container paints a background but is not an ink surface, so a [ListTile] or
+/// any other widget that paints its own background would hide the surface's
+/// fill and Flutter asserts that its ink splashes are invisible. Material
+/// carries the fill, the border and the ink in one place, which is what `Card`
+/// was doing.
+class AppSurface extends StatelessWidget {
+  const AppSurface({
+    super.key,
+    required this.tier,
+    required this.child,
+    this.padding = const EdgeInsets.all(AppSpacing.md),
+    this.margin,
+    this.color,
+    this.clipBehavior = Clip.none,
+  });
+
+  final AppSurfaceTier tier;
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final EdgeInsetsGeometry? margin;
+
+  /// Overrides the tier's fill.
+  ///
+  /// Only for a card that has to carry its own semantic colour, such as a
+  /// context or warning card. Prefer choosing a tier: the point of the tiers is
+  /// that a screen cannot quietly invent a fourth one.
+  final Color? color;
+
+  /// Clips the child to the surface's radius. Needed when the child paints
+  /// past its own bounds, such as an [ExpansionTile]'s revealed content.
+  final Clip clipBehavior;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final spec = AppSurfaces.specFor(
+      tier,
+      theme.colorScheme,
+      brightness: theme.brightness,
+    );
+
+    // The outer Container carries the margin only. A Container with no colour
+    // and no decoration is a pass-through, so the Material below is still the
+    // nearest ink surface.
+    return Container(
+      margin: margin,
+      child: Material(
+        type: MaterialType.canvas,
+        color: color ?? spec.color,
+        shape: RoundedRectangleBorder(
+          borderRadius: AppRadii.mediumRadius,
+          side: spec.border,
+        ),
+        clipBehavior: clipBehavior,
+        child: Padding(padding: padding, child: child),
+      ),
+    );
+  }
+}
+
 /// Corner radii used across the app.
 class AppRadii {
   AppRadii._();
@@ -131,11 +254,26 @@ class AppTheme {
 
   static ThemeData _base(ColorScheme scheme, {required Color scaffold}) {
     final isDark = scheme.brightness == Brightness.dark;
+    final textTheme = _typeScale(scheme);
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
       scaffoldBackgroundColor: scaffold,
+      textTheme: textTheme,
+      // Checkboxes are one of the app's main "something just changed" signals.
+      checkboxTheme: CheckboxThemeData(
+        fillColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? scheme.primary
+              : Colors.transparent,
+        ),
+      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: scheme.primary,
+        linearTrackColor: scheme.surfaceContainerHighest,
+        linearMinHeight: AppSpacing.xxs,
+      ),
       appBarTheme: AppBarTheme(
         backgroundColor: scaffold,
         surfaceTintColor: Colors.transparent,
@@ -240,10 +378,65 @@ class AppTheme {
         thickness: 1,
         space: 1,
       ),
-      progressIndicatorTheme: ProgressIndicatorThemeData(
-        color: scheme.primary,
-        linearTrackColor: scheme.surfaceContainerHighest,
+    );
+  }
+
+  /// The app's type scale.
+  ///
+  /// Before this the app referenced only titleSmall, titleMedium and bodySmall,
+  /// so every screen read at the same weight and there was no entry point — the
+  /// eye had nothing to land on. This keeps those three for supporting text and
+  /// adds a real jump at the top, so each screen has exactly one number allowed
+  /// to be large.
+  ///
+  /// The sizes are the Material 3 values, so nothing on screen shifts; what is
+  /// new is that they are stated here rather than resolved at paint time. That
+  /// matters: in this Flutter version every `fontSize` in the default text
+  /// theme is null and the sizes only appear when a style is merged against the
+  /// platform default, so a scale built on `ThemeData().textTheme` has no
+  /// guaranteed size contrast at all — only the weights below.
+  static TextTheme _typeScale(ColorScheme scheme) {
+    TextStyle style(
+      String role,
+      double size, {
+      FontWeight weight = FontWeight.w400,
+      Color? color,
+    }) {
+      return TextStyle(
+        fontSize: size,
+        fontWeight: weight,
+        color: color ?? scheme.onSurface,
+      );
+    }
+
+    return TextTheme(
+      // The one number that matters on a screen.
+      displayLarge: style('displayLarge', 57, weight: FontWeight.w800),
+      displayMedium: style('displayMedium', 45, weight: FontWeight.w800),
+      displaySmall: style('displaySmall', 36, weight: FontWeight.w700),
+      // Section and screen titles: clearly above body, clearly below the
+      // headline number.
+      headlineLarge: style('headlineLarge', 32, weight: FontWeight.w700),
+      headlineMedium: style('headlineMedium', 28, weight: FontWeight.w700),
+      headlineSmall: style('headlineSmall', 24, weight: FontWeight.w600),
+      titleLarge: style('titleLarge', 22, weight: FontWeight.w700),
+      // Supporting titles. w600 rather than w700 so they do not compete with
+      // the headline they sit under.
+      titleMedium: style('titleMedium', 16, weight: FontWeight.w600),
+      titleSmall: style('titleSmall', 14, weight: FontWeight.w600),
+      bodyLarge: style('bodyLarge', 16),
+      bodyMedium: style('bodyMedium', 14),
+      // Supporting and secondary text sits back in the colour as well as down
+      // in size, which is what keeps a screen from reading as one flat block.
+      bodySmall: style('bodySmall', 12, color: scheme.onSurfaceVariant),
+      labelLarge: style('labelLarge', 14, weight: FontWeight.w600),
+      labelMedium: style(
+        'labelMedium',
+        12,
+        weight: FontWeight.w500,
+        color: scheme.onSurfaceVariant,
       ),
+      labelSmall: style('labelSmall', 11, color: scheme.onSurfaceVariant),
     );
   }
 }
