@@ -89,9 +89,8 @@ class _SettingsSection extends StatelessWidget {
       children: [
         Text(
           title,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+          style: Theme.of(context).textTheme.titleMedium
+              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: AppSpacing.xs),
         Card(child: child),
@@ -157,8 +156,7 @@ class _ThemeOption extends StatelessWidget {
     }
 
     return ListTile(
-      leading:
-          Icon(Icons.brightness_6_rounded, color: colorScheme.primary),
+      leading: Icon(Icons.brightness_6_rounded, color: colorScheme.primary),
       title: Text(label),
       trailing: isSelected
           ? Icon(Icons.check, color: colorScheme.primary)

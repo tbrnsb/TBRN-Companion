@@ -14,11 +14,17 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await StorageService().initialize();
   await NotificationService.initialize();
-  runApp(const MainApp());
+  // Awaited before the first frame so the app never renders with default
+  // currency/theme and then flashes to the persisted values.
+  final settings = SettingsProvider();
+  await settings.load();
+  runApp(MainApp(settings: settings));
 }
 
 class MainApp extends StatelessWidget {
-  const MainApp({super.key});
+  const MainApp({super.key, required this.settings});
+
+  final SettingsProvider settings;
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +34,7 @@ class MainApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => JourneyProvider()),
         ChangeNotifierProvider(create: (_) => LocationProvider()),
         ChangeNotifierProvider(create: (_) => TransactionProvider()),
-        ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        ChangeNotifierProvider.value(value: settings),
       ],
       child: Consumer<SettingsProvider>(
         builder: (context, settings, _) {

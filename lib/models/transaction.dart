@@ -11,7 +11,13 @@ extension TransactionTypeX on TransactionType {
   }
 }
 
-class Transaction {
+/// Base class for money moving in or out.
+///
+/// Sealed on purpose: only [Expense] and [Income] are valid. A bare
+/// `Transaction` carries no category, so it would persist and then silently
+/// deserialise back as an "Other" expense. Making it sealed removes the
+/// possibility of creating one by accident.
+sealed class Transaction {
   final String id;
   final double amount;
   final TransactionType type;
@@ -35,13 +41,13 @@ class Transaction {
   bool get isExpense => type == TransactionType.expense;
   bool get isIncome => type == TransactionType.income;
 
-  String get effectiveCategoryName => customCategoryName ?? _getCategoryName();
-
-  String _getCategoryName() {
-    if (type == TransactionType.expense) return 'Expense';
-    if (type == TransactionType.income) return 'Income';
-    return 'Other';
-  }
+  /// The human-readable category this transaction is filed under.
+  ///
+  /// Delegates to [getCategoryName] so [Expense] and [Income] report their real
+  /// category instead of the bare type name. For an expense, the custom name
+  /// takes over when the category is [ExpenseCategory.other], which is the only
+  /// pairing the picker ever produces.
+  String get effectiveCategoryName => getCategoryName();
 
   Map<String, dynamic> toJson() {
     return {
@@ -55,6 +61,13 @@ class Transaction {
     };
   }
 
+  /// Reads a persisted transaction back.
+  ///
+  /// MIGRATION SAFETY: records written before the `type` key existed have no
+  /// `type` at all, and records written by any future/older writer may carry an
+  /// unrecognised value. Both fall back to [TransactionType.expense], because
+  /// every pre-existing record on disk is an expense. This default is the
+  /// entire migration story for existing user data — do not change it.
   factory Transaction.fromJson(Map<String, dynamic> json) {
     final type = json['type'] == null
         ? TransactionType.expense
@@ -81,26 +94,19 @@ class Expense extends Transaction {
   bool get hasCoordinates => latitude != null && longitude != null;
 
   Expense({
-    String? id,
-    required double amount,
+    super.id,
+    required super.amount,
     required this.category,
-    required String description,
+    required super.description,
     this.locationId,
-    String? customCategoryName,
+    super.customCategoryName,
     this.latitude,
     this.longitude,
     this.locationCapturedAt,
     this.journeyId,
-    DateTime? date,
-  }) : super(
-         id: id,
-         amount: amount,
-         type: TransactionType.expense,
-         description: description,
-         customCategoryName: customCategoryName,
-         date: date,
-         createdAt: DateTime.now(),
-       );
+    super.date,
+    super.createdAt,
+  }) : super(type: TransactionType.expense);
 
   String getCategoryName() {
     if (category == ExpenseCategory.other) return customCategoryName ?? 'Other';
@@ -140,6 +146,7 @@ class Expense extends Transaction {
           : DateTime.tryParse(json['locationCapturedAt']),
       journeyId: json['journeyId'],
       date: DateTime.parse(json['date']),
+      createdAt: _parseCreatedAt(json['createdAt']),
     );
   }
 
@@ -153,8 +160,8 @@ class Expense extends Transaction {
     double? longitude,
     DateTime? locationCapturedAt,
     String? journeyId,
-    TransactionType? type,
     DateTime? date,
+    DateTime? createdAt,
     bool clearLocation = false,
     bool clearCoordinates = false,
     bool clearJourney = false,
@@ -173,6 +180,7 @@ class Expense extends Transaction {
           : (locationCapturedAt ?? this.locationCapturedAt),
       journeyId: clearJourney ? null : (journeyId ?? this.journeyId),
       date: date ?? this.date,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 }
@@ -181,21 +189,14 @@ class Income extends Transaction {
   final String category;
 
   Income({
-    String? id,
-    required double amount,
+    super.id,
+    required super.amount,
     required this.category,
-    required String description,
-    String? customCategoryName,
-    DateTime? date,
-  }) : super(
-         id: id,
-         amount: amount,
-         type: TransactionType.income,
-         description: description,
-         customCategoryName: customCategoryName,
-         date: date,
-         createdAt: DateTime.now(),
-       );
+    required super.description,
+    super.customCategoryName,
+    super.date,
+    super.createdAt,
+  }) : super(type: TransactionType.income);
 
   CategoryMeta get categoryMeta => CategoryRegistry.metaForIncome(category);
 
@@ -214,6 +215,7 @@ class Income extends Transaction {
       description: json['description'],
       customCategoryName: json['customCategoryName'],
       date: DateTime.parse(json['date']),
+      createdAt: _parseCreatedAt(json['createdAt']),
     );
   }
 
@@ -223,6 +225,7 @@ class Income extends Transaction {
     String? description,
     String? customCategoryName,
     DateTime? date,
+    DateTime? createdAt,
   }) {
     return Income(
       id: id,
@@ -231,8 +234,16 @@ class Income extends Transaction {
       description: description ?? this.description,
       customCategoryName: customCategoryName ?? this.customCategoryName,
       date: date ?? this.date,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
+}
+
+/// `createdAt` was absent from records written before the field existed.
+/// Returns null in that case so the constructor stamps a fresh value.
+DateTime? _parseCreatedAt(Object? raw) {
+  if (raw is! String || raw.isEmpty) return null;
+  return DateTime.tryParse(raw);
 }
 
 extension TransactionExtensions on Transaction {
@@ -240,7 +251,7 @@ extension TransactionExtensions on Transaction {
     if (this is Expense) {
       return (this as Expense).categoryMeta;
     }
-    return CategoryRegistry.metaForIncome(effectiveCategoryName);
+    return CategoryRegistry.metaForIncome((this as Income).category);
   }
 
   String? get locationId {
@@ -285,11 +296,19 @@ extension TransactionExtensions on Transaction {
     return false;
   }
 
+  /// The display label for this transaction's category.
+  ///
+  /// Resolves from the concrete subtype. [Expense] has an instance method of
+  /// this name, which wins over this extension; [Income] is handled here.
+  /// Deliberately does not read [effectiveCategoryName] — that delegates here,
+  /// and going back the other way would recurse.
   String getCategoryName() {
     if (this is Expense) {
       return (this as Expense).getCategoryName();
     }
-    return CategoryRegistry.metaForIncome(effectiveCategoryName).name;
+    final income = this as Income;
+    return income.customCategoryName ??
+        CategoryRegistry.metaForIncome(income.category).name;
   }
 
   ExpenseCategory? get expenseCategory {

@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_application_1/providers/checklist_provider.dart';
 import 'package:flutter_application_1/providers/journey_provider.dart';
 import 'package:flutter_application_1/providers/location_provider.dart';
+import 'package:flutter_application_1/providers/settings_provider.dart';
 import 'package:flutter_application_1/providers/transaction_provider.dart';
 import 'package:flutter_application_1/services/storage_service.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
@@ -23,6 +25,9 @@ Widget _testApp() {
       ChangeNotifierProvider(create: (_) => JourneyProvider()),
       ChangeNotifierProvider(create: (_) => LocationProvider()),
       ChangeNotifierProvider(create: (_) => TransactionProvider()),
+      ChangeNotifierProvider<SettingsProvider>(
+        create: (_) => SettingsProvider(),
+      ),
     ],
     child: MaterialApp(
       title: 'Daily Context Companion',
@@ -37,6 +42,7 @@ Widget _testApp() {
 
 void main() {
   setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
     await initTestStorage();
   });
 

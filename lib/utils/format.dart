@@ -5,8 +5,25 @@ class AppFormat {
 
   static final NumberFormat _money = NumberFormat('#,##0.##');
 
-  static String money(double value, {String currency = 'Rs.'}) {
-    return '$currency ${_money.format(value)}';
+  /// Formats [value] with a currency prefix.
+  ///
+  /// [symbol] is the full prefix including its own trailing space, so the
+  /// spacing is decided once by `Currency.symbol` instead of being bolted on
+  /// here — `'Rs. '` → `Rs. 1,234.50`, `'$'` → `$1,234.50`, `'€ '` → `€ 1,234.50`.
+  /// Appending a space unconditionally produced `Rs.  1,234.50` and
+  /// `$ 1,234.50`.
+  static String money(double value, {String symbol = 'Rs. '}) {
+    return '$symbol${_money.format(value)}';
+  }
+
+  /// Money with an explicit direction: expense negative, income positive.
+  static String signedMoney(
+    double value, {
+    required bool isExpense,
+    String symbol = 'Rs. ',
+  }) {
+    final amount = money(value.abs(), symbol: symbol);
+    return isExpense ? '-$amount' : '+$amount';
   }
 
   static String shortDate(DateTime date) => DateFormat.yMMMd().format(date);

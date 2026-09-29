@@ -31,7 +31,17 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+# `/build/` above is root-anchored, so the platform build directories were
+# still being tracked. Match them at any depth.
+/android/build/
+/ios/Build/
 /coverage/
+
+# Generated IDE / Gradle problem reports
+**/problems-report.html
+
+# Local agent session transcripts
+session-ses_*.md
 
 # Symbolication related
 app.*.symbols
@@ -46,3 +56,6 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# OpenCode agent tooling config (per-machine, not app source)
+opencode.jsonc

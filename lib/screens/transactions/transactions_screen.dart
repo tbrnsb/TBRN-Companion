@@ -5,8 +5,9 @@ import 'package:provider/provider.dart';
 
 import 'package:flutter_application_1/models/index.dart';
 import 'package:flutter_application_1/providers/location_provider.dart';
+import 'package:flutter_application_1/providers/settings_provider.dart';
 import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/screens/transactions/add_expense_sheet.dart';
+import 'package:flutter_application_1/screens/transactions/add_transaction_sheet.dart';
 import 'package:flutter_application_1/screens/transactions/expense_detail_screen.dart';
 import 'package:flutter_application_1/screens/transactions/income_detail_screen.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
@@ -37,6 +38,13 @@ class TransactionsScreen extends StatelessWidget {
           final totalIncome = provider.totalIncome;
           final totalExpenses = provider.totalExpenses;
           final balance = provider.balance;
+          final currencySymbol = context.select<SettingsProvider, String>(
+            (s) => s.currency.symbol,
+          );
+          // Built once: these walk the month's transactions and resolve
+          // metadata for every entry.
+          final expenseSegments = _expenseSegments(provider);
+          final incomeSegments = _incomeSegments(provider);
 
           return RefreshIndicator(
             onRefresh: () => provider.loadTransactionsForMonth(
@@ -52,7 +60,7 @@ class TransactionsScreen extends StatelessWidget {
                   totalIncome: totalIncome,
                   totalExpenses: totalExpenses,
                   balance: balance,
-                  average: provider.getAverageDailySpending(),
+                  currencySymbol: currencySymbol,
                   count: provider.transactions.length,
                   onPrevious: provider.previousMonth,
                   onNext: provider.nextMonth,
@@ -62,6 +70,24 @@ class TransactionsScreen extends StatelessWidget {
                   filter: provider.filter,
                   onFilterChanged: (filter) => provider.filter = filter,
                 ),
+                if (expenseSegments.isNotEmpty &&
+                    provider.filter != TransactionFilter.income) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  SpendBreakdownCard(
+                    title: 'Spending by category',
+                    segments: expenseSegments,
+                    currencySymbol: currencySymbol,
+                  ),
+                ],
+                if (incomeSegments.isNotEmpty &&
+                    provider.filter != TransactionFilter.expenses) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  SpendBreakdownCard(
+                    title: 'Income by category',
+                    segments: incomeSegments,
+                    currencySymbol: currencySymbol,
+                  ),
+                ],
                 if (transactions.isEmpty) ...[
                   const SizedBox(height: AppSpacing.lg),
                   EmptyState(
@@ -72,20 +98,10 @@ class TransactionsScreen extends StatelessWidget {
                     message: provider.filter == TransactionFilter.income
                         ? 'Add income to see it here.'
                         : 'Log your first expense for ${DateFormat.yMMMM().format(currentMonth)} — it takes a few seconds.',
-                    actionLabel: provider.filter == TransactionFilter.income
-                        ? 'Add Income'
-                        : 'Add Expense',
-                    onAction: () {
-                      if (provider.filter == TransactionFilter.income) {
-                        showModalBottomSheet(
-                          context: context,
-                          isScrollControlled: true,
-                          builder: (_) => const AddExpenseSheet(),
-                        );
-                      } else {
-                        AddExpenseSheet.show(context);
-                      }
-                    },
+                    // The action always opens the Expense/Income chooser now,
+                    // so the label must not promise a single type.
+                    actionLabel: 'Add transaction',
+                    onAction: () => AddTransactionSheet.show(context),
                   ),
                 ] else ...[
                   const SizedBox(height: AppSpacing.md),
@@ -113,16 +129,48 @@ class TransactionsScreen extends StatelessWidget {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
           HapticFeedback.lightImpact();
-          showModalBottomSheet(
-            context: context,
-            isScrollControlled: true,
-            builder: (_) => const AddExpenseSheet(),
-          );
+          AddTransactionSheet.show(context);
         },
         icon: const Icon(Icons.add_rounded),
         label: const Text('Add'),
       ),
     );
+  }
+
+  /// Expense breakdown, resolved to real expense categories.
+  ///
+  /// `ExpenseCategory.other` rows can carry a custom name ("Coffee"), so the
+  /// first custom name in the month is preferred over the generic "Other" —
+  /// otherwise the chart would disagree with the transaction tiles.
+  List<BreakdownSegment> _expenseSegments(TransactionProvider provider) {
+    final customNameForOther = provider.transactions
+        .whereType<Expense>()
+        .where((e) => e.category == ExpenseCategory.other)
+        .map((e) => e.customCategoryName)
+        .firstWhere(
+          (name) => name != null && name.isNotEmpty,
+          orElse: () => null,
+        );
+
+    return provider.getSpendingBreakdown().map((entry) {
+      final meta = entry.key == ExpenseCategory.other
+          ? CategoryRegistry.metaFor(
+              ExpenseCategory.other,
+              customName: customNameForOther,
+            )
+          : CategoryRegistry.metaFor(entry.key);
+      return BreakdownSegment(meta: meta, amount: entry.value);
+    }).toList();
+  }
+
+  /// Income breakdown, keyed by income category id so metadata resolves.
+  List<BreakdownSegment> _incomeSegments(TransactionProvider provider) {
+    return provider.getIncomeBreakdown().map((entry) {
+      return BreakdownSegment(
+        meta: CategoryRegistry.metaForIncome(entry.key),
+        amount: entry.value,
+      );
+    }).toList();
   }
 
   List<Widget> _groupTransactions(List<Transaction> transactions) {
@@ -224,7 +272,7 @@ class _MonthSummaryCard extends StatelessWidget {
     required this.totalIncome,
     required this.totalExpenses,
     required this.balance,
-    required this.average,
+    required this.currencySymbol,
     required this.count,
     required this.onPrevious,
     required this.onNext,
@@ -234,7 +282,7 @@ class _MonthSummaryCard extends StatelessWidget {
   final double totalIncome;
   final double totalExpenses;
   final double balance;
-  final double average;
+  final String currencySymbol;
   final int count;
   final VoidCallback onPrevious;
   final VoidCallback onNext;
@@ -277,7 +325,7 @@ class _MonthSummaryCard extends StatelessWidget {
           const SizedBox(height: AppSpacing.xs),
           Text('Balance', style: textTheme.labelLarge),
           Text(
-            AppFormat.money(balance),
+            AppFormat.money(balance, symbol: currencySymbol),
             style: textTheme.displaySmall?.copyWith(
               fontWeight: FontWeight.w800,
               letterSpacing: -0.5,
@@ -304,7 +352,7 @@ class _MonthSummaryCard extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    AppFormat.money(totalIncome),
+                    AppFormat.money(totalIncome, symbol: currencySymbol),
                     style: textTheme.bodyLarge,
                   ),
                 ],
@@ -319,7 +367,7 @@ class _MonthSummaryCard extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    AppFormat.money(totalExpenses),
+                    AppFormat.money(totalExpenses, symbol: currencySymbol),
                     style: textTheme.bodyLarge,
                   ),
                 ],
@@ -443,12 +491,16 @@ class _TransactionTile extends StatelessWidget {
         ),
       ),
       trailing: Text(
-        isExpense
-            ? AppFormat.money(transaction.amount)
-            : '-${AppFormat.money(transaction.amount)}',
+        AppFormat.signedMoney(
+          transaction.amount,
+          isExpense: isExpense,
+          symbol: context.select<SettingsProvider, String>(
+            (s) => s.currency.symbol,
+          ),
+        ),
         style: textTheme.titleSmall?.copyWith(
           fontWeight: FontWeight.w700,
-          color: isExpense ? colorScheme.onSurface : Colors.green[800],
+          color: isExpense ? colorScheme.onSurface : AppColors.success,
         ),
       ),
       onTap: () {

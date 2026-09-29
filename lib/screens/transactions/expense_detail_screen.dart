@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_application_1/models/index.dart';
 import 'package:flutter_application_1/providers/journey_provider.dart';
 import 'package:flutter_application_1/providers/location_provider.dart';
+import 'package:flutter_application_1/providers/settings_provider.dart';
 import 'package:flutter_application_1/providers/transaction_provider.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:flutter_application_1/utils/format.dart';
@@ -91,10 +92,16 @@ class ExpenseDetailScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: AppSpacing.md),
                 Text(
-                  AppFormat.money(current.amount),
+                  AppFormat.signedMoney(
+                    current.amount,
+                    isExpense: true,
+                    symbol: context.select<SettingsProvider, String>(
+                      (s) => s.currency.symbol,
+                    ),
+                  ),
                   style: textTheme.displaySmall?.copyWith(
                     fontWeight: FontWeight.w800,
-                    color: meta.color,
+                    color: colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xs),

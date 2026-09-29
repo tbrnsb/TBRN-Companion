@@ -17,25 +17,35 @@ class TransactionProvider extends ChangeNotifier {
 
   List<Transaction> get transactions => _transactions;
   List<String> get recentCustomCategories => _recentCustomCategories;
+
+  /// Most recently used categories, newest first.
+  ///
+  /// Resolves metadata through [TransactionExtensions.categoryMeta] so an
+  /// expense yields expense metadata (icon + colour) and an income yields
+  /// income metadata. Going through [CategoryRegistry.metaForIncome] for
+  /// everything gave every expense the "Other Income" icon and colour.
   List<CategoryMeta> get recentCategories {
     final sorted = [..._transactions]..sort((a, b) => b.date.compareTo(a.date));
     final seen = <String>{};
     final result = <CategoryMeta>[];
     for (final t in sorted) {
-      final meta =
-          categories[t.effectiveCategoryName] ??
-          CategoryRegistry.metaForIncome('other');
+      final meta = t.categoryMeta;
       if (seen.add(meta.id)) result.add(meta);
       if (result.length >= 5) break;
     }
     return result;
   }
 
+  /// Most-used categories, highest count first.
+  ///
+  /// Feeds the expense category picker, so the empty fallback is expense
+  /// categories — income categories here would offer salary/freelance chips
+  /// where food/travel belong.
   List<CategoryMeta> get popularCategories {
     final counts = <String, int>{};
     final metas = <String, CategoryMeta>{};
     for (final t in _transactions) {
-      final meta = CategoryRegistry.metaForIncome(t.effectiveCategoryName);
+      final meta = t.categoryMeta;
       counts[meta.id] = (counts[meta.id] ?? 0) + 1;
       metas[meta.id] = meta;
     }
@@ -43,11 +53,7 @@ class TransactionProvider extends ChangeNotifier {
       ..sort((a, b) => counts[b]!.compareTo(counts[a]!));
     final result = sorted.take(5).map((id) => metas[id]!).toList();
     if (result.isEmpty) {
-      return [
-        CategoryRegistry.metaForIncome('salary'),
-        CategoryRegistry.metaForIncome('freelance'),
-        CategoryRegistry.metaForIncome('investment'),
-      ].toList();
+      return CategoryRegistry.expenseCategories().take(3).toList();
     }
     return result;
   }
@@ -284,9 +290,12 @@ class TransactionProvider extends ChangeNotifier {
         .fold(0.0, (sum, t) => sum + t.amount);
   }
 
+  /// Total income recorded under [category], which is an income category id
+  /// such as `salary` (see `IncomeCategory`).
   double getIncomeByCategory(String category) {
     return _transactions
-        .where((t) => t.isIncome && t.effectiveCategoryName == category)
+        .whereType<Income>()
+        .where((t) => t.category == category)
         .fold(0.0, (sum, t) => sum + t.amount);
   }
 
@@ -303,12 +312,14 @@ class TransactionProvider extends ChangeNotifier {
     return entries;
   }
 
+  /// Income totals keyed by income category id (`salary`, `freelance`, …), so
+  /// callers can look the key straight back up via
+  /// [CategoryRegistry.metaForIncome]. Sorted largest first.
   List<MapEntry<String, double>> getIncomeBreakdown() {
     Map<String, double> income = {};
 
-    for (var t in _transactions.where((t) => t.isIncome)) {
-      income[t.effectiveCategoryName] =
-          (income[t.effectiveCategoryName] ?? 0) + t.amount;
+    for (var t in _transactions.whereType<Income>()) {
+      income[t.category] = (income[t.category] ?? 0) + t.amount;
     }
 
     final entries = income.entries.where((entry) => entry.value > 0).toList();
@@ -367,34 +378,34 @@ class TransactionProvider extends ChangeNotifier {
 
   Future<void> addDemoData() async {
     final now = DateTime.now();
-    
+
     final expenses = [
       Expense(
         amount: 150.00,
         category: ExpenseCategory.food,
         description: '[Demo] Grocery shopping',
-        date: DateTime(now.year, now.month, now.day - 1),
+        date: _demoDate(now, 1),
       ),
       Expense(
         amount: 75.50,
         category: ExpenseCategory.travel,
         description: '[Demo] Gas for weekend trip',
-        date: DateTime(now.year, now.month, now.day - 3),
+        date: _demoDate(now, 3),
       ),
       Expense(
         amount: 45.00,
         category: ExpenseCategory.entertainment,
         description: '[Demo] Movie tickets',
-        date: DateTime(now.year, now.month, now.day - 5),
+        date: _demoDate(now, 5),
       ),
       Expense(
         amount: 120.00,
         category: ExpenseCategory.utilities,
         description: '[Demo] Electric bill',
-        date: DateTime(now.year, now.month, now.day - 10),
+        date: _demoDate(now, 10),
       ),
     ];
-    
+
     final incomes = [
       Income(
         amount: 500.00,
@@ -406,23 +417,34 @@ class TransactionProvider extends ChangeNotifier {
         amount: 150.00,
         category: 'freelance',
         description: '[Demo] Freelance project',
-        date: DateTime(now.year, now.month, 5),
+        date: _demoDate(now, 4),
       ),
       Income(
         amount: 75.00,
         category: 'gift',
         description: '[Demo] Birthday gift',
-        date: DateTime(now.year, now.month, 15),
+        date: _demoDate(now, 14),
       ),
     ];
-    
+
     for (final expense in expenses) {
       await addTransaction(expense);
     }
-    
+
     for (final income in incomes) {
       await addTransaction(income);
     }
+  }
+
+  /// [daysAgo] days before [now], but never leaving the current month.
+  ///
+  /// `DateTime(y, m, now.day - n)` normalises overflow into the previous month
+  /// — on the 3rd, `day - 5` lands in the prior month and the entry vanishes
+  /// from the current-month view. Clamping the day to 1 keeps demo rows
+  /// visible in the month they were added.
+  static DateTime _demoDate(DateTime now, int daysAgo) {
+    final day = (now.day - daysAgo).clamp(1, now.day);
+    return DateTime(now.year, now.month, day);
   }
 
   Future<void> clearDemoData() async {
