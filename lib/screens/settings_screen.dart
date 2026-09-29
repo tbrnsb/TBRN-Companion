@@ -10,8 +10,45 @@ import 'package:flutter_application_1/services/csv_export.dart';
 import 'package:flutter_application_1/services/storage_service.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  StorageCounts? _counts;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCounts();
+  }
+
+  Future<void> _loadCounts() async {
+    try {
+      final counts = await StorageService().getStorageCounts();
+      if (!mounted) return;
+      setState(() => _counts = counts);
+    } catch (e) {
+      // A count that cannot be read is not worth failing the screen over; the
+      // section falls back to its "checking" copy.
+      if (!mounted) return;
+      setState(() => _counts = null);
+    }
+  }
+
+  /// Reloads every provider that caches records, then the counts.
+  ///
+  /// Both matter after any change made straight to storage. The counts used to
+  /// live in the Data section alone, so adding or clearing demo data left the
+  /// "Stored on this device" numbers showing what was there before.
+  Future<void> _reloadEverything() async {
+    final providers = _DataProviders.read(context);
+    await providers.reload();
+    await _loadCounts();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -72,11 +109,11 @@ class SettingsScreen extends StatelessWidget {
 
           const SizedBox(height: AppSpacing.lg),
 
-          const _DataSection(),
+          _DataSection(counts: _counts, onReload: _reloadEverything),
 
           const SizedBox(height: AppSpacing.lg),
 
-          const _DemoSection(),
+          _DemoSection(onReload: _reloadEverything),
         ],
       ),
     );
@@ -166,52 +203,55 @@ class _ThemeOption extends StatelessWidget {
   }
 }
 
-/// Storage counts, CSV export, and the full destructive wipe.
+/// CSV export and the full destructive wipe.
+///
+/// The counts are owned by the screen rather than here, so that adding or
+/// clearing demo data elsewhere on the screen refreshes them too.
 class _DataSection extends StatefulWidget {
-  const _DataSection();
+  const _DataSection({required this.counts, required this.onReload});
+
+  final StorageCounts? counts;
+
+  /// Re-reads every provider and the counts. Called after any change made
+  /// straight to storage.
+  final Future<void> Function() onReload;
 
   @override
   State<_DataSection> createState() => _DataSectionState();
 }
 
 class _DataSectionState extends State<_DataSection> {
-  StorageCounts? _counts;
   bool _busy = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadCounts();
-  }
-
-  Future<void> _loadCounts() async {
-    final counts = await StorageService().getStorageCounts();
-    if (!mounted) return;
-    setState(() => _counts = counts);
-  }
 
   /// Empties every box, then reloads each provider.
   ///
   /// Without the reload the wipe would leave the app showing the records it
   /// just deleted until something else happened to trigger a refresh.
+  ///
+  /// The busy flag is cleared in a `finally`. If the clear itself throws, the
+  /// section would otherwise stay disabled for the life of the screen, with no
+  /// way to retry and no message saying what went wrong.
   Future<void> _removeAllData() async {
     setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
 
-    final providers = _DataProviders.read(context);
-    await StorageService().clear();
-    // Without this the UI would keep showing the records that were just
-    // deleted, in every provider that caches them.
-    await providers.reload();
-    await _loadCounts();
-
-    if (!mounted) return;
-    setState(() => _busy = false);
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('All data removed.')));
+    try {
+      await StorageService().clear();
+      await widget.onReload();
+      messenger.showSnackBar(
+        const SnackBar(content: Text('All data removed.')),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not remove all data: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _confirmRemoveAll() async {
-    final counts = _counts;
+    final counts = widget.counts;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -282,7 +322,7 @@ class _DataSectionState extends State<_DataSection> {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
-    final counts = _counts;
+    final counts = widget.counts;
     final nothingStored = counts?.isEmpty ?? false;
 
     return Column(
@@ -396,7 +436,11 @@ class _CountLine extends StatelessWidget {
 }
 
 class _DemoSection extends StatefulWidget {
-  const _DemoSection();
+  const _DemoSection({required this.onReload});
+
+  /// Re-reads every provider and the storage counts after demo data is added or
+  /// cleared.
+  final Future<void> Function() onReload;
 
   @override
   State<_DemoSection> createState() => _DemoSectionState();
@@ -409,7 +453,7 @@ class _DemoSectionState extends State<_DemoSection> {
     setState(() => _loading = true);
     await showDialog(
       context: context,
-      builder: (context) => const _AddDemoDialog(),
+      builder: (context) => _AddDemoDialog(onReload: widget.onReload),
     );
     if (mounted) {
       setState(() => _loading = false);
@@ -419,7 +463,7 @@ class _DemoSectionState extends State<_DemoSection> {
   Future<void> _clearDemo() async {
     await showDialog(
       context: context,
-      builder: (context) => const _ClearDemoDialog(),
+      builder: (context) => _ClearDemoDialog(onReload: widget.onReload),
     );
   }
 
@@ -476,7 +520,9 @@ class _DemoSectionState extends State<_DemoSection> {
 }
 
 class _AddDemoDialog extends StatelessWidget {
-  const _AddDemoDialog();
+  const _AddDemoDialog({required this.onReload});
+
+  final Future<void> Function() onReload;
 
   @override
   Widget build(BuildContext context) {
@@ -496,7 +542,10 @@ class _AddDemoDialog extends StatelessWidget {
           onPressed: () async {
             final providers = _DataProviders.read(context);
             await providers.transactions.addDemoData();
-            await providers.reload();
+            // Reloads the providers and the storage counts together; the counts
+            // used to go stale here because they were owned by the Data section
+            // rather than the screen.
+            await onReload();
             if (context.mounted) Navigator.pop(context);
           },
           child: const Text('Add demo data'),
@@ -507,7 +556,9 @@ class _AddDemoDialog extends StatelessWidget {
 }
 
 class _ClearDemoDialog extends StatelessWidget {
-  const _ClearDemoDialog();
+  const _ClearDemoDialog({required this.onReload});
+
+  final Future<void> Function() onReload;
 
   @override
   Widget build(BuildContext context) {
@@ -526,7 +577,7 @@ class _ClearDemoDialog extends StatelessWidget {
           onPressed: () async {
             final providers = _DataProviders.read(context);
             await providers.transactions.clearDemoData();
-            await providers.reload();
+            await onReload();
             if (context.mounted) Navigator.pop(context);
           },
           child: const Text('Clear demo data'),
