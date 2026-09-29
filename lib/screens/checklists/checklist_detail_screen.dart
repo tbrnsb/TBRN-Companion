@@ -3,162 +3,185 @@ import 'package:provider/provider.dart';
 import 'package:flutter_application_1/models/index.dart';
 import 'package:flutter_application_1/providers/checklist_provider.dart';
 import 'package:flutter_application_1/screens/checklists/add_checklist_screen.dart';
+import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:flutter_application_1/utils/iterable_ext.dart';
 
-class ChecklistDetailScreen extends StatefulWidget {
+/// One checklist, derived from [ChecklistProvider].
+///
+/// The screen deliberately holds no copy of the record. It used to keep a
+/// `late Checklist` taken in initState and rebuild it with a parallel
+/// `copyWith` inside a `setState` after every toggle, add, delete and reset,
+/// while the provider independently wrote the same change to Hive and
+/// notified. Two writers, two copies, and they drifted: a rename made anywhere
+/// else was written over by the stale local copy, because the screen read its
+/// own field rather than the provider.
+class ChecklistDetailScreen extends StatelessWidget {
   final Checklist checklist;
 
   const ChecklistDetailScreen({super.key, required this.checklist});
 
-  @override
-  State<ChecklistDetailScreen> createState() => _ChecklistDetailScreenState();
-}
-
-class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
-  late Checklist _checklist;
-
-  @override
-  void initState() {
-    super.initState();
-    _checklist = widget.checklist;
+  /// The record to render, or null once the provider has loaded and no longer
+  /// holds it.
+  ///
+  /// While the provider is still loading there is nothing to derive from yet,
+  /// so the checklist this screen was opened with is used instead. Without that
+  /// distinction a cold start would flash a "removed" state before the first
+  /// load finished.
+  Checklist? _live(BuildContext context) {
+    final provider = context.watch<ChecklistProvider>();
+    if (provider.isLoading) return null;
+    return provider.checklists.where((c) => c.id == checklist.id).firstOrNull;
   }
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<ChecklistProvider>();
+    final current = _live(context);
+
+    if (current == null && !provider.isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: Text(checklist.name), elevation: 0),
+        body: Center(
+          child: Padding(
+            padding: AppSpacing.screenPadding,
+            child: Text(
+              'This checklist is no longer available.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final shown = current ?? checklist;
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final checkedCount = shown.items.where((i) => i.isChecked).length;
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(_checklist.name),
+        title: Text(shown.name),
         elevation: 0,
         actions: [
           PopupMenuButton<String>(
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'rename', child: Text('Rename')),
               const PopupMenuItem(value: 'duplicate', child: Text('Duplicate')),
-              if (_checklist.items.any((i) => i.isChecked))
+              if (checkedCount > 0)
                 const PopupMenuItem(
                   value: 'clearCompleted',
                   child: Text('Clear packed items'),
                 ),
               const PopupMenuItem(value: 'reset', child: Text('Uncheck all')),
             ],
+            // Every case is explicit and breaks. Dart already inserts an
+            // implicit break when a clause ends in a void call, so the missing
+            // `break`s were not causing fall-through — but an explicit one keeps
+            // a future non-void edit to a clause from silently running the next
+            // action.
             onSelected: (value) async {
               switch (value) {
                 case 'rename':
-                  final updated = await Navigator.of(context).push<Checklist>(
+                  // AddChecklistScreen persists the change and notifies; there
+                  // is nothing to mirror back into the screen.
+                  await Navigator.of(context).push<Checklist>(
                     MaterialPageRoute(
-                      builder: (_) => AddChecklistScreen(checklist: _checklist),
+                      builder: (_) => AddChecklistScreen(checklist: shown),
                     ),
                   );
-                  if (updated != null && mounted) {
-                    setState(() => _checklist = updated);
-                  }
+                  break;
                 case 'duplicate':
                   await context.read<ChecklistProvider>().duplicateChecklist(
-                    _checklist.id,
+                    shown.id,
                   );
+                  break;
                 case 'clearCompleted':
                   await context.read<ChecklistProvider>().clearCompletedItems(
-                    _checklist.id,
+                    shown.id,
                   );
-                  setState(() {
-                    _checklist = _checklist.copyWith(
-                      items: _checklist.items
-                          .where((i) => !i.isChecked)
-                          .toList(),
-                    );
-                  });
+                  break;
                 case 'reset':
-                  _showResetConfirmation(context);
+                  _showResetConfirmation(context, shown);
+                  break;
               }
             },
           ),
         ],
       ),
-      body: Consumer<ChecklistProvider>(
-        builder: (context, checklistProvider, _) {
-          return Column(
-            children: [
-              // Progress bar
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      body: Column(
+        children: [
+          // Progress bar
+          Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Progress',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        Text(
-                          '${(_checklist.getProgress() * 100).toStringAsFixed(0)}%',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: LinearProgressIndicator(
-                        value: _checklist.getProgress(),
-                        minHeight: 8,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
+                    Text('Progress', style: textTheme.titleMedium),
                     Text(
-                      '${_checklist.items.where((i) => i.isChecked).length} of ${_checklist.items.length} items checked',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                      '${(shown.getProgress() * 100).toStringAsFixed(0)}%',
+                      style: textTheme.titleMedium,
                     ),
                   ],
                 ),
-              ),
-              // Items list
-              Expanded(
-                child: _checklist.items.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.done_all,
-                              size: 64,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No items yet',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                          ],
-                        ),
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: _checklist.items.length,
-                        separatorBuilder: (_, index) => Divider(
-                          height: 1,
-                          color: Theme.of(context).colorScheme.outlineVariant,
-                        ),
-                        itemBuilder: (context, index) {
-                          final item = _checklist.items[index];
-                          return _buildItemTile(
-                            context,
-                            checklistProvider,
-                            item,
-                          );
-                        },
-                      ),
-              ),
-            ],
-          );
-        },
+                const SizedBox(height: AppSpacing.sm),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(AppSpacing.xs),
+                  child: LinearProgressIndicator(
+                    value: shown.getProgress(),
+                    minHeight: AppSpacing.xxs,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  '$checkedCount of ${shown.items.length} items checked',
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Items list
+          Expanded(
+            child: shown.items.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.done_all, size: 64, color: colorScheme.onSurfaceVariant),
+                        const SizedBox(height: AppSpacing.md),
+                        Text('No items yet', style: textTheme.titleMedium),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.md,
+                    ),
+                    itemCount: shown.items.length,
+                    separatorBuilder: (_, index) => Divider(
+                      height: 1,
+                      color: colorScheme.outlineVariant,
+                    ),
+                    itemBuilder: (context, index) {
+                      return _buildItemTile(
+                        context,
+                        provider,
+                        shown.items[index],
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showAddItemDialog(context),
+        onPressed: () => _showAddItemDialog(context, shown),
         tooltip: 'Add Item',
         child: const Icon(Icons.add),
       ),
@@ -174,19 +197,9 @@ class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
       contentPadding: EdgeInsets.zero,
       leading: Checkbox(
         value: item.isChecked,
-        onChanged: (value) {
-          provider.toggleItem(item.id);
-          setState(() {
-            _checklist = _checklist.copyWith(
-              items: _checklist.items.map((i) {
-                if (i.id == item.id) {
-                  return i.copyWith(isChecked: !i.isChecked);
-                }
-                return i;
-              }).toList(),
-            );
-          });
-        },
+        // The provider persists the toggle and notifies, which rebuilds this
+        // screen from the new record. No local write is needed or wanted.
+        onChanged: (value) => provider.toggleItem(item.id),
       ),
       title: Text(
         item.name,
@@ -207,12 +220,12 @@ class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
     );
   }
 
-  void _showAddItemDialog(BuildContext context) {
+  void _showAddItemDialog(BuildContext context, Checklist current) {
     final textController = TextEditingController();
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Add Item'),
         content: TextField(
           controller: textController,
@@ -221,26 +234,18 @@ class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () {
-              if (textController.text.isNotEmpty) {
-                final item = ChecklistItem(
-                  checklistId: _checklist.id,
-                  name: textController.text,
-                );
+              final name = textController.text.trim();
+              if (name.isNotEmpty) {
                 context.read<ChecklistProvider>().addItemToChecklist(
-                  _checklist.id,
-                  item,
+                  current.id,
+                  ChecklistItem(checklistId: current.id, name: name),
                 );
-                setState(() {
-                  _checklist = _checklist.copyWith(
-                    items: [..._checklist.items, item],
-                  );
-                });
-                Navigator.pop(context);
+                Navigator.pop(dialogContext);
               }
             },
             child: const Text('Add'),
@@ -257,25 +262,18 @@ class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
   ) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Delete Item?'),
         content: Text('Are you sure you want to delete "${item.name}"?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () {
               provider.deleteChecklistItem(item.id);
-              setState(() {
-                _checklist = _checklist.copyWith(
-                  items: _checklist.items
-                      .where((i) => i.id != item.id)
-                      .toList(),
-                );
-              });
-              Navigator.pop(context);
+              Navigator.pop(dialogContext);
             },
             child: const Text('Delete'),
           ),
@@ -284,28 +282,21 @@ class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
     );
   }
 
-  void _showResetConfirmation(BuildContext context) {
+  void _showResetConfirmation(BuildContext context, Checklist current) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Reset Checklist?'),
         content: const Text('This will uncheck all items. Are you sure?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () {
-              context.read<ChecklistProvider>().resetChecklist(_checklist.id);
-              setState(() {
-                _checklist = _checklist.copyWith(
-                  items: _checklist.items
-                      .map((i) => i.copyWith(isChecked: false))
-                      .toList(),
-                );
-              });
-              Navigator.pop(context);
+              context.read<ChecklistProvider>().resetChecklist(current.id);
+              Navigator.pop(dialogContext);
             },
             child: const Text('Reset'),
           ),
