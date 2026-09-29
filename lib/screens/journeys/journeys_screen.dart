@@ -1,0 +1,834 @@
+import 'dart:math' as math;
+
+import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
+
+import 'package:flutter_application_1/models/index.dart';
+import 'package:flutter_application_1/providers/journey_provider.dart';
+import 'package:flutter_application_1/providers/location_provider.dart';
+import 'package:flutter_application_1/screens/journeys/journey_detail_screen.dart';
+import 'package:flutter_application_1/widgets/widgets.dart';
+
+ColorScheme colorSchemeOf(BuildContext context) =>
+    Theme.of(context).colorScheme;
+
+class JourneysScreen extends StatefulWidget {
+  const JourneysScreen({super.key});
+
+  @override
+  State<JourneysScreen> createState() => _JourneysScreenState();
+}
+
+class _JourneysScreenState extends State<JourneysScreen> {
+  final _destinationController = TextEditingController();
+  final _originController = TextEditingController();
+  final _notesController = TextEditingController();
+  final _itemsController = TextEditingController();
+  DateTime _timelineMonth = DateTime.now();
+  DateTime? _plannedStart;
+
+  @override
+  void dispose() {
+    _destinationController.dispose();
+    _originController.dispose();
+    _notesController.dispose();
+    _itemsController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer2<JourneyProvider, LocationProvider>(
+      builder: (context, journeyProvider, locationProvider, _) {
+        final active = journeyProvider.activeJourney;
+        final geofenceAlert = locationProvider.getGeofenceAlertForJourney(
+          active,
+        );
+
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Journey Companion'),
+            actions: [
+              IconButton(
+                tooltip: 'Share journey log',
+                onPressed: () => _shareJourneys(journeyProvider),
+                icon: const Icon(Icons.ios_share_rounded),
+              ),
+            ],
+          ),
+          body: RefreshIndicator(
+            onRefresh: journeyProvider.loadJourneys,
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                if (active != null) ...[
+                  _ActiveJourneyCard(
+                    journey: active,
+                    onOpen: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => JourneyDetailScreen(journey: active),
+                      ),
+                    ),
+                    reminderHints: journeyProvider.smartReminders,
+                    onComplete: () async {
+                      await journeyProvider.completeJourney(active.id);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                if (geofenceAlert != null) ...[
+                  ContextCard(
+                    icon: Icons.location_on_rounded,
+                    title: 'Saved place alert',
+                    child: Text(geofenceAlert),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                _buildStartJourneyCard(context, journeyProvider),
+                const SizedBox(height: 24),
+                _SummaryRow(provider: journeyProvider),
+                const SizedBox(height: 24),
+                _JourneyChartCard(provider: journeyProvider),
+                const SizedBox(height: 12),
+                _TimelineCard(
+                  month: _timelineMonth,
+                  journeys: journeyProvider.getJourneysForMonth(_timelineMonth),
+                  onPrevious: () => setState(() {
+                    _timelineMonth = DateTime(
+                      _timelineMonth.year,
+                      _timelineMonth.month - 1,
+                    );
+                  }),
+                  onNext: () => setState(() {
+                    _timelineMonth = DateTime(
+                      _timelineMonth.year,
+                      _timelineMonth.month + 1,
+                    );
+                  }),
+                ),
+                const SizedBox(height: 24),
+                const SectionHeader('Recent journeys'),
+                const SizedBox(height: 12),
+                if (journeyProvider.journeys.isEmpty)
+                  const Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Center(child: Text('No journeys logged yet.')),
+                    ),
+                  )
+                else
+                  ...journeyProvider.journeys.map(
+                    (journey) => _JourneyTile(journey: journey),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStartJourneyCard(
+    BuildContext context,
+    JourneyProvider journeyProvider,
+  ) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      margin: EdgeInsets.zero,
+      child: ExpansionTile(
+        leading: Icon(
+          Icons.play_arrow_rounded,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        title: Text(
+          'Start a new journey',
+          style: Theme.of(context).textTheme.titleSmall
+              ?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          TextField(
+            controller: _originController,
+            decoration: const InputDecoration(
+              labelText: 'Where are you starting?',
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _destinationController,
+            decoration: const InputDecoration(
+              labelText: 'Where are you going?',
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _itemsController,
+            decoration: const InputDecoration(
+              labelText: 'What are you taking? (comma separated)',
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _plannedStart == null
+                      ? 'Starts now'
+                      : 'Starts: ${DateFormat.yMMMd().add_jm().format(_plannedStart!)}',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () async {
+                  final now = DateTime.now();
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _plannedStart ?? now,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2100),
+                  );
+                  if (picked != null) {
+                    if (!context.mounted) return;
+                    final time = await showTimePicker(
+                      context: context,
+                      initialTime: TimeOfDay.now(),
+                    );
+                    if (!context.mounted) return;
+                    setState(() {
+                      _plannedStart = DateTime(
+                        picked.year,
+                        picked.month,
+                        picked.day,
+                        time?.hour ?? now.hour,
+                        time?.minute ?? now.minute,
+                      );
+                    });
+                  }
+                },
+                icon: const Icon(Icons.event_rounded, size: 18),
+                label: const Text('Planned start'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _notesController,
+            minLines: 2,
+            maxLines: 4,
+            decoration: const InputDecoration(labelText: 'Trip notes'),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () async {
+                HapticFeedback.heavyImpact();
+                final destination = _destinationController.text.trim();
+                final origin = _originController.text.trim();
+                if (destination.isEmpty || origin.isEmpty) {
+                  HapticFeedback.vibrate();
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Origin and destination are required.'),
+                      behavior: SnackBarBehavior.floating,
+                      margin: EdgeInsets.all(16),
+                    ),
+                  );
+                  return;
+                }
+
+                final items = _itemsController.text
+                    .split(',')
+                    .map((item) => item.trim())
+                    .where((item) => item.isNotEmpty)
+                    .toList();
+
+                await journeyProvider.startJourney(
+                  destination: destination,
+                  origin: origin,
+                  notes: _notesController.text.trim(),
+                  items: items,
+                  plannedStart: _plannedStart,
+                );
+                if (!mounted) return;
+                setState(() => _plannedStart = null);
+
+                _destinationController.clear();
+                _originController.clear();
+                _notesController.clear();
+                _itemsController.clear();
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Row(
+                      children: [
+                        Icon(Icons.check_circle, color: Colors.white),
+                        SizedBox(width: 12),
+                        Expanded(child: Text('Journey started!')),
+                      ],
+                    ),
+                    backgroundColor: Colors.green[700],
+                    behavior: SnackBarBehavior.floating,
+                    margin: const EdgeInsets.all(16),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: const Text('Start journey'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _shareJourneys(JourneyProvider provider) async {
+    final summary = provider.buildShareSummaryText(month: _timelineMonth);
+    final lines = <String>[
+      'Journey Log',
+      '================',
+      summary,
+      '---',
+      ...provider.journeys.map((journey) {
+        final start = DateFormat.yMMMd().add_jm().format(journey.startTime);
+        final end = journey.endTime == null
+            ? 'In progress'
+            : DateFormat.yMMMd().add_jm().format(journey.endTime!);
+        return [
+          '${journey.origin} → ${journey.destination}',
+          'Status: ${journey.completed ? 'Completed' : 'Active'}',
+          'Started: $start',
+          'Ended: $end',
+          if (journey.notes.isNotEmpty) 'Notes: ${journey.notes}',
+          if (journey.items.isNotEmpty) 'Items: ${journey.items.join(', ')}',
+          '---',
+        ].join('\n');
+      }),
+    ];
+
+    await SharePlus.instance.share(ShareParams(text: lines.join('\n')));
+  }
+}
+
+class _TimelineCard extends StatelessWidget {
+  const _TimelineCard({
+    required this.month,
+    required this.journeys,
+    required this.onPrevious,
+    required this.onNext,
+  });
+
+  final DateTime month;
+  final List<Journey> journeys;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    final firstDay = DateTime(month.year, month.month, 1);
+    final lastDay = DateTime(month.year, month.month + 1, 0);
+    final leadingEmptyDays = firstDay.weekday % 7;
+    final totalCells = leadingEmptyDays + lastDay.day;
+    final rows = (totalCells / 7).ceil();
+    const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    final colorScheme = Theme.of(context).colorScheme;
+
+    final dayMap = <DateTime, int>{};
+    for (final journey in journeys) {
+      final key = DateTime(
+        journey.startTime.year,
+        journey.startTime.month,
+        journey.startTime.day,
+      );
+      dayMap[key] = (dayMap[key] ?? 0) + 1;
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  onPressed: onPrevious,
+                  icon: const Icon(Icons.chevron_left_rounded),
+                ),
+                Text(
+                  DateFormat.yMMMM().format(month),
+                  style: Theme.of(context).textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                IconButton(
+                  onPressed: onNext,
+                  icon: const Icon(Icons.chevron_right_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: weekdays
+                  .map(
+                    (day) => Expanded(
+                      child: Center(
+                        child: Text(
+                          day,
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(color: colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+            const SizedBox(height: 8),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 7,
+                childAspectRatio: 1.15,
+                crossAxisSpacing: 6,
+                mainAxisSpacing: 6,
+              ),
+              itemCount: rows * 7,
+              itemBuilder: (context, index) {
+                final dayNumber = index - leadingEmptyDays + 1;
+                if (index < leadingEmptyDays || dayNumber > lastDay.day) {
+                  return const SizedBox.shrink();
+                }
+
+                final date = DateTime(month.year, month.month, dayNumber);
+                final count =
+                    dayMap[DateTime(date.year, date.month, date.day)] ?? 0;
+                final isToday = DateUtils.isSameDay(date, DateTime.now());
+
+                return Container(
+                  decoration: BoxDecoration(
+                    color: isToday
+                        ? colorScheme.primaryContainer
+                        : colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Text(
+                        '$dayNumber',
+                        style: TextStyle(
+                          fontWeight: isToday
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                          color: isToday
+                              ? colorScheme.onPrimaryContainer
+                              : null,
+                        ),
+                      ),
+                      if (count > 0)
+                        Positioned(
+                          bottom: 4,
+                          child: Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: colorScheme.primary,
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SummaryRow extends StatelessWidget {
+  const _SummaryRow({required this.provider});
+
+  final JourneyProvider provider;
+
+  @override
+  Widget build(BuildContext context) {
+    final stats = [
+      (
+        label: 'Trips',
+        value: provider.totalJourneys.toString(),
+        icon: Icons.route_rounded,
+      ),
+      (
+        label: 'Completed',
+        value: provider.completedJourneys.toString(),
+        icon: Icons.check_circle_rounded,
+      ),
+      (
+        label: 'Avg. time',
+        value: _formatMinutes(provider.averageJourneyMinutes),
+        icon: Icons.timer_rounded,
+      ),
+      (
+        label: 'Packed',
+        value: provider.totalPackedItems.toString(),
+        icon: Icons.backpack_rounded,
+      ),
+    ];
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(child: _tile(context, stats[0])),
+            const SizedBox(width: 12),
+            Expanded(child: _tile(context, stats[1])),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(child: _tile(context, stats[2])),
+            const SizedBox(width: 12),
+            Expanded(child: _tile(context, stats[3])),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _tile(
+    BuildContext context,
+    ({String label, String value, IconData icon}) stat,
+  ) {
+    return AppStatTile(icon: stat.icon, label: stat.label, value: stat.value);
+  }
+
+  String _formatMinutes(double minutes) {
+    if (minutes <= 0) return '0m';
+    final whole = minutes.round();
+    final hours = whole ~/ 60;
+    final mins = whole % 60;
+    if (hours == 0) return '${mins}m';
+    return '${hours}h ${mins}m';
+  }
+}
+
+class _JourneyChartCard extends StatelessWidget {
+  const _JourneyChartCard({required this.provider});
+
+  final JourneyProvider provider;
+
+  @override
+  Widget build(BuildContext context) {
+    final chartData = _last7DayTrend(provider);
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Last 7 days',
+              style: Theme.of(context).textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 180,
+              child: BarChart(
+                BarChartData(
+                  alignment: BarChartAlignment.spaceAround,
+                  maxY:
+                      math.max(
+                        5,
+                        chartData.reduce((a, b) => a > b ? a : b).toDouble(),
+                      ) +
+                      1,
+                  barTouchData: BarTouchData(enabled: false),
+                  gridData: const FlGridData(show: false),
+                  borderData: FlBorderData(show: false),
+                  titlesData: FlTitlesData(
+                    leftTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 22,
+                        getTitlesWidget: (value, meta) {
+                          final index = value.toInt();
+                          if (index < 0 || index >= chartData.length) {
+                            return const SizedBox();
+                          }
+                          final day = DateTime.now().subtract(
+                            Duration(days: 6 - index),
+                          );
+                          return Text(
+                            DateFormat.E().format(day).substring(0, 2),
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(color: colorScheme.onSurfaceVariant),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  barGroups: List.generate(chartData.length, (index) {
+                    final value = chartData[index];
+                    return BarChartGroupData(
+                      x: index,
+                      barRods: [
+                        BarChartRodData(
+                          toY: value.toDouble(),
+                          width: 18,
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(6),
+                          ),
+                          color: colorScheme.primary,
+                        ),
+                      ],
+                    );
+                  }),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<int> _last7DayTrend(JourneyProvider provider) {
+    final now = DateTime.now();
+    final values = <int>[];
+
+    for (int offset = 6; offset >= 0; offset--) {
+      final day = DateTime(now.year, now.month, now.day - offset);
+      final count = provider.journeys.where((journey) {
+        final start = journey.startTime;
+        return start.year == day.year &&
+            start.month == day.month &&
+            start.day == day.day;
+      }).length;
+      values.add(count);
+    }
+
+    return values;
+  }
+}
+
+class _ActiveJourneyCard extends StatelessWidget {
+  const _ActiveJourneyCard({
+    required this.journey,
+    required this.reminderHints,
+    required this.onComplete,
+    required this.onOpen,
+  });
+
+  final Journey journey;
+  final List<String> reminderHints;
+  final VoidCallback onComplete;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final started = DateFormat('MMM d, h:mm a').format(journey.startTime);
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Card(
+      color: colorScheme.primaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.route_rounded,
+                  size: 20,
+                  color: colorScheme.onPrimaryContainer,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Active journey',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: colorScheme.onPrimaryContainer,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            InkWell(
+              onTap: onOpen,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${journey.origin} → ${journey.destination}',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: colorScheme.onPrimaryContainer,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.open_in_new_rounded,
+                    size: 18,
+                    color: colorScheme.onPrimaryContainer,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Started: $started',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colorScheme.onPrimaryContainer.withValues(alpha: 0.8),
+              ),
+            ),
+            if (journey.items.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: journey.items
+                    .map(
+                      (item) => Chip(
+                        label: Text(item),
+                        backgroundColor: colorScheme.surface.withValues(
+                          alpha: 0.6,
+                        ),
+                        side: BorderSide.none,
+                      ),
+                    )
+                    .toList(),
+              ),
+            ],
+            if (reminderHints.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              ...reminderHints.map(
+                (hint) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.notifications_active_rounded,
+                        color: colorScheme.onPrimaryContainer,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          hint,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: colorScheme.onPrimaryContainer),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: onComplete,
+                icon: const Icon(Icons.check_circle_rounded),
+                label: const Text('Complete journey'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _JourneyTile extends StatelessWidget {
+  const _JourneyTile({required this.journey});
+
+  final Journey journey;
+
+  @override
+  Widget build(BuildContext context) {
+    final start = DateFormat('MMM d, y').format(journey.startTime);
+    final end = journey.endTime != null
+        ? DateFormat('MMM d, y • h:mm a').format(journey.endTime!)
+        : 'In progress';
+    final colorScheme = Theme.of(context).colorScheme;
+    final status = journey.status;
+
+    final statusColor = switch (status) {
+      JourneyStatus.active => const Color(0xFF5C7A52),
+      JourneyStatus.upcoming => const Color(0xFF6E7F80),
+      JourneyStatus.completed => colorScheme.onSurfaceVariant,
+    };
+
+    return Column(
+      children: [
+        ListTile(
+          leading: CircleAvatar(
+            backgroundColor: statusColor.withValues(alpha: 0.15),
+            child: Icon(switch (status) {
+              JourneyStatus.active => Icons.navigation_rounded,
+              JourneyStatus.upcoming => Icons.event_rounded,
+              JourneyStatus.completed => Icons.check_circle_rounded,
+            }, color: statusColor),
+          ),
+          title: Text(
+            '${journey.origin} → ${journey.destination}',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  Icon(Icons.circle, size: 8, color: statusColor),
+                  const SizedBox(width: 6),
+                  Text(
+                    status.label,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+              Text('Started: $start · Ended: $end'),
+            ],
+          ),
+          trailing: const Icon(Icons.chevron_right_rounded),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => JourneyDetailScreen(journey: journey),
+            ),
+          ),
+        ),
+        const Divider(indent: 72, height: 1),
+      ],
+    );
+  }
+}
