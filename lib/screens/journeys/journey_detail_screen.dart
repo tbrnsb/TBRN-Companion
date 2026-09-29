@@ -6,10 +6,11 @@ import 'package:flutter_application_1/models/index.dart';
 import 'package:flutter_application_1/providers/checklist_provider.dart';
 import 'package:flutter_application_1/providers/journey_provider.dart';
 import 'package:flutter_application_1/providers/location_provider.dart';
+import 'package:flutter_application_1/providers/settings_provider.dart';
 import 'package:flutter_application_1/providers/transaction_provider.dart';
 import 'package:flutter_application_1/screens/checklists/add_checklist_screen.dart';
 import 'package:flutter_application_1/screens/checklists/checklist_detail_screen.dart';
-import 'package:flutter_application_1/screens/transactions/add_expense_sheet.dart';
+import 'package:flutter_application_1/screens/transactions/add_transaction_sheet.dart';
 import 'package:flutter_application_1/screens/transactions/expense_detail_screen.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:flutter_application_1/utils/format.dart';
@@ -33,6 +34,9 @@ class JourneyDetailScreen extends StatelessWidget {
       current.id,
     );
     final transactions = context.watch<TransactionProvider>();
+    final currencySymbol = context.select<SettingsProvider, String>(
+      (s) => s.currency.symbol,
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -106,7 +110,7 @@ class JourneyDetailScreen extends StatelessWidget {
                         child: AppStatTile(
                           icon: Icons.payments_rounded,
                           label: 'Spent',
-                          value: AppFormat.money(spent),
+                          value: AppFormat.money(spent, symbol: currencySymbol),
                         ),
                       ),
                     ],
@@ -133,7 +137,13 @@ class JourneyDetailScreen extends StatelessWidget {
                             ),
                             subtitle: Text(AppFormat.shortDate(e.date)),
                             trailing: Text(
-                              '-${AppFormat.money(e.amount)}',
+                              // Expenses are outflows, so they carry the
+                              // minus sign — same convention as the Spend list.
+                              AppFormat.signedMoney(
+                                e.amount,
+                                isExpense: true,
+                                symbol: currencySymbol,
+                              ),
                               style: const TextStyle(
                                 fontWeight: FontWeight.w700,
                               ),
@@ -219,9 +229,11 @@ class JourneyDetailScreen extends StatelessWidget {
               ),
               ActionChip(
                 avatar: const Icon(Icons.payments_rounded, size: 18),
-                label: const Text('Add expense'),
-                onPressed: () =>
-                    AddExpenseSheet.show(context, initialJourneyId: current.id),
+                label: const Text('Add transaction'),
+                onPressed: () => AddTransactionSheet.show(
+                  context,
+                  initialJourneyId: current.id,
+                ),
               ),
             ],
           ),

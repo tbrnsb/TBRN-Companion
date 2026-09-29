@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'package:flutter_application_1/models/index.dart';
+import 'package:flutter_application_1/providers/settings_provider.dart';
 import 'package:flutter_application_1/providers/transaction_provider.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:flutter_application_1/utils/format.dart';
@@ -35,11 +36,8 @@ class IncomeDetailScreen extends StatelessWidget {
           IconButton(
             tooltip: 'Edit income',
             icon: const Icon(Icons.edit_rounded),
-            onPressed: () => showModalBottomSheet(
-              context: context,
-              isScrollControlled: true,
-              builder: (_) => IncomeEditSheet(existing: current),
-            ),
+            onPressed: () =>
+                IncomeEditSheet.show(context: context, existing: current),
           ),
           IconButton(
             tooltip: 'Delete income',
@@ -85,10 +83,16 @@ class IncomeDetailScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: AppSpacing.md),
                 Text(
-                  AppFormat.money(current.amount),
+                  AppFormat.signedMoney(
+                    current.amount,
+                    isExpense: false,
+                    symbol: context.select<SettingsProvider, String>(
+                      (s) => s.currency.symbol,
+                    ),
+                  ),
                   style: textTheme.displaySmall?.copyWith(
                     fontWeight: FontWeight.w800,
-                    color: meta.color,
+                    color: AppColors.success,
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xs),
@@ -112,11 +116,8 @@ class IncomeDetailScreen extends StatelessWidget {
           const SizedBox(height: AppSpacing.lg),
 
           OutlinedButton.icon(
-            onPressed: () => showModalBottomSheet(
-              context: context,
-              isScrollControlled: true,
-              builder: (_) => IncomeEditSheet(existing: current),
-            ),
+            onPressed: () =>
+                IncomeEditSheet.show(context: context, existing: current),
             icon: const Icon(Icons.edit_rounded),
             label: const Text('Edit income'),
           ),
@@ -309,7 +310,9 @@ class _IncomeEditSheetState extends State<IncomeEditSheet> {
                   fontWeight: FontWeight.w700,
                 ),
                 decoration: InputDecoration(
-                  prefixText: 'Rs. ',
+                  prefixText: context.select<SettingsProvider, String>(
+                    (s) => s.currency.symbol,
+                  ),
                   prefixStyle: textTheme.headlineSmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),
@@ -479,15 +482,15 @@ class _IncomeCategoryPicker extends StatelessWidget {
       runSpacing: AppSpacing.xs,
       children: categories.map((category) {
         final meta = category.meta;
-        final isSelected = category.name == selected;
+        // `category.name` is the enum name ("IncomeCategory.salary"), not the
+        // stored id, so it must not be used as the label, the selection
+        // comparison, or the saved value.
+        final isSelected = meta.id == selected;
 
         return ChoiceChip(
-          label: Text(
-            category.name[0].toUpperCase() +
-                category.name.split('.').skip(1).join(''),
-          ),
+          label: Text(meta.name),
           selected: isSelected,
-          onSelected: (_) => onSelected(category.name),
+          onSelected: (_) => onSelected(meta.id),
           selectedColor: meta.color.withValues(alpha: 0.15),
           labelStyle: TextStyle(
             color: isSelected ? meta.color : colorScheme.onSurfaceVariant,

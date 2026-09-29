@@ -37,11 +37,13 @@ class SettingsProvider extends ChangeNotifier {
   Currency get currency => _currency;
   ThemeMode get themeMode => _themeMode;
 
-  SettingsProvider() {
-    _loadSettings();
-  }
-
-  Future<void> _loadSettings() async {
+  /// Reads persisted settings.
+  ///
+  /// Callers must await this before the first frame. Firing it off from the
+  /// constructor left a window where the app rendered with the default
+  /// currency and theme and then snapped to the persisted ones, which showed up
+  /// as a launch flash. `main()` awaits it, so no listener is missed.
+  Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     final currencyIndex = prefs.getInt(_currencyKey) ?? 0;
     final themeIndex = prefs.getInt(_themeKey) ?? 2;
