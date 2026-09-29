@@ -100,7 +100,7 @@ class _SettingsSection extends StatelessWidget {
               ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: AppSpacing.xs),
-        Card(child: child),
+        AppSurface(tier: AppSurfaceTier.raised, child: child),
       ],
     );
   }
@@ -206,9 +206,8 @@ class _DataSectionState extends State<_DataSection> {
 
     if (!mounted) return;
     setState(() => _busy = false);
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('All data removed.')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('All data removed.')));
   }
 
   Future<void> _confirmRemoveAll() async {
@@ -261,9 +260,8 @@ class _DataSectionState extends State<_DataSection> {
 
     if (!mounted) return;
     setState(() => _busy = false);
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// What to tell the user, whether the export worked, had nothing to do, or
@@ -285,6 +283,7 @@ class _DataSectionState extends State<_DataSection> {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
     final counts = _counts;
+    final nothingStored = counts?.isEmpty ?? false;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -296,80 +295,69 @@ class _DataSectionState extends State<_DataSection> {
           ),
         ),
         const SizedBox(height: AppSpacing.xs),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  counts == null
-                      ? 'Checking what is stored…'
-                      : 'Stored on this device:',
-                  style: textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+        AppSurface(
+          tier: AppSurfaceTier.raised,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                counts == null
+                    ? 'Checking what is stored\u2026'
+                    : 'Stored on this device:',
+                style: textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
                 ),
-                const SizedBox(height: AppSpacing.xs),
-                if (counts != null) ...[
-                  _CountLine(label: 'Checklists', value: counts.checklists),
-                  _CountLine(
-                    label: 'Checklist items',
-                    value: counts.checklistItems,
-                  ),
-                  _CountLine(label: 'Places', value: counts.locations),
-                  _CountLine(
-                    label: 'Location logs',
-                    value: counts.locationLogs,
-                  ),
-                  _CountLine(label: 'Transactions', value: counts.transactions),
-                  _CountLine(label: 'Journeys', value: counts.journeys),
-                  _CountLine(
-                    label: 'Custom categories',
-                    value: counts.customCategories,
-                  ),
-                ],
-                const SizedBox(height: AppSpacing.sm),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _busy ? null : _exportCsv,
-                    icon: const Icon(Icons.ios_share_rounded),
-                    label: const Text('Export this month as CSV'),
-                  ),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              if (counts != null) ...[
+                _CountLine(label: 'Checklists', value: counts.checklists),
+                _CountLine(
+                  label: 'Checklist items',
+                  value: counts.checklistItems,
                 ),
-                const SizedBox(height: AppSpacing.sm),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    // Disabled when nothing is stored, rather than offering a
-                    // wipe that has nothing to do.
-                    onPressed: _busy || (counts?.isEmpty ?? false)
-                        ? null
-                        : _confirmRemoveAll,
-                    icon: Icon(
-                      Icons.delete_forever_rounded,
-                      color: _busy || (counts?.isEmpty ?? false)
-                          ? null
-                          : colorScheme.error,
-                    ),
-                    label: Text(
-                      'Remove all data',
-                      style: TextStyle(
-                        color: _busy || (counts?.isEmpty ?? false)
-                            ? null
-                            : colorScheme.error,
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(
-                        color: colorScheme.error.withValues(alpha: 0.4),
-                      ),
-                    ),
-                  ),
+                _CountLine(label: 'Places', value: counts.locations),
+                _CountLine(label: 'Location logs', value: counts.locationLogs),
+                _CountLine(label: 'Transactions', value: counts.transactions),
+                _CountLine(label: 'Journeys', value: counts.journeys),
+                _CountLine(
+                  label: 'Custom categories',
+                  value: counts.customCategories,
                 ),
               ],
-            ),
+              const SizedBox(height: AppSpacing.sm),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _busy ? null : _exportCsv,
+                  icon: const Icon(Icons.ios_share_rounded),
+                  label: const Text('Export this month as CSV'),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  // Disabled when nothing is stored, rather than offering a
+                  // wipe that has nothing to do.
+                  onPressed: _busy || nothingStored ? null : _confirmRemoveAll,
+                  icon: Icon(
+                    Icons.delete_forever_rounded,
+                    color: _busy || nothingStored ? null : colorScheme.error,
+                  ),
+                  label: Text(
+                    'Remove all data',
+                    style: TextStyle(
+                      color: _busy || nothingStored ? null : colorScheme.error,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(
+                      color: colorScheme.error.withValues(alpha: 0.4),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -450,38 +438,36 @@ class _DemoSectionState extends State<_DemoSection> {
           ),
         ),
         const SizedBox(height: AppSpacing.xs),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Sample records for trying the app out. Every demo record is '
-                  'labelled "[Demo]" so you can tell them apart from your own.',
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _loading ? null : _addDemo,
-                        icon: const Icon(Icons.add_rounded),
-                        label: const Text('Add demo data'),
-                      ),
+        AppSurface(
+          tier: AppSurfaceTier.raised,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Sample records for trying the app out. Every demo record is '
+                'labelled "[Demo]" so you can tell them apart from your own.',
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _loading ? null : _addDemo,
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('Add demo data'),
                     ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _loading ? null : _clearDemo,
-                        icon: const Icon(Icons.delete_outline_rounded),
-                        label: const Text('Clear demo data'),
-                      ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _loading ? null : _clearDemo,
+                      icon: const Icon(Icons.delete_outline_rounded),
+                      label: const Text('Clear demo data'),
                     ),
-                  ],
-                ),
-              ],
-            ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ],

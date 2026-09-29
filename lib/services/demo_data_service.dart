@@ -93,11 +93,7 @@ class DemoDataService {
     await storage.addChecklist(essentials);
     for (final name in const ['Wallet', 'Phone charger', 'Medication']) {
       await storage.addChecklistItem(
-        ChecklistItem(
-          id: newId(),
-          checklistId: essentials.id,
-          name: name,
-        ),
+        ChecklistItem(id: newId(), checklistId: essentials.id, name: name),
       );
     }
 

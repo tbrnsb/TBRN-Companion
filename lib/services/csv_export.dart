@@ -45,7 +45,10 @@ class CsvExport {
     final csv = await provider.exportCurrentMonthCsv();
 
     // Header only means no transactions were recorded this month.
-    final dataRows = csv.split('\n').where((line) => line.trim().isNotEmpty).length;
+    final dataRows = csv
+        .split('\n')
+        .where((line) => line.trim().isNotEmpty)
+        .length;
     if (dataRows <= 1) {
       return CsvExportResult(shared: false, fileName: fileNameFor(target));
     }

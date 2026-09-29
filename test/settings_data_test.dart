@@ -50,10 +50,7 @@ void main() {
         ),
       );
       await StorageService().addLocationLog(
-        LocationLog(
-          locationId: 'any',
-          arrivalTime: DateTime.now(),
-        ),
+        LocationLog(locationId: 'any', arrivalTime: DateTime.now()),
       );
       await StorageService().addTransaction(
         Expense(

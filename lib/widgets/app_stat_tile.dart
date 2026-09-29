@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/theme/app_theme.dart';
 
 /// Flat summary tile: icon + label + value on a tonal surface.
 /// Replaces the various gradient/glass/grey stat boxes.
@@ -20,7 +21,7 @@ class AppStatTile extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.sm),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),

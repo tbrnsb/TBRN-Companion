@@ -5,6 +5,7 @@ import 'package:flutter_application_1/models/index.dart';
 import 'package:flutter_application_1/providers/journey_provider.dart';
 import 'package:flutter_application_1/providers/location_provider.dart';
 import 'package:flutter_application_1/widgets/widgets.dart';
+import 'package:flutter_application_1/theme/app_theme.dart';
 
 class LocationsScreen extends StatelessWidget {
   const LocationsScreen({super.key});
@@ -32,7 +33,7 @@ class LocationsScreen extends StatelessWidget {
           return RefreshIndicator(
             onRefresh: () async => provider.initialize(),
             child: ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpacing.md),
               children: [
                 _SummaryCard(provider: provider),
                 const SizedBox(height: 24),

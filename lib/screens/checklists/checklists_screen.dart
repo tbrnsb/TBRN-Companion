@@ -7,6 +7,7 @@ import 'package:flutter_application_1/providers/journey_provider.dart';
 import 'package:flutter_application_1/providers/location_provider.dart';
 import 'package:flutter_application_1/screens/checklists/checklist_detail_screen.dart';
 import 'package:flutter_application_1/screens/checklists/add_checklist_screen.dart';
+import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:flutter_application_1/widgets/widgets.dart';
 
 class ChecklistsScreen extends StatefulWidget {
@@ -63,7 +64,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
               }
 
               return ListView(
-                padding: const EdgeInsets.all(16),
+                padding: AppSpacing.screenPadding,
                 children: [
                   if (activeJourney != null)
                     _buildTripRecommendationCard(context, recommendations),
@@ -104,24 +105,121 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
     BuildContext context,
     List<String> recommendations,
   ) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: ContextCard(
         icon: Icons.auto_awesome_rounded,
         title: 'Trip suggestions',
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: recommendations
-              .map(
-                (item) => Chip(
-                  label: Text(item),
-                  backgroundColor: Theme.of(context).colorScheme.surface
-                      .withValues(alpha: 0.6),
-                  side: BorderSide.none,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Tap one to add it to a checklist.',
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Wrap(
+              spacing: AppSpacing.xs,
+              runSpacing: AppSpacing.xs,
+              children: [
+                for (final item in recommendations)
+                  ActionChip(
+                    avatar: const Icon(Icons.add_rounded, size: 18),
+                    label: Text(item),
+                    tooltip: 'Add "$item" to a checklist',
+                    onPressed: () => _addSuggestionToChecklist(context, item),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Asks which checklist to add [item] to, then adds it.
+  ///
+  /// The suggestions used to be passive Chips inside a card: the app showed the
+  /// user a list of things they probably needed and offered no way to act on
+  /// it. They are now buttons.
+  Future<void> _addSuggestionToChecklist(
+    BuildContext context,
+    String item,
+  ) async {
+    final provider = context.read<ChecklistProvider>();
+    final checklists = provider.checklists;
+    if (checklists.isEmpty) return;
+
+    // With one checklist there is nothing to choose, so skip the picker.
+    final target = checklists.length == 1
+        ? checklists.single
+        : await _pickChecklist(context, checklists);
+    if (target == null || !context.mounted) return;
+
+    // Re-read: the picker may have been open a while.
+    final live = provider.checklists.firstWhere(
+      (c) => c.id == target.id,
+      orElse: () => target,
+    );
+    final exists = live.items.any(
+      (i) => i.name.trim().toLowerCase() == item.trim().toLowerCase(),
+    );
+
+    final messenger = ScaffoldMessenger.of(context);
+    if (exists) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('"$item" is already on ${live.name}.')),
+      );
+      return;
+    }
+
+    await provider.addItemToChecklist(
+      live.id,
+      ChecklistItem(checklistId: live.id, name: item),
+    );
+    messenger.showSnackBar(
+      SnackBar(content: Text('Added "$item" to ${live.name}.')),
+    );
+  }
+
+  Future<Checklist?> _pickChecklist(
+    BuildContext context,
+    List<Checklist> checklists,
+  ) {
+    return showModalBottomSheet<Checklist>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                0,
+                AppSpacing.lg,
+                AppSpacing.xs,
+              ),
+              child: Text(
+                'Add to which checklist?',
+                style: Theme.of(sheetContext).textTheme.titleMedium,
+              ),
+            ),
+            for (final checklist in checklists)
+              ListTile(
+                title: Text(checklist.name),
+                subtitle: Text(
+                  '${checklist.items.length} items',
+                  style: Theme.of(sheetContext).textTheme.bodySmall,
                 ),
-              )
-              .toList(),
+                trailing: const Icon(Icons.add_rounded),
+                onTap: () => Navigator.pop(sheetContext, checklist),
+              ),
+            const SizedBox(height: AppSpacing.xs),
+          ],
         ),
       ),
     );
@@ -176,9 +274,13 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
     Checklist checklist,
   ) {
     final checked = checklist.items.where((i) => i.isChecked).length;
-    return Card(
+    return AppSurface(
+      tier: AppSurfaceTier.raised,
+      padding: EdgeInsets.zero,
       child: ListTile(
-        leading: const Icon(Icons.star_rounded, color: Color(0xFFF59E0B)),
+        // AppColors.warning rather than a raw amber, so the star belongs to
+        // the palette and stays legible in dark mode.
+        leading: const Icon(Icons.star_rounded, color: AppColors.warning),
         title: Text(
           'Everyday Essentials',
           style: Theme.of(context).textTheme.titleSmall
@@ -228,7 +330,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
               );
             },
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(AppSpacing.sm),
               child: Row(
                 children: [
                   CircleAvatar(

@@ -210,63 +210,65 @@ void main() {
       expect(find.byType(SpendBreakdownCard), findsNothing);
       expect(find.byType(PieChart), findsNothing);
     });
-    testWidgets(
-      'custom "Other" names are not collapsed into one chart slice',
-      (tester) async {
-        usePhoneLayout(tester, TestViewports.phonePortrait);
+    testWidgets('custom "Other" names are not collapsed into one chart slice', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
 
-        // Both rows are ExpenseCategory.other, so a breakdown keyed by the enum
-        // alone sums them into a single slice and labels it with whichever
-        // custom name happened to sort first. The tiles below show each name.
-        final now = DateTime.now();
-        final provider = await seedProvider(tester, [
-          Expense(
-            amount: 40,
-            category: ExpenseCategory.other,
-            customCategoryName: 'Coffee',
-            description: 'Flat white',
-            date: now,
-          ),
-          Expense(
-            amount: 60,
-            category: ExpenseCategory.other,
-            customCategoryName: 'Groceries',
-            description: 'Weekly shop',
-            date: now,
-          ),
-          _expense(100, ExpenseCategory.food, 'Lunch'),
-        ]);
+      // Both rows are ExpenseCategory.other, so a breakdown keyed by the enum
+      // alone sums them into a single slice and labels it with whichever
+      // custom name happened to sort first. The tiles below show each name.
+      final now = DateTime.now();
+      final provider = await seedProvider(tester, [
+        Expense(
+          amount: 40,
+          category: ExpenseCategory.other,
+          customCategoryName: 'Coffee',
+          description: 'Flat white',
+          date: now,
+        ),
+        Expense(
+          amount: 60,
+          category: ExpenseCategory.other,
+          customCategoryName: 'Groceries',
+          description: 'Weekly shop',
+          date: now,
+        ),
+        _expense(100, ExpenseCategory.food, 'Lunch'),
+      ]);
 
-        await tester.pumpWidget(
-          _spendApp(
-            transactions: provider,
-            settings: await seededSettings(tester),
-          ),
-        );
-        await settleUi(tester);
+      await tester.pumpWidget(
+        _spendApp(
+          transactions: provider,
+          settings: await seededSettings(tester),
+        ),
+      );
+      await settleUi(tester);
 
-        final card = find.byType(SpendBreakdownCard);
-        expect(find.descendant(of: card, matching: find.text('Coffee')), findsOneWidget);
-        expect(
-          find.descendant(of: card, matching: find.text('Groceries')),
-          findsOneWidget,
-        );
-        // Each custom name keeps its own total, not a merged one.
-        expect(
-          find.descendant(of: card, matching: find.text('Rs. 40')),
-          findsOneWidget,
-        );
-        expect(
-          find.descendant(of: card, matching: find.text('Rs. 60')),
-          findsOneWidget,
-        );
-        expect(
-          find.descendant(of: card, matching: find.text('Rs. 100')),
-          findsOneWidget,
-          reason: 'Rs. 100 belongs to Food, not to the merged Other bucket',
-        );
-      },
-    );
+      final card = find.byType(SpendBreakdownCard);
+      expect(
+        find.descendant(of: card, matching: find.text('Coffee')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: card, matching: find.text('Groceries')),
+        findsOneWidget,
+      );
+      // Each custom name keeps its own total, not a merged one.
+      expect(
+        find.descendant(of: card, matching: find.text('Rs. 40')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: card, matching: find.text('Rs. 60')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: card, matching: find.text('Rs. 100')),
+        findsOneWidget,
+        reason: 'Rs. 100 belongs to Food, not to the merged Other bucket',
+      );
+    });
 
     testWidgets('the month summary keeps the average daily figure', (
       tester,

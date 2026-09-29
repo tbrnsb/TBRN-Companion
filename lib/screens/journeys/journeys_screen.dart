@@ -1,6 +1,3 @@
-import 'dart:math' as math;
-
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -11,6 +8,7 @@ import 'package:flutter_application_1/models/index.dart';
 import 'package:flutter_application_1/providers/journey_provider.dart';
 import 'package:flutter_application_1/providers/location_provider.dart';
 import 'package:flutter_application_1/screens/journeys/journey_detail_screen.dart';
+import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:flutter_application_1/widgets/widgets.dart';
 
 ColorScheme colorSchemeOf(BuildContext context) =>
@@ -63,7 +61,7 @@ class _JourneysScreenState extends State<JourneysScreen> {
           body: RefreshIndicator(
             onRefresh: journeyProvider.loadJourneys,
             child: ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpacing.md),
               children: [
                 if (active != null) ...[
                   _ActiveJourneyCard(
@@ -91,9 +89,7 @@ class _JourneysScreenState extends State<JourneysScreen> {
                 _buildStartJourneyCard(context, journeyProvider),
                 const SizedBox(height: 24),
                 _SummaryRow(provider: journeyProvider),
-                const SizedBox(height: 24),
-                _JourneyChartCard(provider: journeyProvider),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.lg),
                 _TimelineCard(
                   month: _timelineMonth,
                   journeys: journeyProvider.getJourneysForMonth(_timelineMonth),
@@ -114,11 +110,10 @@ class _JourneysScreenState extends State<JourneysScreen> {
                 const SectionHeader('Recent journeys'),
                 const SizedBox(height: 12),
                 if (journeyProvider.journeys.isEmpty)
-                  const Card(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Center(child: Text('No journeys logged yet.')),
-                    ),
+                  const AppSurface(
+                    tier: AppSurfaceTier.flat,
+                    padding: EdgeInsets.all(AppSpacing.lg),
+                    child: Center(child: Text('No journeys logged yet.')),
                   )
                 else
                   ...journeyProvider.journeys.map(
@@ -136,9 +131,10 @@ class _JourneysScreenState extends State<JourneysScreen> {
     BuildContext context,
     JourneyProvider journeyProvider,
   ) {
-    return Card(
+    return AppSurface(
+      tier: AppSurfaceTier.raised,
+      padding: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
-      margin: EdgeInsets.zero,
       child: ExpansionTile(
         leading: Icon(
           Icons.play_arrow_rounded,
@@ -236,7 +232,7 @@ class _JourneysScreenState extends State<JourneysScreen> {
                     const SnackBar(
                       content: Text('Origin and destination are required.'),
                       behavior: SnackBarBehavior.floating,
-                      margin: EdgeInsets.all(16),
+                      margin: EdgeInsets.all(AppSpacing.md),
                     ),
                   );
                   return;
@@ -272,9 +268,12 @@ class _JourneysScreenState extends State<JourneysScreen> {
                         Expanded(child: Text('Journey started!')),
                       ],
                     ),
-                    backgroundColor: Colors.green[700],
+                    // A success snackbar, themed rather than pinned to
+                    // Colors.green, which ignored the app's palette and the
+                    // user's dark mode.
+                    backgroundColor: AppColors.success,
                     behavior: SnackBarBehavior.floating,
-                    margin: const EdgeInsets.all(16),
+                    margin: const EdgeInsets.all(AppSpacing.md),
                   ),
                 );
               },
@@ -348,9 +347,10 @@ class _TimelineCard extends StatelessWidget {
       dayMap[key] = (dayMap[key] ?? 0) + 1;
     }
 
-    return Card(
+    return AppSurface(
+      tier: AppSurfaceTier.raised,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.md),
         child: Column(
           children: [
             Row(
@@ -522,117 +522,6 @@ class _SummaryRow extends StatelessWidget {
   }
 }
 
-class _JourneyChartCard extends StatelessWidget {
-  const _JourneyChartCard({required this.provider});
-
-  final JourneyProvider provider;
-
-  @override
-  Widget build(BuildContext context) {
-    final chartData = _last7DayTrend(provider);
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Last 7 days',
-              style: Theme.of(context).textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 180,
-              child: BarChart(
-                BarChartData(
-                  alignment: BarChartAlignment.spaceAround,
-                  maxY:
-                      math.max(
-                        5,
-                        chartData.reduce((a, b) => a > b ? a : b).toDouble(),
-                      ) +
-                      1,
-                  barTouchData: BarTouchData(enabled: false),
-                  gridData: const FlGridData(show: false),
-                  borderData: FlBorderData(show: false),
-                  titlesData: FlTitlesData(
-                    leftTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 22,
-                        getTitlesWidget: (value, meta) {
-                          final index = value.toInt();
-                          if (index < 0 || index >= chartData.length) {
-                            return const SizedBox();
-                          }
-                          final day = DateTime.now().subtract(
-                            Duration(days: 6 - index),
-                          );
-                          return Text(
-                            DateFormat.E().format(day).substring(0, 2),
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(color: colorScheme.onSurfaceVariant),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  barGroups: List.generate(chartData.length, (index) {
-                    final value = chartData[index];
-                    return BarChartGroupData(
-                      x: index,
-                      barRods: [
-                        BarChartRodData(
-                          toY: value.toDouble(),
-                          width: 18,
-                          borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(6),
-                          ),
-                          color: colorScheme.primary,
-                        ),
-                      ],
-                    );
-                  }),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  List<int> _last7DayTrend(JourneyProvider provider) {
-    final now = DateTime.now();
-    final values = <int>[];
-
-    for (int offset = 6; offset >= 0; offset--) {
-      final day = DateTime(now.year, now.month, now.day - offset);
-      final count = provider.journeys.where((journey) {
-        final start = journey.startTime;
-        return start.year == day.year &&
-            start.month == day.month &&
-            start.day == day.day;
-      }).length;
-      values.add(count);
-    }
-
-    return values;
-  }
-}
-
 class _ActiveJourneyCard extends StatelessWidget {
   const _ActiveJourneyCard({
     required this.journey,
@@ -651,114 +540,113 @@ class _ActiveJourneyCard extends StatelessWidget {
     final started = DateFormat('MMM d, h:mm a').format(journey.startTime);
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Card(
-      color: colorScheme.primaryContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.route_rounded,
-                  size: 20,
+    // The journey in progress is the single most important thing on this
+    // screen, so it is the screen's one accent surface.
+    return AppSurface(
+      tier: AppSurfaceTier.accent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.route_rounded,
+                size: 20,
+                color: colorScheme.onPrimaryContainer,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Active journey',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
                   color: colorScheme.onPrimaryContainer,
+                  fontWeight: FontWeight.w600,
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  'Active journey',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: colorScheme.onPrimaryContainer,
-                    fontWeight: FontWeight.w600,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: onOpen,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${journey.origin} → ${journey.destination}',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: colorScheme.onPrimaryContainer,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
+                ),
+                Icon(
+                  Icons.open_in_new_rounded,
+                  size: 18,
+                  color: colorScheme.onPrimaryContainer,
                 ),
               ],
             ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Started: $started',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: colorScheme.onPrimaryContainer.withValues(alpha: 0.8),
+            ),
+          ),
+          if (journey.items.isNotEmpty) ...[
             const SizedBox(height: 12),
-            InkWell(
-              onTap: onOpen,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${journey.origin} → ${journey.destination}',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: colorScheme.onPrimaryContainer,
-                        fontWeight: FontWeight.w700,
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: journey.items
+                  .map(
+                    (item) => Chip(
+                      label: Text(item),
+                      backgroundColor: colorScheme.surface.withValues(
+                        alpha: 0.6,
+                      ),
+                      side: BorderSide.none,
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+          if (reminderHints.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            ...reminderHints.map(
+              (hint) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.notifications_active_rounded,
+                      color: colorScheme.onPrimaryContainer,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        hint,
+                        style: Theme.of(context).textTheme.bodySmall
+                            ?.copyWith(color: colorScheme.onPrimaryContainer),
                       ),
                     ),
-                  ),
-                  Icon(
-                    Icons.open_in_new_rounded,
-                    size: 18,
-                    color: colorScheme.onPrimaryContainer,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Started: $started',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: colorScheme.onPrimaryContainer.withValues(alpha: 0.8),
-              ),
-            ),
-            if (journey.items.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: journey.items
-                    .map(
-                      (item) => Chip(
-                        label: Text(item),
-                        backgroundColor: colorScheme.surface.withValues(
-                          alpha: 0.6,
-                        ),
-                        side: BorderSide.none,
-                      ),
-                    )
-                    .toList(),
-              ),
-            ],
-            if (reminderHints.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              ...reminderHints.map(
-                (hint) => Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.notifications_active_rounded,
-                        color: colorScheme.onPrimaryContainer,
-                        size: 16,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          hint,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: colorScheme.onPrimaryContainer),
-                        ),
-                      ),
-                    ],
-                  ),
+                  ],
                 ),
-              ),
-            ],
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: onComplete,
-                icon: const Icon(Icons.check_circle_rounded),
-                label: const Text('Complete journey'),
               ),
             ),
           ],
-        ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: onComplete,
+              icon: const Icon(Icons.check_circle_rounded),
+              label: const Text('Complete journey'),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -779,8 +667,11 @@ class _JourneyTile extends StatelessWidget {
     final status = journey.status;
 
     final statusColor = switch (status) {
-      JourneyStatus.active => const Color(0xFF5C7A52),
-      JourneyStatus.upcoming => const Color(0xFF6E7F80),
+      // AppColors rather than literals, so the journey timeline stays in the
+      // warm palette in dark mode too. The old Color(0xFF5C7A52) is the
+      // success green on a light background and disappears on a dark one.
+      JourneyStatus.active => AppColors.success,
+      JourneyStatus.upcoming => AppColors.info,
       JourneyStatus.completed => colorScheme.onSurfaceVariant,
     };
 

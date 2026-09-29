@@ -40,11 +40,7 @@ Future<void> _seedRealData() async {
     ),
   );
   await storage.addTransaction(
-    Income(
-      amount: 900,
-      category: 'salary',
-      description: 'My own pay',
-    ),
+    Income(amount: 900, category: 'salary', description: 'My own pay'),
   );
 }
 
@@ -84,11 +80,7 @@ void main() {
       expect(transactions.whereType<Income>(), isNotEmpty);
       expect(transactions.whereType<Expense>(), isNotEmpty);
       expect(
-        transactions
-            .whereType<Expense>()
-            .map((e) => e.category)
-            .toSet()
-            .length,
+        transactions.whereType<Expense>().map((e) => e.category).toSet().length,
         greaterThanOrEqualTo(4),
         reason: 'the charts need several categories to be worth looking at',
       );
@@ -99,13 +91,15 @@ void main() {
 
       final checklists = await StorageService().getAllChecklists();
       final partiallyChecked = checklists.where(
-        (c) => c.items.any((i) => i.isChecked) && c.items.any((i) => !i.isChecked),
+        (c) =>
+            c.items.any((i) => i.isChecked) && c.items.any((i) => !i.isChecked),
       );
 
       expect(
         partiallyChecked,
         isNotEmpty,
-        reason: 'a fully packed or fully empty list shows nothing about progress',
+        reason:
+            'a fully packed or fully empty list shows nothing about progress',
       );
     });
 
@@ -153,8 +147,7 @@ void main() {
       await DemoDataService.seedAll();
 
       final now = DateTime.now();
-      for (final transaction
-          in await StorageService().getAllTransactions()) {
+      for (final transaction in await StorageService().getAllTransactions()) {
         expect(transaction.date.year, now.year);
         expect(transaction.date.month, now.month);
       }
@@ -220,11 +213,9 @@ void main() {
       final checklist = await storage.getChecklist(realChecklistId);
       expect(checklist, isNotNull);
       expect(checklist!.name, 'My real pack');
-      expect(
-        checklist.items.map((i) => i.name),
-        ['My own boots'],
-        reason: 'a real item must not be removed with a demo checklist',
-      );
+      expect(checklist.items.map((i) => i.name), [
+        'My own boots',
+      ], reason: 'a real item must not be removed with a demo checklist');
 
       final location = await storage.getLocation(realLocationId);
       expect(location, isNotNull);
@@ -250,19 +241,22 @@ void main() {
       }
     });
 
-    test('a record whose text says "Demo" but whose id does not is kept', () async {
-      // The clear matches on the id prefix precisely so it cannot catch a
-      // user's own record that happens to be called "Demo".
-      await StorageService().addChecklist(
-        Checklist(name: 'Demo of my own', description: 'not app demo data'),
-      );
-      await DemoDataService.seedAll();
+    test(
+      'a record whose text says "Demo" but whose id does not is kept',
+      () async {
+        // The clear matches on the id prefix precisely so it cannot catch a
+        // user's own record that happens to be called "Demo".
+        await StorageService().addChecklist(
+          Checklist(name: 'Demo of my own', description: 'not app demo data'),
+        );
+        await DemoDataService.seedAll();
 
-      await DemoDataService.clearAll();
+        await DemoDataService.clearAll();
 
-      final checklists = await StorageService().getAllChecklists();
-      expect(checklists.map((c) => c.name), ['Demo of my own']);
-    });
+        final checklists = await StorageService().getAllChecklists();
+        expect(checklists.map((c) => c.name), ['Demo of my own']);
+      },
+    );
 
     test('clearing works across months, not just the loaded one', () async {
       await DemoDataService.seedAll();
@@ -285,12 +279,10 @@ void main() {
         );
       }
 
-      final previousCount = (await StorageService()
-              .getTransactionsForMonth(
-                previousMonth.year,
-                previousMonth.month,
-              ))
-          .length;
+      final previousCount = (await StorageService().getTransactionsForMonth(
+        previousMonth.year,
+        previousMonth.month,
+      )).length;
       expect(previousCount, 1, reason: 'the record really did move month');
 
       await DemoDataService.clearAll();
@@ -321,9 +313,7 @@ void main() {
       await provider.addDemoData();
       await provider.goToCurrentMonth();
       expect(
-        provider.transactions.where(
-          (t) => DemoDataService.isDemoId(t.id),
-        ),
+        provider.transactions.where((t) => DemoDataService.isDemoId(t.id)),
         isNotEmpty,
       );
 
@@ -335,30 +325,32 @@ void main() {
       );
     });
 
-    test('clearing never removes a real transaction in the loaded month', () async {
-      // The old implementation deleted every transaction in the loaded month,
-      // which is how a user's own records were at risk.
-      final provider = TransactionProvider();
-      await provider.initialize();
-      await provider.addTransaction(
-        Expense(
-          amount: 15,
-          category: ExpenseCategory.food,
-          description: 'Real coffee',
-        ),
-      );
-      await provider.addDemoData();
-      await provider.goToCurrentMonth();
+    test(
+      'clearing never removes a real transaction in the loaded month',
+      () async {
+        // The old implementation deleted every transaction in the loaded month,
+        // which is how a user's own records were at risk.
+        final provider = TransactionProvider();
+        await provider.initialize();
+        await provider.addTransaction(
+          Expense(
+            amount: 15,
+            category: ExpenseCategory.food,
+            description: 'Real coffee',
+          ),
+        );
+        await provider.addDemoData();
+        await provider.goToCurrentMonth();
 
-      expect(provider.transactions.length, greaterThan(1));
+        expect(provider.transactions.length, greaterThan(1));
 
-      await provider.clearDemoData();
-      await provider.goToCurrentMonth();
+        await provider.clearDemoData();
+        await provider.goToCurrentMonth();
 
-      expect(
-        provider.transactions.map((t) => t.description),
-        ['Real coffee'],
-      );
-    });
+        expect(provider.transactions.map((t) => t.description), [
+          'Real coffee',
+        ]);
+      },
+    );
   });
 }

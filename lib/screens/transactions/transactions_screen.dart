@@ -147,7 +147,9 @@ class TransactionsScreen extends StatelessWidget {
   List<BreakdownSegment> _expenseSegments(TransactionProvider provider) {
     return provider
         .getSpendingBreakdownSlices()
-        .map((slice) => BreakdownSegment(meta: slice.meta, amount: slice.amount))
+        .map(
+          (slice) => BreakdownSegment(meta: slice.meta, amount: slice.amount),
+        )
         .toList(growable: false);
   }
 
@@ -282,14 +284,12 @@ class _MonthSummaryCard extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: colorScheme.primaryContainer,
-        borderRadius: AppRadii.mediumRadius,
-      ),
+    // The month summary is the single most important element on this screen, so
+    // it is the screen's one accent surface. Everything below it is raised or
+    // flat, which is what makes it read as the headline.
+    return AppSurface(
+      tier: AppSurfaceTier.accent,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -313,12 +313,15 @@ class _MonthSummaryCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.xs),
-          Text('Balance', style: textTheme.labelLarge),
+          Text('Balance', style: textTheme.titleSmall),
+          // The one number this screen is about, so it is the one number
+          // allowed to be large. Everything else on the screen steps down from
+          // it.
           Text(
             AppFormat.money(balance, symbol: currencySymbol),
-            style: textTheme.displaySmall?.copyWith(
+            style: textTheme.displayMedium?.copyWith(
               fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
+              letterSpacing: -1,
             ),
           ),
           const SizedBox(height: AppSpacing.xs),
