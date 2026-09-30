@@ -4,6 +4,32 @@ import 'expense_category_meta.dart';
 
 enum TransactionType { expense, income }
 
+/// How the money actually moved.
+///
+/// Deliberately not a set of accounts. Several wallets was considered and
+/// rejected: it turns a two-tap field into a ledger, and every balance in the
+/// app would then have to say which wallet it is talking about. This answers
+/// the question people actually ask of a single expense — did I hand over
+/// cash or tap my phone.
+enum PaymentMethod { cash, online }
+
+extension PaymentMethodX on PaymentMethod {
+  String get label => this == PaymentMethod.cash ? 'Cash' : 'Online';
+
+  /// Reads a persisted value, or null when there is nothing usable.
+  ///
+  /// Null is a real state, not a failure: every record written before this
+  /// field existed has no payment method, and guessing "cash" would put a fact
+  /// in the user's data that they never entered.
+  static PaymentMethod? fromName(String? name) {
+    if (name == null) return null;
+    for (final method in PaymentMethod.values) {
+      if (method.name == name) return method;
+    }
+    return null;
+  }
+}
+
 extension TransactionTypeX on TransactionType {
   String get label {
     final name = toString().split('.').last;
@@ -23,6 +49,10 @@ sealed class Transaction {
   final TransactionType type;
   final String description;
   final String? customCategoryName;
+
+  /// Null when it was never recorded, which is the case for every record
+  /// written before this field existed.
+  final PaymentMethod? paymentMethod;
   final DateTime date;
   final DateTime createdAt;
 
@@ -32,6 +62,7 @@ sealed class Transaction {
     required this.type,
     required this.description,
     this.customCategoryName,
+    this.paymentMethod,
     DateTime? date,
     DateTime? createdAt,
   }) : id = id ?? const Uuid().v4(),
@@ -56,6 +87,7 @@ sealed class Transaction {
       'type': type.toString().split('.').last,
       'description': description,
       'customCategoryName': customCategoryName,
+      'paymentMethod': paymentMethod?.name,
       'date': date.toIso8601String(),
       'createdAt': createdAt.toIso8601String(),
     };
@@ -100,6 +132,7 @@ class Expense extends Transaction {
     required super.description,
     this.locationId,
     super.customCategoryName,
+    super.paymentMethod,
     this.latitude,
     this.longitude,
     this.locationCapturedAt,
@@ -131,7 +164,7 @@ class Expense extends Transaction {
   factory Expense.fromJson(Map<String, dynamic> json) {
     return Expense(
       id: json['id'],
-      amount: json['amount'],
+      amount: (json['amount'] as num).toDouble(),
       category: ExpenseCategory.values.firstWhere(
         (e) => e.toString().split('.').last == json['category'],
         orElse: () => ExpenseCategory.other,
@@ -139,6 +172,7 @@ class Expense extends Transaction {
       description: json['description'],
       locationId: json['locationId'],
       customCategoryName: json['customCategoryName'],
+      paymentMethod: PaymentMethodX.fromName(json['paymentMethod'] as String?),
       latitude: (json['latitude'] as num?)?.toDouble(),
       longitude: (json['longitude'] as num?)?.toDouble(),
       locationCapturedAt: json['locationCapturedAt'] == null
@@ -156,6 +190,7 @@ class Expense extends Transaction {
     String? description,
     String? locationId,
     String? customCategoryName,
+    PaymentMethod? paymentMethod,
     double? latitude,
     double? longitude,
     DateTime? locationCapturedAt,
@@ -173,6 +208,7 @@ class Expense extends Transaction {
       description: description ?? this.description,
       locationId: clearLocation ? null : (locationId ?? this.locationId),
       customCategoryName: customCategoryName ?? this.customCategoryName,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
       latitude: clearCoordinates ? null : (latitude ?? this.latitude),
       longitude: clearCoordinates ? null : (longitude ?? this.longitude),
       locationCapturedAt: clearCoordinates
@@ -194,6 +230,7 @@ class Income extends Transaction {
     required this.category,
     required super.description,
     super.customCategoryName,
+    super.paymentMethod,
     super.date,
     super.createdAt,
   }) : super(type: TransactionType.income);
@@ -210,10 +247,11 @@ class Income extends Transaction {
   factory Income.fromJson(Map<String, dynamic> json) {
     return Income(
       id: json['id'],
-      amount: json['amount'],
+      amount: (json['amount'] as num).toDouble(),
       category: json['category'],
       description: json['description'],
       customCategoryName: json['customCategoryName'],
+      paymentMethod: PaymentMethodX.fromName(json['paymentMethod'] as String?),
       date: DateTime.parse(json['date']),
       createdAt: _parseCreatedAt(json['createdAt']),
     );
@@ -224,6 +262,7 @@ class Income extends Transaction {
     String? category,
     String? description,
     String? customCategoryName,
+    PaymentMethod? paymentMethod,
     DateTime? date,
     DateTime? createdAt,
   }) {
@@ -233,6 +272,7 @@ class Income extends Transaction {
       category: category ?? this.category,
       description: description ?? this.description,
       customCategoryName: customCategoryName ?? this.customCategoryName,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
       date: date ?? this.date,
       createdAt: createdAt ?? this.createdAt,
     );
