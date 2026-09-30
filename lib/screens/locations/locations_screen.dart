@@ -14,7 +14,11 @@ class LocationsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Location Bookmarks'), elevation: 0),
+      appBar: AppBar(
+        title: const Text('Location Bookmarks'),
+        elevation: 0,
+        actions: const [AppGearButton()],
+      ),
       body: Consumer<LocationProvider>(
         builder: (context, provider, _) {
           if (provider.isLoading) {

@@ -9,7 +9,6 @@ import 'package:flutter_application_1/screens/checklists/checklists_screen.dart'
 import 'package:flutter_application_1/screens/journeys/journeys_screen.dart';
 import 'package:flutter_application_1/screens/locations/locations_screen.dart';
 import 'package:flutter_application_1/screens/transactions/transactions_screen.dart';
-import 'package:flutter_application_1/screens/settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -80,8 +79,11 @@ class _HomeScreenState extends State<HomeScreen> {
               label: 'Journey',
             ),
             // Third, ahead of Places. The dock order is Pack, Journey,
-            // Transactions, Places, Settings: money is a thing you look at far
+            // Transactions, Places: money is a thing you look at far
             // more often than saved places, so it sits closer to the thumb.
+            // Settings is no longer a destination — it is a gear in each
+            // screen's app bar, because it is a drawer you open rather than a
+            // place you browse.
             NavigationDestination(
               icon: Icon(Icons.receipt_long_rounded),
               label: 'Transactions',
@@ -89,10 +91,6 @@ class _HomeScreenState extends State<HomeScreen> {
             NavigationDestination(
               icon: Icon(Icons.location_on_rounded),
               label: 'Places',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.settings_rounded),
-              label: 'Settings',
             ),
           ],
           onDestinationSelected: (index) {
@@ -116,8 +114,6 @@ class _HomeScreenState extends State<HomeScreen> {
         return const TransactionsScreen();
       case 3:
         return const LocationsScreen();
-      case 4:
-        return const SettingsScreen();
       default:
         return const SizedBox.shrink();
     }

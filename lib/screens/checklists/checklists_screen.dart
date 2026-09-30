@@ -25,7 +25,10 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
     final isEmpty = context.watch<ChecklistProvider>().checklists.isEmpty;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Smart Packing')),
+      appBar: AppBar(
+        title: const Text('Smart Packing'),
+        actions: const [AppGearButton()],
+      ),
       body: Consumer3<ChecklistProvider, LocationProvider, JourneyProvider>(
         builder:
             (context, checklistProvider, locationProvider, journeyProvider, _) {

@@ -66,6 +66,7 @@ class _JourneysScreenState extends State<JourneysScreen> {
                 onPressed: () => _shareJourneys(journeyProvider),
                 icon: const Icon(Icons.ios_share_rounded),
               ),
+              const AppGearButton(),
             ],
           ),
           body: RefreshIndicator(

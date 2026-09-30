@@ -33,6 +33,9 @@ nothing leaves the phone.
 - Paste a Google Maps link to fill the coordinates
 - Drop a pin at your current location
 
+**Settings** — behind the gear in every app bar, not a fifth tab. Currency,
+theme, stored-record counts, CSV export, demo data and the wipe all live there.
+
 ## Running it
 
 ```bash
