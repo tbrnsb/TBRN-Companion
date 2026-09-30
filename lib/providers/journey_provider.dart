@@ -314,29 +314,23 @@ class JourneyProvider extends ChangeNotifier {
     final journey = getJourneyById(journeyId);
     if (journey == null) return;
 
-    final participants = journey.participants
-        .where((p) => p.id != participantId)
-        .toList();
+    // A tombstone, so a re-shared file that still lists them does not put them
+    // straight back. Their expenses stay — the money was really spent on this
+    // trip — they just stop being attributable to a person, which the settlement
+    // reports as unassigned rather than dropping from the total.
+    final updated = journey.withRemoved(participantId);
 
     await _saveSharedTripFields(
-      journey,
-      participants: participants,
+      updated,
+      participants: updated.participants
+          .where((p) => p.id != participantId)
+          .toList(),
       // Removing the person who was "me" has to clear it too, or the app would
       // go on reporting a balance for someone no longer on the trip.
-      localParticipantId: journey.localParticipantId == participantId
-          ? null
-          : journey.localParticipantId,
-      clearLocalParticipant: journey.localParticipantId == participantId,
-      // A tombstone, so a re-shared file that still lists them does not put
-      // them straight back. Their expenses stay — the money was really spent on
-      // this trip — they just stop being attributable to a person, which the
-      // settlement reports as unassigned rather than dropping from the total.
-      removedIds: [
-        ...journey.removedIds,
-        if (!journey.removedIds.contains(participantId)) participantId,
-      ],
-      settledTransfers: journey.settledTransfers
-          // Any tick naming the removed person is meaningless now.
+      localParticipantId: updated.localParticipantId,
+      clearLocalParticipant: updated.localParticipantId == null,
+      // Any tick naming the removed person is meaningless now.
+      settledTransfers: updated.settledTransfers
           .where((key) => !key.startsWith('$participantId>'))
           .toList(),
     );
@@ -609,12 +603,9 @@ class JourneyProvider extends ChangeNotifier {
     if (journeyId == null) return;
     final journey = getJourneyById(journeyId);
     if (journey == null || !journey.isShared) return;
-    if (journey.removedIds.contains(transactionId)) return;
 
     try {
-      await updateJourney(
-        journey.copyWith(removedIds: [...journey.removedIds, transactionId]),
-      );
+      await updateJourney(journey.withRemoved(transactionId));
     } catch (_) {
       // See above.
     }
