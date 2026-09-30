@@ -34,72 +34,56 @@ known-good fallback.
 
 ---
 
-## 0. FIRST JOB — finish what is already applied. Do not add anything new yet.
+## 0. State: green. Nothing is broken.
 
-**The working tree does not currently pass its own test suite. Fix that before
-writing a single line of new feature code.**
-
-Seven features are applied and committed. The graph work is applied but
-**uncommitted and not green**. The next session's first task is to get back to a
-fully passing suite, commit the graph work, and only then start anything from
-section 4. Adding features on top of a hanging suite buries the hang.
-
-### The known hang
-
-`flutter test` (full suite) hangs indefinitely. Reproduce with:
+**The suite passes. 239 tests, about 27 seconds.** Run the gate:
 
 ```bash
-cd /home/sulav/Documents/flutter_application_1
-timeout 150 flutter test --reporter=failures-only; echo "exit=$?"
+tool/verify.sh
 ```
 
-`exit=124` means the timeout killed it — that is the hang, not a slow run.
+If that ever looks like it hangs, the cause is almost certainly the temp
+directory, not the code — see the trap below.
 
-What is already known about it:
+### The trap that cost the most time
 
-- At commit `f4cb447` the suite passed in ~14s (238 tests). The hang was
-  introduced by the **uncommitted** graph work only.
-- `test/spend_screen_test.dart` was one confirmed hang site: the test
-  `category breakdown charts / the Expenses filter shows only the spending
-  chart` never completed. That one was caused by
-  `FlGridData(horizontalInterval: gridStep)` — telling fl_chart to step the axis
-  by a fixed interval makes it walk in ever-smaller increments when the interval
-  does not divide the range evenly. It now draws a fixed set of lines via
-  `checkToShowHorizontalLine` / `_isAtFractions(...)` instead, and
-  `test/spend_screen_test.dart` and `test/day_filter_test.dart` pass (32 tests).
-- **A hang remains elsewhere in the suite and is NOT yet isolated.** Run each test
-  file on its own to find it:
-  ```bash
-  for f in test/*_test.dart; do
-    printf '%s: ' "$f"
-    timeout 90 flutter test "$f" --reporter=failures-only >/dev/null 2>&1
-    echo "exit=$?"
-  done
-  ```
-  `exit=124` is the hanging file.
-- Remaining suspects in the uncommitted diff, in order of likelihood:
-  1. `CumulativeBalanceChart`'s new `extraLinesData` dashed zero line — a
-     `HorizontalLine` outside the plotted `minY`..`maxY` range can confuse
-     fl_chart's axis sizing.
-  2. Its new `bottomTitles` with `interval: 1`.
-  3. The new `WeeklyTotalsChart`, which is now rendered by
-     `transactions_screen.dart` and so appears on every screen that shows the
-     charts.
+`/tmp` on this machine is a **3.6GB tmpfs** shared with other tools. Flutter's
+test compiler writes a temp directory per test file and the whole batch lands
+under `TMPDIR`. Once `/tmp` was ~80% full, the suite could no longer write its
+listener files and simply **never finished**. It presents exactly like a code
+hang: the command sits there past any sensible timeout, and a per-file run looks
+like a genuine failure in whatever test happens to be running.
 
-If the hang proves hard to isolate, the safe move is to `git checkout` the two
-uncommitted files (the patch is in `backup/uncommitted-charts.patch`) and redo
-the graph work in smaller, individually tested steps. Nothing else depends on it.
+It was mistaken for a bug in the chart code and cost a long, fruitless hunt.
+The fix is one line, and it is now in `tool/verify.sh`:
 
-### Also outstanding in the applied work
+```bash
+export TMPDIR="$PWD/.verify-tmp"     # real disk, not the tmpfs
+flutter test
+```
 
-- The graph work has **no tests of its own**. No chart test file exists. Copy the
-  harness from `test/phone_layout_test.dart` or `test/day_filter_test.dart`;
-  `test/test_viewports.dart` has `TestViewports.phonePortrait` (412x915) and
-  `phoneSmall` (360x640), and `usePhoneLayout` installs an `OverflowWatch` that
-  fails the test on any overflow.
-- `analysis_options.yaml` now excludes `backup/**`. The backup folder holds real
-  copies of two source files; without the exclusion `flutter analyze` tries to
-  compile them and reports a false error.
+With that, the same suite finishes in 27 seconds.
+
+If tests ever appear to hang:
+
+```bash
+df -h /tmp                                    # is it full?
+rm -rf /tmp/flutter_tools.*                    # killed runs leave ~133MB each
+TMPDIR=$PWD/.verify-tmp flutter test          # run it properly
+```
+
+**Never** pipe a full `flutter test` run to `tail` — the progress reporter
+rewrites one line with carriage returns and produces hundreds of KB of output,
+which is enough to kill the session.
+
+### What actually was a real bug
+
+One thing in the chart work was a genuine defect, and it is fixed:
+`FlGridData(horizontalInterval:)` makes fl_chart step the axis by a fixed
+interval, and when the interval does not divide the range evenly it walks in
+ever-smaller increments and never terminates. Gridlines are now drawn by
+testing fixed fractions of the axis (`_isAtFractions`). If you reintroduce an
+interval, expect a real hang back.
 
 ---
 
