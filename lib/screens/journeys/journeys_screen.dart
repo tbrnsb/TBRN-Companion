@@ -26,7 +26,16 @@ class _JourneysScreenState extends State<JourneysScreen> {
   final _destinationController = TextEditingController();
   final _originController = TextEditingController();
   final _notesController = TextEditingController();
-  final _itemsController = TextEditingController();
+  final _itemEntryController = TextEditingController();
+
+  /// What the user is packing, one entry at a time.
+  ///
+  /// This was a single "What are you taking? (comma separated)" field. The
+  /// journey model has always stored a list, so the commas were pure typing
+  /// ceremony: no way to see what was already added, no way to remove one item
+  /// without retyping the rest, and a stray comma silently creating an empty
+  /// entry. The list is the real shape of the data.
+  final List<String> _plannedItems = [];
   DateTime _timelineMonth = DateTime.now();
   DateTime? _plannedStart;
 
@@ -35,7 +44,7 @@ class _JourneysScreenState extends State<JourneysScreen> {
     _destinationController.dispose();
     _originController.dispose();
     _notesController.dispose();
-    _itemsController.dispose();
+    _itemEntryController.dispose();
     super.dispose();
   }
 
@@ -128,6 +137,32 @@ class _JourneysScreenState extends State<JourneysScreen> {
     );
   }
 
+  /// Adds what is in the entry field to the packing list.
+  ///
+  /// Commas still split, because that is how people paste a list they already
+  /// have somewhere, and rejecting that would be pedantic. The entry field is
+  /// cleared either way so the same text cannot be added twice by accident, and
+  /// a repeat of something already listed is ignored rather than duplicated.
+  void _addPlannedItems() {
+    final typed = _itemEntryController.text.trim();
+    if (typed.isEmpty) return;
+
+    final additions = typed
+        .split(',')
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty);
+
+    setState(() {
+      for (final item in additions) {
+        final alreadyThere = _plannedItems.any(
+          (existing) => existing.toLowerCase() == item.toLowerCase(),
+        );
+        if (!alreadyThere) _plannedItems.add(item);
+      }
+    });
+    _itemEntryController.clear();
+  }
+
   Widget _buildStartJourneyCard(
     BuildContext context,
     JourneyProvider journeyProvider,
@@ -162,11 +197,11 @@ class _JourneysScreenState extends State<JourneysScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _itemsController,
-            decoration: const InputDecoration(
-              labelText: 'What are you taking? (comma separated)',
-            ),
+          _PackingListEditor(
+            entryController: _itemEntryController,
+            items: _plannedItems,
+            onAdd: _addPlannedItems,
+            onRemove: (item) => setState(() => _plannedItems.remove(item)),
           ),
           const SizedBox(height: 12),
           Row(
@@ -239,17 +274,11 @@ class _JourneysScreenState extends State<JourneysScreen> {
                   return;
                 }
 
-                final items = _itemsController.text
-                    .split(',')
-                    .map((item) => item.trim())
-                    .where((item) => item.isNotEmpty)
-                    .toList();
-
                 await journeyProvider.startJourney(
                   destination: destination,
                   origin: origin,
                   notes: _notesController.text.trim(),
-                  items: items,
+                  items: List.of(_plannedItems),
                   plannedStart: _plannedStart,
                 );
                 if (!mounted) return;
@@ -258,7 +287,8 @@ class _JourneysScreenState extends State<JourneysScreen> {
                 _destinationController.clear();
                 _originController.clear();
                 _notesController.clear();
-                _itemsController.clear();
+                _itemEntryController.clear();
+                setState(_plannedItems.clear);
                 if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -361,10 +391,20 @@ class _TimelineCard extends StatelessWidget {
                   onPressed: onPrevious,
                   icon: const Icon(Icons.chevron_left_rounded),
                 ),
-                Text(
-                  DateFormat.yMMMM().format(month),
-                  style: Theme.of(context).textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w600),
+                // Flexible, because the row is two 48dp tap targets either side
+                // of this text. On a 360dp phone that left the label 29px wider
+                // than the space and the row overflowed. Fitted rather than
+                // ellipsised: a month name is short, and shrinking it a little
+                // beats showing "Septemb…".
+                Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      DateFormat.yMMMM().format(month),
+                      style: Theme.of(context).textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ),
                 ),
                 IconButton(
                   onPressed: onNext,
@@ -755,6 +795,88 @@ class _JourneyTile extends StatelessWidget {
           ),
         ),
         const Divider(indent: 72, height: 1),
+      ],
+    );
+  }
+}
+
+/// Adds items to a journey one at a time and shows what is already going.
+///
+/// A list rather than one comma-separated field, because the journey model
+/// always stored a list and the commas bought nothing: there was no way to see
+/// what had been added, and no way to drop one item without retyping the rest.
+class _PackingListEditor extends StatelessWidget {
+  const _PackingListEditor({
+    required this.entryController,
+    required this.items,
+    required this.onAdd,
+    required this.onRemove,
+  });
+
+  final TextEditingController entryController;
+  final List<String> items;
+  final VoidCallback onAdd;
+  final ValueChanged<String> onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'What are you taking?',
+          style: textTheme.labelLarge?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        TextField(
+          // Stable identity: the hint text changes once the first item is
+          // added, so the field cannot be found by its hint afterwards.
+          key: const ValueKey('journey-item-entry'),
+          controller: entryController,
+          textCapitalization: TextCapitalization.sentences,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => onAdd(),
+          decoration: InputDecoration(
+            hintText: items.isEmpty ? 'Boots, jacket, map' : 'Add another',
+            suffixIcon: IconButton(
+              tooltip: 'Add to the list',
+              icon: const Icon(Icons.add_rounded),
+              onPressed: onAdd,
+            ),
+          ),
+        ),
+        if (items.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.xs),
+          // A wrapped list of rows, not chips: an item name can be a phrase, and
+          // a chip truncates to fit its pill where a full-width row does not.
+          for (final item in items)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.xxs),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.check_box_outline_blank_rounded,
+                    size: 18,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: AppSpacing.xs),
+                  Expanded(child: Text(item, style: textTheme.bodyMedium)),
+                  IconButton(
+                    tooltip: 'Remove $item',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                    onPressed: () => onRemove(item),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ],
     );
   }
