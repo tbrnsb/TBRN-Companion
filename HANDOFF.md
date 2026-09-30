@@ -4,10 +4,33 @@ Read this first. It is the state of the project as of the last session, written
 so a fresh agent can continue without rediscovering anything.
 
 - Repo: `/home/sulav/Documents/flutter_application_1` (git, branch `master`)
-- Last commit: `f4cb447` "fix: give light mode an actual surface ladder"
-- Backup of that same state: `backup/tbrn-all-commits.bundle` (verified
-  complete history; restore with
-  `git clone backup/tbrn-all-commits.bundle restored-repo`)
+- Remote: `https://github.com/tbrnsb/Daily-companion.git` (private)
+- Last commit: `99ce59d` "chore: stop tracking the session backup bundle"
+- Backup of that same state: `backup/tbrn-all-commits.bundle` (on disk, ignored
+  by git; restore with `git clone backup/tbrn-all-commits.bundle restored`)
+
+### Branch timeline
+
+`master` is always the **latest** state. The numbered branches are snapshots, one
+per feature as it landed, so you can switch between them and see the app as it
+looked at that point. Switch with `git checkout <branch>`.
+
+| Branch | Commit | State |
+|---|---|---|
+| `master` | `99ce59d` | Latest — everything, plus the graph work |
+| `08-graphs-wip` | `818456f` | Graph work landed. **Suite hangs** (section 0) |
+| `07-light-mode` | `f4cb447` | Light-mode surface ladder. Last fully green state |
+| `06-trip-packing-list` | `b8bb8a9` | Packing list replaces the comma-separated field |
+| `05-pack-ui-fixes` | `c794ac9` | One create-checklist button; demo buttons fit |
+| `04-payment-method` | `e219c0d` | Cash / online on every transaction |
+| `03-category-fixes` | `6788f2a` | Other screen duplication + fake custom categories |
+| `02-add-place` | `7733b8e` | Add-place screen, icon picker, Maps link |
+| `01-journey-interactions` | `39a3278` | Journey day sheet and stat tiles |
+| `backup/v1-baseline` | — | Pre-session baseline |
+
+`07-light-mode` is the newest branch that passes its whole test suite (238
+tests). If the graph hang proves hard to fix, `git checkout 07-light-mode` is a
+known-good fallback.
 
 ---
 
