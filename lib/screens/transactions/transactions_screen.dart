@@ -111,12 +111,23 @@ class TransactionsScreen extends StatelessWidget {
                     child: DailyTotalsChart(
                       days: dailyTotals,
                       currencySymbol: currencySymbol,
+                      // So the chart marks the day the filter is on, instead of
+                      // showing a filtered day at the same weight as the rest.
+                      highlightedDate: provider.selectedDay,
                     ),
                   ),
                   const SizedBox(height: AppSpacing.md),
                   AppSurface(
                     tier: AppSurfaceTier.raised,
                     child: CumulativeBalanceChart(
+                      days: dailyTotals,
+                      currencySymbol: currencySymbol,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  AppSurface(
+                    tier: AppSurfaceTier.raised,
+                    child: WeeklyTotalsChart(
                       days: dailyTotals,
                       currencySymbol: currencySymbol,
                     ),
