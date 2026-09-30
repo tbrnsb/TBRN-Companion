@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_application_1/models/index.dart';
 import 'package:flutter_application_1/providers/transaction_provider.dart';
 import 'package:flutter_application_1/services/demo_data_service.dart';
+import 'package:flutter_application_1/providers/journey_provider.dart';
 import 'package:flutter_application_1/services/storage_service.dart';
 
 import 'visual_smoke_test.dart' show initTestStorage;
@@ -109,8 +110,17 @@ void main() {
       final journeys = await StorageService().getAllJourneys();
       expect(journeys.where((j) => j.completed), hasLength(1));
       expect(journeys.where((j) => !j.completed), isNotEmpty);
-      for (final journey in journeys) {
-        expect(journey.items, isNotEmpty);
+    });
+
+    test('every journey carries something to pack', () async {
+      await DemoDataService.seedAll();
+
+      for (final journey in await StorageService().getAllJourneys()) {
+        expect(
+          journey.items,
+          isNotEmpty,
+          reason: '${journey.destination} arrived with an empty list',
+        );
       }
     });
 
@@ -143,14 +153,39 @@ void main() {
       }
     });
 
-    test('demo spend lands in the current month', () async {
+    test('demo spend spans the current month and the two before it', () async {
+      // Month navigation used to be empty everywhere except the month you
+      // happened to open the app in, so you could not see what moving between
+      // months looks like.
       await DemoDataService.seedAll();
 
       final now = DateTime.now();
+      final months = <int, int>{};
       for (final transaction in await StorageService().getAllTransactions()) {
-        expect(transaction.date.year, now.year);
-        expect(transaction.date.month, now.month);
+        final offset =
+            (now.year - transaction.date.year) * 12 +
+            (now.month - transaction.date.month);
+        // A demo record in the future would be a bug: it would show up in no
+        // month the user can currently reach.
+        expect(
+          offset,
+          inInclusiveRange(0, 2),
+          reason: '${transaction.description} landed $offset months out',
+        );
+        months[offset] = (months[offset] ?? 0) + 1;
       }
+
+      expect(
+        months[0],
+        isNotNull,
+        reason: 'the current month must have spend in it',
+      );
+      expect(months[1], isNotNull, reason: 'last month must not be empty');
+      expect(
+        months[2],
+        isNotNull,
+        reason: 'the month before must not be empty',
+      );
     });
 
     test('seeding twice does not disturb the first batch', () async {
@@ -163,6 +198,95 @@ void main() {
       // This is asserted so the behaviour is deliberate rather than surprising.
       expect(second.transactions, first.transactions * 2);
       expect(second.journeys, first.journeys * 2);
+    });
+  });
+
+  group('the demo includes a shared trip with something owed', () {
+    // The settlement feature existed with demo data that had no participants
+    // at all, so it was invisible unless you added three people by hand. This
+    // is what makes TripOutstandingCard appear and the summary show transfers.
+    test('one demo trip is shared and owes someone money', () async {
+      await DemoDataService.seedAll();
+
+      final journeys = JourneyProvider();
+      await journeys.initialize();
+      addTearDown(journeys.dispose);
+
+      final shared = (await StorageService().getAllJourneys())
+          .where((j) => j.participants.length >= 2)
+          .toList();
+      expect(shared, hasLength(1), reason: 'no shared trip was seeded');
+
+      final trip = shared.single;
+      expect(trip.participants, hasLength(3));
+      expect(trip.localParticipantId, isNotNull);
+      expect(trip.isShared, isTrue);
+
+      // The README's worked example, exactly.
+      final settlement = await journeys.tripSettlement(trip.id);
+      expect(settlement.total, 13900);
+      expect(settlement.transfers, hasLength(2));
+      expect(settlement.transfers.map((t) => '${t.fromName}->${t.toName}'), [
+        'Sita->You',
+        'Sita->Raj',
+      ]);
+    });
+
+    test('the shared trip shows on Transactions as outstanding', () async {
+      await DemoDataService.seedAll();
+
+      final journeys = JourneyProvider();
+      await journeys.initialize();
+      addTearDown(journeys.dispose);
+
+      final outstanding = await journeys.outstandingAcrossTrips();
+      expect(outstanding, hasLength(1));
+      // The demo's local participant is "You", who fronted 5500 of 13900 and is
+      // therefore owed. Sita is the one who owes, and the card is about the
+      // person holding the phone.
+      expect(outstanding.single.localIsOwed, isTrue);
+      expect(outstanding.single.remainingTransfers, hasLength(2));
+    });
+
+    test(
+      'every shared trip expense names a payer who is on the trip',
+      () async {
+        await DemoDataService.seedAll();
+
+        final journeys = await StorageService().getAllJourneys();
+        final shared = journeys.firstWhere((j) => j.participants.length >= 2);
+        final roster = shared.participants.map((p) => p.id).toSet();
+
+        for (final transaction
+            in await StorageService().getTransactionsByJourney(shared.id)) {
+          if (transaction is! Expense) continue;
+          expect(
+            roster.contains(transaction.paidByParticipantId),
+            isTrue,
+            reason:
+                '${transaction.description} has payer '
+                '${transaction.paidByParticipantId}, who is not on the trip',
+          );
+        }
+      },
+    );
+
+    test('the shared trip survives a full clear', () async {
+      await DemoDataService.seedAll();
+      final seeded = await StorageService().getAllJourneys();
+      final shared = seeded.firstWhere((j) => j.participants.length >= 2);
+
+      await DemoDataService.clearAll();
+
+      // The participants live inside the journey record, so deleting the
+      // journey has to take them with it — an orphan would keep a name and an
+      // id the user could never reach again.
+      expect(await StorageService().getAllJourneys(), isEmpty);
+      expect(
+        await StorageService().getTransactionsByJourney(shared.id),
+        isEmpty,
+        reason: "the shared trip's expenses outlived it",
+      );
     });
   });
 
@@ -279,11 +403,17 @@ void main() {
         );
       }
 
-      final previousCount = (await StorageService().getTransactionsForMonth(
+      // The seed spans several months now, so this is about the one record, not
+      // about the month being empty.
+      final inMonth = await StorageService().getTransactionsForMonth(
         previousMonth.year,
         previousMonth.month,
-      )).length;
-      expect(previousCount, 1, reason: 'the record really did move month');
+      );
+      expect(
+        inMonth.any((t) => t.id == victim.id),
+        isTrue,
+        reason: 'the record really did move month',
+      );
 
       await DemoDataService.clearAll();
 
