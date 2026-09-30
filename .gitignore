@@ -67,3 +67,4 @@ backup/
 .verify-logs/
 .rewrite/
 .verify-tmp/
+.gate-out.log
