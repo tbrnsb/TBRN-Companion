@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models/index.dart';
+import 'package:flutter_application_1/services/packing_suggestions.dart';
 import 'package:flutter_application_1/services/storage_service.dart';
 import 'package:flutter_application_1/utils/iterable_ext.dart';
 
@@ -61,75 +62,6 @@ class ChecklistProvider extends ChangeNotifier {
     for (final item in completed) {
       await deleteChecklistItem(item.id);
     }
-  }
-
-  List<String> getRecommendedItemsForTrip({
-    String? tripType,
-    String? notes,
-    String? destination,
-  }) {
-    final normalized = (tripType ?? notes ?? destination ?? '').toLowerCase();
-
-    final key = normalized.contains('business') || normalized.contains('work')
-        ? 'business'
-        : normalized.contains('weekend') ||
-              normalized.contains('leisure') ||
-              normalized.contains('holiday')
-        ? 'weekend'
-        : normalized.contains('camp') ||
-              normalized.contains('hike') ||
-              normalized.contains('outdoor')
-        ? 'outdoor'
-        : normalized.contains('flight') ||
-              normalized.contains('airport') ||
-              normalized.contains('travel')
-        ? 'travel'
-        : 'essentials';
-
-    final recommendations = {
-      'business': [
-        'Laptop',
-        'Chargers',
-        'Power bank',
-        'ID/passport',
-        'Presentation files',
-        'Business cards',
-      ],
-      'weekend': [
-        'Toiletries',
-        'Comfortable clothes',
-        'Phone charger',
-        'Water bottle',
-        'Snacks',
-        'Travel pillow',
-      ],
-      'outdoor': [
-        'Hiking shoes',
-        'Layered jacket',
-        'Water bottle',
-        'Trail snacks',
-        'Sunglasses',
-        'First aid kit',
-      ],
-      'travel': [
-        'Passport',
-        'Wallet',
-        'Headphones',
-        'Medication',
-        'Travel adapter',
-        'Tickets',
-      ],
-      'essentials': [
-        'Documents',
-        'Wallet',
-        'Phone charger',
-        'Medication',
-        'Water bottle',
-        'Toiletries',
-      ],
-    };
-
-    return recommendations[key] ?? recommendations['essentials']!;
   }
 
   // Initialize - load all checklists
@@ -211,6 +143,113 @@ class ChecklistProvider extends ChangeNotifier {
     }
   }
 
+  /// Whether [checklistId] already has an item called [name].
+  ///
+  /// Case-insensitive and whitespace-tolerant, because "Water bottle" and
+  /// "water  bottle" are the same thing to a person and two rows to a list.
+  /// Storage is unchanged: existing duplicates are left alone, since deleting
+  /// something the user typed would be worse than showing it twice.
+  bool checklistHasItem(String checklistId, String name) {
+    final checklist = _checklists.where((c) => c.id == checklistId).firstOrNull;
+    if (checklist == null) return false;
+    return _containsItem(checklist, name);
+  }
+
+  /// Adds [name] to [checklistId] unless it is already there.
+  ///
+  /// Returns true when the item was added, false when it was already present.
+  /// The bool is what lets a caller say "already on the list" rather than
+  /// silently doing nothing and leaving the user wondering whether the tap
+  /// landed.
+  Future<bool> addItemByName(String checklistId, String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return false;
+
+    final checklist = _checklists.where((c) => c.id == checklistId).firstOrNull;
+    if (checklist == null) return false;
+    if (_containsItem(checklist, trimmed)) return false;
+
+    await addItemToChecklist(
+      checklistId,
+      ChecklistItem(checklistId: checklistId, name: trimmed),
+    );
+    return true;
+  }
+
+  /// Builds a checklist for [journey] in one tap.
+  ///
+  /// This is the join between the two systems that used to overlap. A trip
+  /// carried its own `items` list that nobody could tick off, while the Pack tab
+  /// carried real checklists with progress. Tapping this folds the trip's items
+  /// in and adds what the trip itself implies, so the journey page can show
+  /// "4 of 9 packed" and mean it.
+  ///
+  /// Returns the checklist, or null if the trip already has one — a second pack
+  /// for the same trip is almost never what someone meant, and silently making
+  /// a duplicate list is how a pack ends up with three of everything.
+  Future<Checklist?> packForJourney(Journey journey) async {
+    final existing = getChecklistsForJourney(journey.id).firstOrNull;
+    if (existing != null) return null;
+
+    final checklist = Checklist(
+      name: journey.title.isEmpty ? 'Pack' : 'Pack for ${journey.title}',
+      description: 'Packing list for ${journey.title}',
+      journeyId: journey.id,
+    );
+    await addChecklist(checklist);
+
+    // The trip's own items first — they are what the user actually wrote down —
+    // then the suggestions, deduped against them.
+    final names = <String>[
+      for (final item in journey.items)
+        if (item.trim().isNotEmpty) item.trim(),
+      for (final suggestion in PackingSuggestions.forTrip(
+        destination: journey.destination,
+        startTime: journey.startTime,
+        endTime: journey.endTime,
+      ))
+        suggestion.name,
+    ];
+
+    var seen = <String>{};
+    for (final name in names) {
+      final key = name.toLowerCase();
+      if (!seen.add(key)) continue;
+      await addItemToChecklist(
+        checklist.id,
+        ChecklistItem(checklistId: checklist.id, name: name),
+      );
+    }
+
+    return _checklists.where((c) => c.id == checklist.id).firstOrNull;
+  }
+
+  /// How much of [journeyId]'s packing is done, for the journey card.
+  ///
+  /// Null when the trip has no checklist, so the caller can tell "nothing packed
+  /// yet" from "nothing to pack", which are different facts and only one of
+  /// them is a prompt to do something.
+  PackProgress? packProgressFor(String journeyId) {
+    final checklists = getChecklistsForJourney(journeyId);
+    if (checklists.isEmpty) return null;
+
+    var packed = 0;
+    var total = 0;
+    for (final checklist in checklists) {
+      packed += checklist.items.where((i) => i.isChecked).length;
+      total += checklist.items.length;
+    }
+    return PackProgress(packed: packed, total: total);
+  }
+
+  bool _containsItem(Checklist checklist, String name) {
+    final wanted = _normalise(name);
+    return checklist.items.any((i) => _normalise(i.name) == wanted);
+  }
+
+  static String _normalise(String value) =>
+      value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
   // Update item in checklist
   Future<void> updateChecklistItem(ChecklistItem item) async {
     try {
@@ -270,4 +309,19 @@ class ChecklistProvider extends ChangeNotifier {
       }
     }
   }
+}
+
+/// How much of a trip is packed. "4 of 9".
+class PackProgress {
+  const PackProgress({required this.packed, required this.total});
+
+  final int packed;
+  final int total;
+
+  /// "4 of 9 packed". An empty checklist reads as "nothing to pack" rather than
+  /// "0 of 0", which is technically true and useless.
+  String get label =>
+      total == 0 ? 'nothing to pack' : '$packed of $total packed';
+
+  double get fraction => total == 0 ? 0 : packed / total;
 }

@@ -5,6 +5,7 @@ import 'package:flutter_application_1/models/index.dart';
 import 'package:flutter_application_1/providers/checklist_provider.dart';
 import 'package:flutter_application_1/providers/journey_provider.dart';
 import 'package:flutter_application_1/providers/location_provider.dart';
+import 'package:flutter_application_1/services/packing_suggestions.dart';
 import 'package:flutter_application_1/screens/checklists/checklist_detail_screen.dart';
 import 'package:flutter_application_1/screens/checklists/add_checklist_screen.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
@@ -37,12 +38,17 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
               }
 
               final activeJourney = journeyProvider.activeJourney;
-              final recommendations = checklistProvider
-                  .getRecommendedItemsForTrip(
-                    tripType: activeJourney?.destination ?? '',
-                    notes: activeJourney?.notes ?? '',
-                    destination: activeJourney?.destination ?? '',
-                  );
+              // Read from the trip itself — where, when, how long — rather than
+              // keyword-matching the destination. Two unrelated trips used to get
+              // the same six generic suggestions because neither name matched a
+              // keyword.
+              final suggestions = activeJourney == null
+                  ? const <PackingSuggestion>[]
+                  : PackingSuggestions.forTrip(
+                      destination: activeJourney.destination,
+                      startTime: activeJourney.startTime,
+                      endTime: activeJourney.endTime,
+                    );
 
               final locationLinkedChecklists = checklistProvider.checklists
                   .where(
@@ -53,28 +59,17 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                   )
                   .toList();
 
-              if (checklistProvider.checklists.isEmpty) {
-                return EmptyState(
-                  icon: Icons.checklist_rounded,
-                  title: 'No checklists yet',
-                  message:
-                      'Create your first checklist to start packing smarter',
-                  actionLabel: 'Create Checklist',
-                  onAction: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const AddChecklistScreen(),
-                      ),
-                    );
-                  },
-                );
-              }
+              final isEmpty = checklistProvider.checklists.isEmpty;
 
               return ListView(
                 padding: AppSpacing.screenPadding,
                 children: [
-                  if (activeJourney != null)
-                    _buildTripRecommendationCard(context, recommendations),
+                  if (suggestions.isNotEmpty)
+                    _buildTripSuggestionCard(
+                      context,
+                      activeJourney!,
+                      suggestions,
+                    ),
                   if (locationLinkedChecklists.isNotEmpty)
                     _buildLocationReminderCard(
                       context,
@@ -87,10 +82,32 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                     ),
                     const SizedBox(height: 8),
                   ],
-                  const SizedBox(height: 16),
-                  const SectionHeader('All Checklists'),
-                  const SizedBox(height: 12),
-                  ..._buildChecklistCards(context, checklistProvider),
+                  const SizedBox(height: AppSpacing.md),
+                  if (isEmpty)
+                    // The suggestions above stay on screen here on purpose. The
+                    // old empty state short-circuited the whole list, so the
+                    // card was invisible to anyone with no checklists — which is
+                    // exactly the person with a trip and nothing packed for it.
+                    EmptyState(
+                      icon: Icons.checklist_rounded,
+                      title: 'No checklists yet',
+                      message:
+                          'Create your first checklist, or pack for the trip '
+                          'above',
+                      actionLabel: 'Create Checklist',
+                      onAction: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const AddChecklistScreen(),
+                          ),
+                        );
+                      },
+                    )
+                  else ...[
+                    const SectionHeader('All Checklists'),
+                    const SizedBox(height: AppSpacing.sm),
+                    ..._buildChecklistCards(context, checklistProvider),
+                  ],
                 ],
               );
             },
@@ -116,41 +133,94 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
     );
   }
 
-  Widget _buildTripRecommendationCard(
+  Widget _buildTripSuggestionCard(
     BuildContext context,
-    List<String> recommendations,
+    Journey journey,
+    List<PackingSuggestion> suggestions,
   ) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final checklists = context.read<ChecklistProvider>().checklists;
+    final tripChecklist = context
+        .read<ChecklistProvider>()
+        .getChecklistsForJourney(journey.id)
+        .firstOrNull;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: ContextCard(
         icon: Icons.auto_awesome_rounded,
-        title: 'Trip suggestions',
+        title: 'For ${journey.title.isEmpty ? 'this trip' : journey.title}',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Tap one to add it to a checklist.',
-              style: Theme.of(context).textTheme.bodySmall
-                  ?.copyWith(color: colorScheme.onSurfaceVariant),
+              'Based on where you are going and when.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSecondaryContainer,
+              ),
             ),
             const SizedBox(height: AppSpacing.xs),
-            Wrap(
-              spacing: AppSpacing.xs,
-              runSpacing: AppSpacing.xs,
-              children: [
-                for (final item in recommendations)
-                  ActionChip(
-                    avatar: const Icon(Icons.add_rounded, size: 18),
-                    label: Text(item),
-                    tooltip: 'Add "$item" to a checklist',
-                    onPressed: () => _addSuggestionToChecklist(context, item),
+            // Each suggestion says WHY, so the user can judge it instead of
+            // taking it on trust.
+            for (final suggestion in suggestions)
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.xxs),
+                child: _SuggestionRow(
+                  suggestion: suggestion,
+                  onAdd: checklists.isEmpty
+                      ? null
+                      : () =>
+                            _addSuggestionToChecklist(context, suggestion.name),
+                ),
+              ),
+            if (tripChecklist == null && checklists.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.xs),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  key: const ValueKey('pack-for-this-trip'),
+                  onPressed: () => _packForThisTrip(context, journey),
+                  icon: const Icon(Icons.backpack_rounded, size: 18),
+                  label: Text(
+                    'Pack for this trip (${suggestions.length} items)',
                   ),
-              ],
-            ),
+                ),
+              ),
+            ] else if (tripChecklist != null) ...[
+              const SizedBox(height: AppSpacing.xs),
+              _PackedLine(checklist: tripChecklist),
+            ],
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _packForThisTrip(BuildContext context, Journey journey) async {
+    final provider = context.read<ChecklistProvider>();
+    final messenger = ScaffoldMessenger.of(context);
+
+    final created = await provider.packForJourney(journey);
+    if (!context.mounted) return;
+
+    if (created != null) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ChecklistDetailScreen(checklist: created),
+        ),
+      );
+      return;
+    }
+    // Already packed: send them to the list rather than reporting a failure.
+    final existing = provider.getChecklistsForJourney(journey.id).firstOrNull;
+    if (existing == null || !context.mounted) return;
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Already packed for this trip')),
+    );
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ChecklistDetailScreen(checklist: existing),
       ),
     );
   }
@@ -174,7 +244,19 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
         : await _pickChecklist(context, checklists);
     if (target == null || !context.mounted) return;
 
-    // Re-read: the picker may have been open a while.
+    // The duplicate guard lives in the provider, so every caller gets it: a
+    // second "Water bottle" on a list that already has one is noise, and the
+    // user is told rather than left wondering whether the tap landed.
+    final added = await provider.addItemByName(target.id, item);
+    if (!context.mounted) return;
+    if (!added) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('"$item" is already on ${target.name}')),
+      );
+      return;
+    }
+
+    // Kept for the follow-on behaviour below.
     final live = provider.checklists.firstWhere(
       (c) => c.id == target.id,
       orElse: () => target,
@@ -472,6 +554,105 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// One suggestion: the thing, why it is on the list, and a button to add it.
+///
+/// The reason sits under the name rather than in a tooltip because a tooltip is
+/// invisible until you already know to ask. This is the difference between a
+/// list of guesses and a recommendation the user can accept or dismiss.
+class _SuggestionRow extends StatelessWidget {
+  const _SuggestionRow({required this.suggestion, this.onAdd});
+
+  final PackingSuggestion suggestion;
+  final VoidCallback? onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final onColor = theme.colorScheme.onSecondaryContainer;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                suggestion.name,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: onColor,
+                ),
+              ),
+              Text(
+                suggestion.reason,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSecondaryContainer.withValues(
+                    alpha: 0.75,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          key: ValueKey('add-suggestion-${suggestion.name}'),
+          tooltip: 'Add "${suggestion.name}" to a checklist',
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.add_rounded, size: 20),
+          onPressed: onAdd,
+        ),
+      ],
+    );
+  }
+}
+
+/// "4 of 9 packed" once the trip has a checklist, so the card says where the
+/// trip got to instead of still asking to be started.
+class _PackedLine extends StatelessWidget {
+  const _PackedLine({required this.checklist});
+
+  final Checklist checklist;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final onColor = theme.colorScheme.onSecondaryContainer;
+    final progress = checklist.getProgress();
+
+    return Row(
+      children: [
+        SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(
+            value: checklist.items.isEmpty ? 0 : progress,
+            strokeWidth: 3.5,
+            backgroundColor: onColor.withValues(alpha: 0.18),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.xs),
+        Expanded(
+          child: Text(
+            checklist.items.isEmpty
+                ? 'Packed — nothing on the list yet'
+                : '${checklist.items.where((i) => i.isChecked).length} of '
+                      '${checklist.items.length} packed',
+            style: theme.textTheme.bodyMedium?.copyWith(color: onColor),
+          ),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => ChecklistDetailScreen(checklist: checklist),
+            ),
+          ),
+          child: const Text('Open'),
+        ),
+      ],
     );
   }
 }
