@@ -53,9 +53,11 @@ class TransactionProvider extends ChangeNotifier {
     }
     final sorted = counts.keys.toList()
       ..sort((a, b) => counts[b]!.compareTo(counts[a]!));
-    final result = sorted.take(5).map((id) => metas[id]!).toList();
+    // Four, not five: the add sheet shows these as a wrapped row of chips, and
+    // five pushes the category list itself below the fold on a small phone.
+    final result = sorted.take(4).map((id) => metas[id]!).toList();
     if (result.isEmpty) {
-      return CategoryRegistry.expenseCategories().take(3).toList();
+      return CategoryRegistry.expenseCategories().take(4).toList();
     }
     return result;
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:flutter_application_1/models/index.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:flutter_application_1/widgets/app_motion.dart';
 
@@ -198,4 +199,91 @@ void main() {
       expect(value, lessThanOrEqualTo(1));
     });
   });
+
+  group('expense categories', () {
+    test('there are exactly nine, and Other is the one that leads away', () {
+      // The "All" list is meant to show nine with Other among them. Anything
+      // else and the list the user sees does not match what was asked for.
+      expect(ExpenseCategory.values, hasLength(9));
+      expect(
+        CategoryRegistry.expenseCategories(),
+        hasLength(9),
+        reason: 'the registry and the enum must not drift apart',
+      );
+      expect(ExpenseCategory.values.last, ExpenseCategory.other);
+    });
+
+    test('every category has its own name, id and icon', () {
+      final metas = CategoryRegistry.expenseCategories();
+      expect(metas.map((m) => m.id).toSet(), hasLength(9));
+      expect(metas.map((m) => m.name).toSet(), hasLength(9));
+      expect(metas.map((m) => m.icon).toSet(), hasLength(9));
+    });
+
+    test('no two category colours are close enough to be confused', () {
+      // The breakdown donut puts these side by side. Two warm browns next to
+      // each other are unreadable, and a screenshot is the only way to notice
+      // by eye, so the separation is asserted numerically instead.
+      final metas = CategoryRegistry.expenseCategories();
+      // The closest pair in the current palette sits at 188 on a 0-441 scale,
+      // so 150 leaves headroom while still catching a genuinely confusable pair.
+      const minimumSeparation = 150.0;
+
+      final tooClose = <String>[];
+      for (var i = 0; i < metas.length; i++) {
+        for (var j = i + 1; j < metas.length; j++) {
+          final distance = _colourDistance(metas[i].color, metas[j].color);
+          if (distance < minimumSeparation) {
+            tooClose.add(
+              '${metas[i].name}/${metas[j].name} only ${distance.toStringAsFixed(0)} apart',
+            );
+          }
+        }
+      }
+
+      expect(tooClose, isEmpty, reason: tooClose.join('; '));
+    });
+
+    test('a stored category name still resolves after the list grew', () {
+      // MIGRATION SAFETY: a transaction stores its category by name. Every name
+      // that could already be on disk must still resolve to the same category
+      // it did before health, shopping and housing were added.
+      const previouslyStored = {
+        'food': ExpenseCategory.food,
+        'travel': ExpenseCategory.travel,
+        'gear': ExpenseCategory.gear,
+        'entertainment': ExpenseCategory.entertainment,
+        'utilities': ExpenseCategory.utilities,
+        'other': ExpenseCategory.other,
+      };
+
+      for (final entry in previouslyStored.entries) {
+        final resolved = ExpenseCategory.values.firstWhere(
+          (e) => e.name == entry.key,
+          orElse: () => ExpenseCategory.other,
+        );
+        expect(
+          resolved,
+          entry.value,
+          reason: 'a stored "${entry.key}" now resolves to $resolved',
+        );
+      }
+    });
+  });
+}
+
+/// Perceptual-ish RGB distance on a 0-255 scale.
+///
+/// Good enough to catch two swatches that read as the same colour next to each
+/// other, which is the failure that matters here. Note that [Color.r] and
+/// friends are normalised 0-1 doubles in current Flutter, so they have to be
+/// scaled back up or every distance rounds to zero and the check passes
+/// vacuously.
+double _colourDistance(Color a, Color b) {
+  final dr = (a.r - b.r) * 255;
+  final dg = (a.g - b.g) * 255;
+  final db = (a.b - b.b) * 255;
+  // Weighted to approximate perceived difference: the eye is most sensitive to
+  // green and least to blue.
+  return (dr * dr * 0.30 + dg * dg * 0.59 + db * db * 0.11);
 }
