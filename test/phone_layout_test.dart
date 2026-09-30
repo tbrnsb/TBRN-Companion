@@ -10,6 +10,7 @@ import 'package:flutter_application_1/providers/journey_provider.dart';
 import 'package:flutter_application_1/providers/location_provider.dart';
 import 'package:flutter_application_1/providers/settings_provider.dart';
 import 'package:flutter_application_1/providers/transaction_provider.dart';
+import 'package:flutter_application_1/screens/home_screen.dart';
 import 'package:flutter_application_1/screens/journeys/journey_detail_screen.dart';
 import 'package:flutter_application_1/screens/transactions/add_expense_sheet.dart';
 import 'package:flutter_application_1/services/storage_service.dart';
@@ -344,4 +345,69 @@ void main() {
       );
     });
   });
+
+  group('bottom navigation labels', () {
+    testWidgets('every tab label renders whole at 360dp', (tester) async {
+      usePhoneLayout(
+        tester,
+        TestViewports.phoneSmall,
+        because: 'a clipped dock label is unreadable and no test would notice',
+      );
+
+      await tester.pumpWidget(_navApp());
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final bar = tester.getRect(find.byType(NavigationBar));
+      final count = tester
+          .widget<NavigationBar>(find.byType(NavigationBar))
+          .destinations
+          .length;
+      // NavigationBar divides its width evenly, so this is the slot a label
+      // has to render inside.
+      final slot = bar.width / count;
+
+      for (final label in [
+        'Pack',
+        'Journey',
+        'Transactions',
+        'Places',
+        'Settings',
+      ]) {
+        final finder = find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text(label),
+        );
+        expect(finder, findsOneWidget, reason: 'no "$label" tab');
+
+        // The laid-out Text is what gets ellipsised, so its own width is the
+        // thing to compare, not the natural width of the string.
+        final text = tester.getRect(finder);
+        expect(
+          text.width,
+          lessThanOrEqualTo(slot + 0.5),
+          reason:
+              '"$label" is clipped: rendered ${text.width.toStringAsFixed(1)} '
+              'in a ${slot.toStringAsFixed(1)} slot (bar ${bar.width})',
+        );
+      }
+    });
+  });
+}
+
+Widget _navApp() {
+  return MultiProvider(
+    providers: [
+      ChangeNotifierProvider(create: (_) => ChecklistProvider()),
+      ChangeNotifierProvider(create: (_) => JourneyProvider()),
+      ChangeNotifierProvider(create: (_) => LocationProvider()),
+      ChangeNotifierProvider(create: (_) => TransactionProvider()),
+      ChangeNotifierProvider(create: (_) => SettingsProvider()),
+    ],
+    child: MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      home: const HomeScreen(),
+    ),
+  );
 }
