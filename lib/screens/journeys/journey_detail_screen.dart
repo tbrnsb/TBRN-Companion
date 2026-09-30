@@ -12,6 +12,7 @@ import 'package:flutter_application_1/screens/checklists/add_checklist_screen.da
 import 'package:flutter_application_1/screens/checklists/checklist_detail_screen.dart';
 import 'package:flutter_application_1/screens/journeys/trip_shared_section.dart';
 import 'package:flutter_application_1/screens/transactions/add_transaction_sheet.dart';
+import 'package:flutter_application_1/services/packing_suggestions.dart';
 import 'package:flutter_application_1/screens/transactions/expense_detail_screen.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:flutter_application_1/utils/format.dart';
@@ -204,12 +205,17 @@ class JourneyDetailScreen extends StatelessWidget {
                   ),
           ),
           const SizedBox(height: AppSpacing.xs),
-          if (checklists.isEmpty)
+          if (checklists.isEmpty) ...[
             _InlineHint(
               icon: Icons.checklist_rounded,
               text: 'No packing list for this journey yet.',
-            )
-          else
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            // The one-tap join between the trip's own item list and the Pack
+            // tab. Without it a trip carried items nothing could tick off, and
+            // the Pack tab carried checklists nothing linked to the trip.
+            _PackForTripButton(journey: current),
+          ] else
             ...checklists.map((c) => _ChecklistRow(checklist: c)),
 
           // Only renders once the trip has at least one person on it, so the
@@ -370,6 +376,74 @@ class _JourneyHeader extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// "Pack for this trip" — one tap, and the trip has a real checklist.
+///
+/// Builds it from two sources: whatever the trip already carried in its own
+/// `items` list, plus what the trip itself implies (where, when, how long).
+/// Both are the user's own data; nothing is fetched.
+///
+/// Offers to open the result, because creating a list the user then has to go
+/// hunting for is the same as not creating it.
+class _PackForTripButton extends StatelessWidget {
+  const _PackForTripButton({required this.journey});
+
+  final Journey journey;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final itemCount = journey.items.where((i) => i.trim().isNotEmpty).length;
+    final suggestionCount = PackingSuggestions.forTrip(
+      destination: journey.destination,
+      startTime: journey.startTime,
+      endTime: journey.endTime,
+    ).length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            key: const ValueKey('pack-for-this-trip'),
+            onPressed: () async {
+              final provider = context.read<ChecklistProvider>();
+              final messenger = ScaffoldMessenger.of(context);
+              final created = await provider.packForJourney(journey);
+              if (!context.mounted) return;
+              if (created == null) {
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Already packed for this trip')),
+                );
+                return;
+              }
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ChecklistDetailScreen(checklist: created),
+                ),
+              );
+            },
+            icon: const Icon(Icons.backpack_rounded, size: 18),
+            label: const Text('Pack for this trip'),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xxs),
+        Text(
+          itemCount > 0
+              ? 'Starts with the $itemCount ${itemCount == 1 ? 'item' : 'items'} '
+                    'you already listed, plus $suggestionCount more for '
+                    '${journey.destination.isEmpty ? 'this trip' : journey.destination}.'
+              : 'Adds $suggestionCount things worth taking for '
+                    '${journey.destination.isEmpty ? 'this trip' : journey.destination}.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
     );
   }
 }

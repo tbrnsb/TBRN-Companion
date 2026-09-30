@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_application_1/models/index.dart';
 import 'package:flutter_application_1/providers/checklist_provider.dart';
+import 'package:flutter_application_1/services/packing_suggestions.dart';
 import 'package:flutter_application_1/providers/journey_provider.dart';
 import 'package:flutter_application_1/providers/location_provider.dart';
 import 'package:flutter_application_1/screens/checklists/checklists_screen.dart';
@@ -120,6 +121,15 @@ void main() {
   });
 
   group('trip suggestions are actionable', () {
+    // The suggestions are now read from the trip itself rather than matched
+    // against its name, so these tests take them from the engine directly and
+    // assert on what the screen shows.
+    List<String> suggestionsFor(String destination) {
+      return PackingSuggestions.forTrip(destination: destination)
+          .map((s) => s.name)
+          .toList();
+    }
+
     testWidgets('suggestions are buttons, not inert chips', (tester) async {
       usePhoneLayout(tester, TestViewports.phonePortrait);
 
@@ -127,34 +137,38 @@ void main() {
       await tester.pumpWidget(_app(provider));
       await settleUi(tester);
 
-      // The card is on screen, which is what makes the chips reachable.
-      expect(find.text('Trip suggestions'), findsOneWidget);
-      expect(find.text('Weekend pack'), findsWidgets);
-
-      // The recommendations for a trip whose destination contains neither
-      // business, weekend, camp nor flight fall back to the essentials set.
-      final suggestions = provider.getRecommendedItemsForTrip(
-        tripType: 'Pokhara',
-        notes: '',
-        destination: 'Pokhara',
+      // The card names the trip it is thinking about.
+      expect(find.text('For Pokhara'), findsOneWidget);
+      expect(
+        find.text('Based on where you are going and when.'),
+        findsOneWidget,
       );
+
+      final suggestions = suggestionsFor('Pokhara');
+      expect(suggestions, isNotEmpty);
       for (final item in suggestions) {
         expect(
-          find.widgetWithText(ActionChip, item),
+          find.byKey(ValueKey('add-suggestion-$item')),
           findsOneWidget,
-          reason: '"$item" is shown as a plain Chip, so it cannot be tapped',
+          reason: '"$item" has no add button, so it cannot be acted on',
         );
       }
+    });
 
-      // A plain Chip has no onPressed and no tooltip; an ActionChip has both.
-      expect(
-        tester
-            .widget<ActionChip>(
-              find.widgetWithText(ActionChip, suggestions.first),
-            )
-            .tooltip,
-        isNotNull,
-      );
+    testWidgets('a suggestion says why it is on the list', (tester) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+
+      final provider = await _seed(tester);
+      await tester.pumpWidget(_app(provider));
+      await settleUi(tester);
+
+      // A bare list of guesses is what this replaced. The reason is the
+      // difference between a suggestion and an instruction.
+      for (final suggestion in PackingSuggestions.forTrip(
+        destination: 'Pokhara',
+      )) {
+        expect(find.text(suggestion.reason), findsOneWidget);
+      }
     });
 
     testWidgets('tapping a suggestion asks which checklist to add it to', (
@@ -166,17 +180,9 @@ void main() {
       await tester.pumpWidget(_app(provider));
       await settleUi(tester);
 
-      final suggestion = provider
-          .getRecommendedItemsForTrip(
-            tripType: 'Pokhara',
-            notes: '',
-            destination: 'Pokhara',
-          )
-          .first;
+      final suggestion = suggestionsFor('Pokhara').first;
 
-      expect(find.text('Tap one to add it to a checklist.'), findsOneWidget);
-
-      await tester.tap(find.widgetWithText(ActionChip, suggestion));
+      await tester.tap(find.byKey(ValueKey('add-suggestion-$suggestion')));
       await settleUi(tester);
 
       // The picker offers the real checklists, so the suggestion has somewhere
@@ -200,15 +206,9 @@ void main() {
 
       expect(provider.checklists, hasLength(1));
 
-      final suggestion = provider
-          .getRecommendedItemsForTrip(
-            tripType: 'Pokhara',
-            notes: '',
-            destination: 'Pokhara',
-          )
-          .first;
+      final suggestion = suggestionsFor('Pokhara').first;
 
-      await tester.tap(find.widgetWithText(ActionChip, suggestion));
+      await tester.tap(find.byKey(ValueKey('add-suggestion-$suggestion')));
       await settleUi(tester);
 
       expect(find.text('Add to which checklist?'), findsNothing);
