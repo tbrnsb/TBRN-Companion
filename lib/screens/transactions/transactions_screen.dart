@@ -10,6 +10,7 @@ import 'package:flutter_application_1/providers/transaction_provider.dart';
 import 'package:flutter_application_1/screens/transactions/add_transaction_sheet.dart';
 import 'package:flutter_application_1/screens/transactions/expense_detail_screen.dart';
 import 'package:flutter_application_1/screens/transactions/income_detail_screen.dart';
+import 'package:flutter_application_1/screens/transactions/transaction_search_sheet.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:flutter_application_1/utils/format.dart';
 import 'package:flutter_application_1/widgets/widgets.dart';
@@ -37,7 +38,14 @@ class TransactionsScreen extends StatelessWidget {
           }
 
           final currentMonth = provider.currentMonth ?? DateTime.now();
-          final transactions = provider.filteredTransactions;
+          // Which list is on screen: the search result set while a search is
+          // active, the ordinary filtered month otherwise. One variable, so the
+          // empty state, the section header and the tiles cannot each pick a
+          // different set and disagree about how many rows there are.
+          final isSearching = provider.hasActiveSearch;
+          final transactions = isSearching
+              ? provider.searchResults
+              : provider.filteredTransactions;
           final totalIncome = provider.totalIncome;
           final totalExpenses = provider.totalExpenses;
           final balance = provider.balance;
@@ -89,6 +97,21 @@ class TransactionsScreen extends StatelessWidget {
                   filter: provider.filter,
                   onFilterChanged: (filter) => provider.filter = filter,
                 ),
+                const SizedBox(height: AppSpacing.sm),
+                TransactionSearchBar(
+                  query: provider.search,
+                  onQueryChanged: (query) => provider.search = query,
+                  onOpenFilters: () => _openSearchFilters(context, provider),
+                ),
+                // Only while something is narrowed: an idle "0 matches · Clear"
+                // line above an unfiltered month is noise.
+                if (isSearching)
+                  ActiveSearchSummary(
+                    query: provider.search,
+                    resultCount: transactions.length,
+                    currencySymbol: currencySymbol,
+                    onClear: provider.clearSearch,
+                  ),
 
                 // Anything still owed on a shared trip. Renders nothing when
                 // there is none, which is the case on most days.
@@ -163,29 +186,53 @@ class TransactionsScreen extends StatelessWidget {
                 ],
                 if (transactions.isEmpty) ...[
                   const SizedBox(height: AppSpacing.lg),
-                  EmptyState(
-                    icon: Icons.receipt_long_rounded,
-                    title: provider.filter == TransactionFilter.income
-                        ? 'No income recorded'
-                        : 'No transactions yet',
-                    message: provider.filter == TransactionFilter.income
-                        ? 'Add income to see it here.'
-                        : 'Log your first expense for ${DateFormat.yMMMM().format(currentMonth)} — it takes a few seconds.',
-                    // The action always opens the Expense/Income chooser now,
-                    // so the label must not promise a single type.
-                    actionLabel: 'Add transaction',
-                    onAction: () => AddTransactionSheet.show(context),
-                  ),
+                  if (isSearching)
+                    // A search with no hits is not the same thing as an empty
+                    // month, and the two must not share a message: "log your
+                    // first expense" when the month already has thirty is
+                    // simply wrong, and it is the one place a user looks after
+                    // deciding they HAVE found everything.
+                    //
+                    // No add affordance here, deliberately. The FAB is already on
+                    // screen, and the FAB is the app's one rule for adding —
+                    // see the single-affordance decision in the test below.
+                    EmptyState(
+                      icon: Icons.search_off_rounded,
+                      title: 'Nothing matches',
+                      message:
+                          'No transaction in '
+                          '${DateFormat.yMMMM().format(currentMonth)} '
+                          'matches what you searched for.',
+                    )
+                  else
+                    EmptyState(
+                      icon: Icons.receipt_long_rounded,
+                      title: provider.filter == TransactionFilter.income
+                          ? 'No income recorded'
+                          : 'No transactions yet',
+                      message: provider.filter == TransactionFilter.income
+                          ? 'Add income to see it here.'
+                          : 'Log your first expense for ${DateFormat.yMMMM().format(currentMonth)} — it takes a few seconds.',
+                      // The action always opens the Expense/Income chooser now,
+                      // so the label must not promise a single type.
+                      actionLabel: 'Add transaction',
+                      onAction: () => AddTransactionSheet.show(context),
+                    ),
                 ] else ...[
                   const SizedBox(height: AppSpacing.md),
                   SectionHeader(
-                    'Recent ${provider.filter == TransactionFilter.income
-                        ? 'income'
-                        : provider.filter == TransactionFilter.expenses
-                        ? 'expenses'
-                        : 'transactions'}',
+                    isSearching
+                        ? 'Search results'
+                        : 'Recent ${provider.filter == TransactionFilter.income
+                              ? 'income'
+                              : provider.filter == TransactionFilter.expenses
+                              ? 'expenses'
+                              : 'transactions'}',
                     trailing: Text(
-                      '${transactions.length} this month',
+                      isSearching
+                          ? '${transactions.length} match'
+                                '${transactions.length == 1 ? '' : 'es'}'
+                          : '${transactions.length} this month',
                       style: Theme.of(context).textTheme.labelMedium?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -233,6 +280,20 @@ class TransactionsScreen extends StatelessWidget {
         amount: entry.value,
       );
     }).toList();
+  }
+
+  /// Opens the amount/category filter sheet and applies what comes back.
+  ///
+  /// A cancel resolves to null and is left alone. It is not treated as "clear
+  /// the filters" — that is the classic dismissed-sheet bug, where the two
+  /// intents share one value and the sheet closing quietly changes the view.
+  Future<void> _openSearchFilters(
+    BuildContext context,
+    TransactionProvider provider,
+  ) async {
+    final updated = await TransactionSearchSheet.show(context, provider.search);
+    if (updated == null) return;
+    provider.search = updated;
   }
 
   /// Opens the day picker for the month on screen.
