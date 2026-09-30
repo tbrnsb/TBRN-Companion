@@ -8,6 +8,7 @@ import 'package:flutter_application_1/models/index.dart';
 import 'package:flutter_application_1/providers/journey_provider.dart';
 import 'package:flutter_application_1/providers/location_provider.dart';
 import 'package:flutter_application_1/screens/journeys/journey_detail_screen.dart';
+import 'package:flutter_application_1/screens/journeys/journey_detail_sheets.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:flutter_application_1/widgets/widgets.dart';
 
@@ -409,40 +410,54 @@ class _TimelineCard extends StatelessWidget {
                     dayMap[DateTime(date.year, date.month, date.day)] ?? 0;
                 final isToday = DateUtils.isSameDay(date, DateTime.now());
 
-                return Container(
-                  decoration: BoxDecoration(
-                    color: isToday
-                        ? colorScheme.primaryContainer
-                        : colorScheme.surfaceContainerHighest,
+                return Semantics(
+                  button: true,
+                  label: count > 0
+                      ? '$dayNumber, $count trip${count == 1 ? '' : 's'}. '
+                            'Tap to see what happened.'
+                      : '$dayNumber. Nothing recorded.',
+                  child: InkWell(
                     borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Text(
-                        '$dayNumber',
-                        style: TextStyle(
-                          fontWeight: isToday
-                              ? FontWeight.bold
-                              : FontWeight.normal,
-                          color: isToday
-                              ? colorScheme.onPrimaryContainer
-                              : null,
-                        ),
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      DayActivitySheet.show(context, date);
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: isToday
+                            ? colorScheme.primaryContainer
+                            : colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      if (count > 0)
-                        Positioned(
-                          bottom: 4,
-                          child: Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              color: colorScheme.primary,
-                              borderRadius: BorderRadius.circular(99),
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Text(
+                            '$dayNumber',
+                            style: TextStyle(
+                              fontWeight: isToday
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              color: isToday
+                                  ? colorScheme.onPrimaryContainer
+                                  : null,
                             ),
                           ),
-                        ),
-                    ],
+                          if (count > 0)
+                            Positioned(
+                              bottom: 4,
+                              child: Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: colorScheme.primary,
+                                  borderRadius: BorderRadius.circular(99),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
                 );
               },
@@ -461,26 +476,32 @@ class _SummaryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Each stat carries the sheet it opens, so the number on screen and the
+    // detail behind it cannot drift apart.
     final stats = [
       (
         label: 'Trips',
         value: provider.totalJourneys.toString(),
         icon: Icons.route_rounded,
+        stat: JourneyStat.trips,
       ),
       (
         label: 'Completed',
         value: provider.completedJourneys.toString(),
         icon: Icons.check_circle_rounded,
+        stat: JourneyStat.completed,
       ),
       (
         label: 'Avg. time',
         value: _formatMinutes(provider.averageJourneyMinutes),
         icon: Icons.timer_rounded,
+        stat: JourneyStat.averageTime,
       ),
       (
         label: 'Packed',
         value: provider.totalPackedItems.toString(),
         icon: Icons.backpack_rounded,
+        stat: JourneyStat.packed,
       ),
     ];
 
@@ -507,9 +528,24 @@ class _SummaryRow extends StatelessWidget {
 
   Widget _tile(
     BuildContext context,
-    ({String label, String value, IconData icon}) stat,
+    ({String label, String value, IconData icon, JourneyStat stat}) stat,
   ) {
-    return AppStatTile(icon: stat.icon, label: stat.label, value: stat.value);
+    return Semantics(
+      button: true,
+      label: '${stat.label}: ${stat.value}. Tap for details.',
+      child: InkWell(
+        borderRadius: AppRadii.smallRadius,
+        onTap: () {
+          HapticFeedback.lightImpact();
+          JourneyStatSheet.show(context, stat.stat);
+        },
+        child: AppStatTile(
+          icon: stat.icon,
+          label: stat.label,
+          value: stat.value,
+        ),
+      ),
+    );
   }
 
   String _formatMinutes(double minutes) {

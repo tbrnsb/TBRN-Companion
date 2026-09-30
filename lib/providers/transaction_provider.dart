@@ -523,6 +523,12 @@ class TransactionProvider extends ChangeNotifier {
     return getSpendingByCategory() / daysInMonth;
   }
 
+  /// Transactions between [startDate] and [endDate], both inclusive.
+  ///
+  /// The start is compared with `isBefore` rather than `isAfter` so that a
+  /// one-day range works. `isAfter` is strict, so a transaction recorded at
+  /// exactly midnight on the boundary was excluded and `getTransactionsInDateRange(d, d)`
+  /// returned nothing at all — a silent empty result rather than an error.
   List<Transaction> getTransactionsInDateRange(
     DateTime startDate,
     DateTime endDate,
@@ -530,7 +536,7 @@ class TransactionProvider extends ChangeNotifier {
     return _transactions
         .where(
           (t) =>
-              t.date.isAfter(startDate) &&
+              !t.date.isBefore(startDate) &&
               t.date.isBefore(endDate.add(const Duration(days: 1))),
         )
         .toList();
