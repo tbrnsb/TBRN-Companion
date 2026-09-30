@@ -5,9 +5,11 @@ so a fresh agent can continue without rediscovering anything.
 
 - Repo: `/home/sulav/Documents/flutter_application_1` (git, branch `master`)
 - Remote: `https://github.com/tbrnsb/Daily-companion.git` (private)
-- Last commit: `99ce59d` "chore: stop tracking the session backup bundle"
-- Backup of that same state: `backup/tbrn-all-commits.bundle` (on disk, ignored
-  by git; restore with `git clone backup/tbrn-all-commits.bundle restored`)
+- Last verified gate: format clean, `flutter analyze` clean, **390 tests
+  passing**, debug APK built.
+- Backup of the pre-session state: `backup/tbrn-all-commits.bundle` (on disk,
+  ignored by git; restore with `git clone backup/tbrn-all-commits.bundle
+  restored`)
 
 ### Branch timeline
 
@@ -17,7 +19,7 @@ looked at that point. Switch with `git checkout <branch>`.
 
 | Branch | Commit | State |
 |---|---|---|
-| `master` | `99ce59d` | Latest — everything, plus the graph work |
+| `master` | `1a35328` | Latest — everything, plus shared trip expenses |
 | `08-graphs-wip` | `818456f` | Graph work landed. **Suite hangs** (section 0) |
 | `07-light-mode` | `f4cb447` | Light-mode surface ladder. Last fully green state |
 | `06-trip-packing-list` | `b8bb8a9` | Packing list replaces the comma-separated field |
@@ -36,14 +38,17 @@ known-good fallback.
 
 ## 0. State: green. Nothing is broken.
 
-**The suite passes. 239 tests, about 27 seconds.** Run the gate:
+**The suite passes. 390 tests.** Run the gate:
 
 ```bash
 tool/verify.sh
 ```
 
 If that ever looks like it hangs, the cause is almost certainly the temp
-directory, not the code — see the trap below.
+directory, not the code — see the trap below. `tool/verify.sh` now sweeps the
+Flutter tool's leaked `/tmp/.9adb*.so` files automatically, so the common cause
+is handled; it also recognises "Disk quota exceeded" from Gradle and reports it
+as a full disk rather than a broken build.
 
 ### The trap that cost the most time
 
@@ -114,7 +119,8 @@ three.
 Use the tokens in `lib/theme/app_theme.dart` — `AppSpacing`, `AppRadii`,
 `AppColors`, `AppMotion`, `AppSurface` with `AppSurfaceTier.flat/raised/accent`.
 No raw magic numbers, no hardcoded colours in screens. Nav order is fixed:
-**Pack, Journey, Transactions, Places, Settings**.
+**Pack, Journey, Transactions, Places**. Settings is no longer a destination —
+it is `AppGearButton` in each screen's app bar, pushed as a route.
 
 `test/app_icon_test.dart` and `test/design_system_test.dart` enforce all of this.
 
@@ -137,24 +143,45 @@ category colour, run that test and fix the *colour* — never the threshold.
 | `b8bb8a9` | **Pack for a trip as a list.** "What are you taking? (comma separated)" → `_PackingListEditor`, a real add/remove list (commas still split on add, case-insensitive dedupe). Also fixed a **pre-existing** bug found on the way: the Journeys month navigator overflowed by 29px at 360dp (two 48dp `IconButton`s flanking a month name). The Journeys screen had never been rendered at 360dp in any test, which is why it survived — `test/journey_items_test.dart` covers it now. |
 | `f4cb447` | **Light mode got a real surface ladder.** The cause was not the palette: the `ColorScheme` container roles were never set, so `surfaceContainerLow`…`surfaceContainerHigh` *all* resolved to `#f8f1e5`, the page colour. Those roles are what `Card`, `ListTile`, menus, dialogs, bottom sheets, filled text fields, chips and snack bars paint themselves with — so there was no elevation anywhere and every card was invisible against the background. New warm ladder in `AppColors`, raised cards moved off literal `Colors.white`. Dark had the identical defect and got the same treatment, extending its two existing tones. |
 
-Last verified gate: `flutter analyze` clean, **238 tests passing**, debug APK
-built.
+Last verified gate at the time of writing: `flutter analyze` clean, **238 tests
+passing**, debug APK built.
 
 ---
 
-## 3. In flight — uncommitted, NOT green
+## 3. Landed since the last handoff
 
-Three modified files, also copied to `backup/` and captured as
-`backup/uncommitted-charts.patch`:
+The graph work that used to sit uncommitted here is now on `master`, and the
+suite hangs no more — it was never a code bug (section 0). The gate is green at
+**390 tests**. `tool/verify.sh` now also sweeps the Flutter tool's leftover temp
+files out of the shared `/tmp` tmpfs, which is what actually made the build fail
+with "Disk quota exceeded".
 
-- `lib/widgets/spend_trend_cards.dart`
-- `lib/screens/transactions/transactions_screen.dart`
-- `analysis_options.yaml` (excludes `backup/**`)
+Two features landed after that, each on its own branch and merged to `master`
+with an `archive/<date>-before-<name>` snapshot taken first:
 
-This is the "enhance the graphs" work. **`flutter analyze` is clean but the full
-test suite hangs** — see section 0. Do not build on it until that is resolved.
+| Branch | What |
+|---|---|
+| `feature/settings-gear` | Settings moved from a fifth dock slot to a gear in the app bar. One `AppGearButton` widget, four usages. |
+| `feature/shared-trip-expenses` | Shared trip expenses and settlement — the big one, Stages 1–8 below. |
+| `fix/shared-trip-review` | Four defects found reviewing the above: negative totals in `equalShares`, two screens quoting different totals for one trip, an escaping `FormatException` in `TripSnapshot.decode`, and an unused parameter. |
 
-What changed:
+### Shared trip expenses, in one paragraph
+
+A trip can have participants; an expense records who paid; the app reduces the
+whole trip to the **fewest** payments that clear it. Pure integer-paise
+arithmetic in `lib/models/trip_settlement.dart` with no Flutter import, greedy
+largest-to-largest, sorted deterministically so ticks survive a recompute.
+`ticked transfer writes NO transaction` — a reimbursement is not income.
+Export is one JSON file through share_plus; import merges **by ID, add only,
+idempotent**, always behind a preview that also requires "which one are you?".
+Read `lib/services/trip_importer.dart` before touching import — its three rules
+are the whole safety story, and `removedIds` tombstones exist specifically so an
+add-only merge cannot resurrect what the user deleted.
+
+What it deliberately does NOT do: no server, no accounts, no live sync, no QR
+codes, no per-expense splits, no "I owe them" as a separate direction.
+
+### What the graph work changed
 - `DailyTotalsChart`: horizontal gridlines, a `peak Rs X` caption so the bars
   have something to be read against, and a `highlightedDate` param — the
   filtered-to day is drawn wider and darker, wired from `provider.selectedDay`.
@@ -172,7 +199,7 @@ What changed:
 
 ---
 
-## 4. Still to do — only after section 0 is green
+## 4. Still to do
 
 1. **Flavour for the Pack, Journey and Places tabs.** The user's words: "still
    feels bland in pack, journey, places tabs … keep the UI design flow and make
@@ -196,6 +223,9 @@ What changed:
    - **Skip entirely: multiple wallets/accounts** (user's explicit instruction).
 4. **Final gate and report.** Format, analyze, full test, debug APK build. Then
    report under `IMPLEMENTED / VERIFIED / NOT VERIFIED / REMAINING ISSUES`.
+
+**Nothing has been looked at on a physical device.** The phone was not connected
+in any session so far. Never claim visual verification.
 
 **The device was never connected this session, so nothing has been visually
 confirmed on a phone.** Say so plainly — do not claim visual verification.
