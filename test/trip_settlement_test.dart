@@ -287,6 +287,71 @@ void main() {
     });
   });
 
+  group('hostile input', () {
+    test('a negative total still splits into shares that add up', () {
+      // Reachable: a hand-edited or malformed import file can carry a negative
+      // amount, and Dart's `~/` truncates towards zero, which would otherwise
+      // leave the shares short by one and every net off by the same amount.
+      final totals = [
+        _pi('a', 'A', -5000),
+        _pi('b', 'B', 3000),
+        _pi('c', 'C', 0),
+      ];
+      final settlement = settlementFor(totals);
+
+      expect(
+        settlement.balances.fold<int>(0, (sum, b) => sum + b.shareInPaise),
+        -2000,
+      );
+      expect(
+        settlement.balances.fold<int>(0, (sum, b) => sum + b.netInPaise),
+        0,
+      );
+      // The transfers still add up to exactly what is owed.
+      final owed = settlement.balances
+          .where((b) => b.isCreditor)
+          .fold<int>(0, (sum, b) => sum + b.netInPaise);
+      expect(settlement.outstandingInPaise, owed);
+    });
+
+    test('a huge total does not overflow anything', () {
+      // 999999999 rupees, the largest a four-digit minor-unit double survives
+      // without losing precision at all.
+      final settlement = settlementFor([
+        _pi('a', 'A', 99999999900),
+        _pi('b', 'B', 0),
+        _pi('c', 'C', 0),
+      ]);
+
+      expect(
+        settlement.balances.fold<int>(0, (sum, b) => sum + b.shareInPaise),
+        99999999900,
+      );
+      expect(
+        settlement.balances.fold<int>(0, (sum, b) => sum + b.netInPaise),
+        0,
+      );
+      expect(settlement.transfers, hasLength(2));
+    });
+
+    test('the two totals can be told apart', () {
+      // `total` is what is attributed to people; `tripTotal` adds money with no
+      // payer. The journey page quotes tripTotal, and the summary quotes the
+      // same number, so the two screens cannot disagree.
+      final settlement = settlementFor([
+        _pi('a', 'A', 10000),
+        _pi('b', 'B', 10000),
+      ], unattributedInPaise: 5000);
+
+      expect(settlement.total, 200);
+      expect(settlement.unattributed, 50);
+      expect(settlement.tripTotal, 250);
+      expect(settlement.hasUnattributed, isTrue);
+      // The unattributed money is NOT split: they still each owe 100.
+      expect(settlement.balances.every((b) => b.shareInPaise == 10000), isTrue);
+    });
+  });
+
   group('degenerate headcounts', () {
     test('n = 0 does not divide by zero', () {
       expect(settle(const []), isEmpty);

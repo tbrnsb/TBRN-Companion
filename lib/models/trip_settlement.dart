@@ -167,6 +167,7 @@ class TripSettlement {
     required this.transfers,
     required this.totalInPaise,
     required this.isShared,
+    this.unattributedInPaise = 0,
   });
 
   /// One entry per participant, in the input order.
@@ -175,8 +176,24 @@ class TripSettlement {
   /// The payments that settle the trip. Empty when nobody owes anything.
   final List<Transfer> transfers;
 
-  /// Everything the trip cost, in paise.
+  /// Money on the trip that is attributed to a named person, in paise.
+  ///
+  /// NOT the whole cost of the trip. An expense with no payer — saved before
+  /// "Paid by" existed, or whose payer is not on the roster — is real money the
+  /// group spent and belongs in [tripTotalInPaise], but it belongs to nobody, so
+  /// splitting it between people who never paid it would be a lie. It is
+  /// reported separately as [unattributedInPaise] and shown on screen.
   final int totalInPaise;
+
+  /// The trip's real cost: [totalInPaise] plus [unattributedInPaise].
+  ///
+  /// What the journey page's "Spent" tile shows. Two screens about the same trip
+  /// quoting two different totals is the exact bug this split exists to prevent,
+  /// so both numbers come from here and the difference is always explained.
+  int get tripTotalInPaise => totalInPaise + unattributedInPaise;
+
+  /// Trip money no participant is recorded as having paid, in paise.
+  final int unattributedInPaise;
 
   /// False when there is nobody to settle between.
   ///
@@ -185,7 +202,15 @@ class TripSettlement {
   /// the headcount would be a division by one dressed up as a calculation.
   final bool isShared;
 
+  /// Money attributed to people, in rupees.
   double get total => totalInPaise / 100;
+
+  /// The whole trip, in rupees.
+  double get tripTotal => tripTotalInPaise / 100;
+
+  double get unattributed => unattributedInPaise / 100;
+
+  bool get hasUnattributed => unattributedInPaise != 0;
 
   int get participantCount => balances.length;
 
@@ -222,12 +247,16 @@ double rupees(int value) => value / 100;
 /// Separate from [settle] because the summary screen shows both — "Sita owes
 /// Rs 1,633" and "2 payments settle everything" — and computing them in two
 /// places is how they come to disagree.
-TripSettlement settlementFor(List<ParticipantTotal> totals) {
+TripSettlement settlementFor(
+  List<ParticipantTotal> totals, {
+  int unattributedInPaise = 0,
+}) {
   return TripSettlement(
     balances: balancesFor(totals),
     transfers: settle(totals),
     totalInPaise: totals.fold<int>(0, (sum, t) => sum + t.amountPaidInPaise),
     isShared: isShared(totals),
+    unattributedInPaise: unattributedInPaise,
   );
 }
 
@@ -376,8 +405,19 @@ List<int> equalShares({
   final count = totals.length;
   if (count == 0) return const [];
 
-  final base = totalInPaise ~/ count;
-  final leftover = totalInPaise - base * count;
+  // Dart's `~/` truncates towards zero, so a NEGATIVE total would leave a
+  // negative leftover and the shares would not add up. A negative total is
+  // reachable: a hand-edited or malformed import file can carry a negative
+  // amount, and this function's job is to survive that rather than to trust the
+  // input. Borrowing one from the base turns the leftover back into a
+  // non-negative remainder.
+  var base = totalInPaise ~/ count;
+  var leftover = totalInPaise - base * count;
+  if (leftover < 0) {
+    base -= 1;
+    leftover += count;
+  }
+
   final shares = List<int>.filled(count, base);
 
   if (leftover == 0) return shares;
