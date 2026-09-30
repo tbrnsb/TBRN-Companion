@@ -1,0 +1,84 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-09-30T21:11:16.766Z",
+  "phase": "stage-series-06-to-10",
+  "phase_name": "TBRN feature series, stages 6-10",
+  "phase_dir": null,
+  "plan": 1,
+  "task": 6,
+  "total_tasks": 5,
+  "status": "paused",
+  "repo": "/home/sulav/Documents/flutter_application_1",
+  "branch": "master",
+  "head": "a299c91",
+  "completed_tasks": [
+    {"id": 0, "name": "Shared-trip discoverability", "status": "done", "commit": "468423e"},
+    {"id": "0b", "name": "Category colour contrast", "status": "done", "commit": "4d7a924"},
+    {"id": 1, "name": "Tab order", "status": "done", "commit": "5816318"},
+    {"id": 2, "name": "Pack unification", "status": "done", "commit": "b8090e8"},
+    {"id": 3, "name": "Demo data expansion", "status": "done", "commit": "e84df1c"},
+    {"id": 4, "name": "Chart pager", "status": "done", "commit": "d23d4be"},
+    {"id": 5, "name": "GitHub heatmap", "status": "done", "commit": "a299c91"}
+  ],
+  "remaining_tasks": [
+    {"id": 6, "name": "Search", "status": "not_started", "branch": "16-transaction-search"},
+    {"id": 7, "name": "Budgets", "status": "not_started", "branch": "17-budgets"},
+    {"id": 8, "name": "Trash", "status": "not_started", "branch": "18-transaction-trash"},
+    {"id": 9, "name": "CSV import", "status": "not_started", "branch": "19-csv-import"},
+    {"id": 10, "name": "Themes", "status": "not_started", "branch": "20-themes"}
+  ],
+  "test_baseline": {"start_of_session": 390, "current": 462, "gate": "tool/verify.sh exits 0"},
+  "blockers": [
+    {
+      "description": "The A001 phone has not enumerated over USB since Stage 0, so nothing in Stages 0-5 is visually verified on a device.",
+      "type": "technical",
+      "workaround": "Debug APK builds successfully. Do not claim visual verification; report NOT VERIFIED."
+    },
+    {
+      "description": "/tmp is a 3.6GB shared tmpfs that fills to ~80% with leaked Flutter temp files, failing the whole suite at load and Gradle with 'Disk quota exceeded'. No longer swept, at the user's instruction.",
+      "type": "technical",
+      "workaround": "rm -f /tmp/.9adb*.so; rm -rf /tmp/flutter_tools.* before long runs. tool/verify.sh warns under 512MB and reports a full disk rather than a broken build."
+    },
+    {
+      "description": "User decision pending on whether to restore the /tmp sweep in tool/verify.sh.",
+      "type": "human_action",
+      "workaround": "Currently warns instead of deleting."
+    },
+    {
+      "description": "User decision pending on whether to consolidate after Stage 6 rather than continuing to Stage 10.",
+      "type": "human_action",
+      "workaround": "None."
+    }
+  ],
+  "async_jobs": [],
+  "human_actions_pending": [
+    {
+      "action": "Reconnect the A001 phone over USB to verify Stages 0-5 visually",
+      "context": "It dropped off after `adb kill-server` during Stage 0's install and never re-enumerated.",
+      "blocking": false
+    },
+    {
+      "action": "Decide whether tool/verify.sh may delete Flutter's leaked /tmp files again",
+      "context": "Deletion was removed at the user's instruction; it has cost real time three times this session.",
+      "blocking": false
+    }
+  ],
+  "decisions": [
+    {"decision": "verify.sh stops deleting from /tmp, warning instead", "rationale": "User instruction; /tmp is shared with other tools. Flagged that this is insufficient for Gradle, which ignores TMPDIR.", "phase": "verification"},
+    {"decision": "Category colour fixes weighted to preserve hue and saturation, not raw RGB distance", "rationale": "Minimising RGB distance drives every colour to grey; a donut of grey slices is worse than low-contrast ones. A test fails the build if a category goes below 0.05 saturation.", "phase": "0b"},
+    {"decision": "Leftover paisa lands on the largest creditor", "rationale": "Per the user's spec. Every debtor stays at the floor share so none is shortchanged.", "phase": "4B (prior session)"},
+    {"decision": "Journey budgets and app-level category budgets are separate pools", "rationale": "User spec: a trip expense does not count against an app-level category budget.", "phase": "7"},
+    {"decision": "Budgets have no manual reset button", "rationale": "User spec: the period is the reset; a user-resettable budget becomes a suggestion.", "phase": "7"},
+    {"decision": "Spending heatmap ramps within primary by alpha, not from primaryContainer", "rationale": "primaryContainer measured 1.27:1 against the light page, so a lightly-spent day was invisible in light mode.", "phase": "5"}
+  ],
+  "blocking_constraints": [
+    {"name": "/tmp full tmpfs", "severity": "blocking", "detail": "3.6GB shared tmpfs fills to 80% with ~13MB leaked per test file. Fails every test file at load with no useful message, and Gradle with 'Disk quota exceeded'. Gradle ignores TMPDIR. Sweep with rm -f /tmp/.9adb*.so before long runs."},
+    {"name": "Hive deadlock in testWidgets", "severity": "blocking", "detail": "A Hive write started in a testWidgets body never completes and holds the box lock. Cannot tap a save button. Use tester.runAsync; cover persistence at the provider layer and UI in widgets, with a comment at each site."},
+    {"name": "Single-viewport testing hides layout bugs", "severity": "blocking", "detail": "Two 1px overflows in the month summary card survived because no test rendered the spend screen at 360dp. Test any changed tab UI at both 412x915 and 360x640."},
+    {"name": "Date-dependent assertions", "severity": "blocking", "detail": "A pre-existing test asserted the literal 'September' and broke at midnight on the 1st. One of mine asserted a season-dependent reason string. Derive expected text from the clock or the code under test."},
+    {"name": "design_system_test _colourDistance is squared", "severity": "advisory", "detail": "Returns weighted squared distance compared against 150, so the real threshold is ~12.25 in ordinary distance terms. Mis-reading this produced a false 'mathematically impossible' conclusion in Stage 0b."}
+  ],
+  "uncommitted_files": [],
+  "next_action": "git checkout -b 16-transaction-search master. Print the STAGE STATUS block with [>] 6. marked. Read lib/providers/transaction_provider.dart for TransactionFilter and the transactions vs filteredTransactions distinction, then implement search over description text, amount min/max, and a category multi-select composed with month navigation. Search filters in memory so it is widget-testable; any save is not, due to the Hive deadlock.",
+  "context_notes": "The user could not reproduce their Stage 6-10 prompts, so the full verbatim specs were written into .planning/.continue-here.md under <stage_specs> rather than retyped in chat — they now persist without having to remember or paste anything. The user reviews progress between stages and has asked for the STAGE STATUS block to be printed at the start of every stage and after every merge; that is a hard requirement. All five remaining stages are feature-sized and touch storage, providers, or the theme system."
+}
