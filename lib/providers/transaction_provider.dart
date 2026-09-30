@@ -15,6 +15,7 @@ class TransactionProvider extends ChangeNotifier {
   String? _error;
   DateTime? _currentMonth;
   TransactionFilter _filter = TransactionFilter.all;
+  DateTime? _selectedDay;
 
   List<Transaction> get transactions => _transactions;
   List<String> get recentCustomCategories => _recentCustomCategories;
@@ -88,21 +89,89 @@ class TransactionProvider extends ChangeNotifier {
   }
 
   List<Transaction> get filteredTransactions {
+    // A selected day narrows the view, so the balance, the breakdown charts and
+    // the transaction list all describe the same slice. Filtering only the list
+    // would leave the summary card describing the whole month next to a list of
+    // one day.
+    final view = _viewTransactions;
     switch (_filter) {
       case TransactionFilter.expenses:
-        return _transactions.where((t) => t.isExpense).toList();
+        return view.where((t) => t.isExpense).toList();
       case TransactionFilter.income:
-        return _transactions.where((t) => t.isIncome).toList();
+        return view.where((t) => t.isIncome).toList();
       case TransactionFilter.all:
-        return _transactions;
+        return view;
     }
   }
 
-  double get totalIncome => _transactions
+  /// The transactions the screen should show: the selected day if there is one,
+  /// otherwise the whole loaded month.
+  List<Transaction> get _viewTransactions {
+    final day = _selectedDay;
+    if (day == null) return _transactions;
+    return _transactions
+        .where(
+          (t) =>
+              t.date.year == day.year &&
+              t.date.month == day.month &&
+              t.date.day == day.day,
+        )
+        .toList();
+  }
+
+  /// The day the user narrowed the view to, or null for the whole month.
+  DateTime? get selectedDay => _selectedDay;
+
+  bool get isShowingSingleDay => _selectedDay != null;
+
+  /// Narrows the view to one day, or back to the whole month with null.
+  ///
+  /// A day outside the loaded month is ignored rather than silently emptying
+  /// the screen, which is what would otherwise happen if the caller passed one.
+  void setSelectedDay(DateTime? day) {
+    if (day == null) {
+      if (_selectedDay == null) return;
+      _selectedDay = null;
+      notifyListeners();
+      return;
+    }
+
+    final loaded = _currentMonth;
+    if (loaded != null &&
+        (day.year != loaded.year || day.month != loaded.month)) {
+      return;
+    }
+    final current = _selectedDay;
+    if (current != null &&
+        current.year == day.year &&
+        current.month == day.month &&
+        current.day == day.day) {
+      return;
+    }
+
+    _selectedDay = DateTime(day.year, day.month, day.day);
+    notifyListeners();
+  }
+
+  /// Every day in the loaded month that has at least one transaction, keyed by
+  /// date. The day picker uses this to mark which days are worth tapping
+  /// instead of offering 30 equally plausible empty cells.
+  Set<DateTime> get daysWithTransactions => _transactions
+      .map((t) => DateTime(t.date.year, t.date.month, t.date.day))
+      .toSet();
+
+  /// Money in and out for the current view.
+  ///
+  /// Follows a selected day, because the user asked to see one day and
+  /// everything on screen should describe it. Deliberately does *not* follow
+  /// [filter]: the All/Expenses/Income chips narrow the list below this, while
+  /// this is a summary of the period. Making the balance change every time a
+  /// filter is tapped reads as a fault rather than a mode.
+  double get totalIncome => _viewTransactions
       .where((t) => t.isIncome)
       .fold(0.0, (sum, t) => sum + t.amount);
 
-  double get totalExpenses => _transactions
+  double get totalExpenses => _viewTransactions
       .where((t) => t.isExpense)
       .fold(0.0, (sum, t) => sum + t.amount);
 
@@ -196,6 +265,9 @@ class TransactionProvider extends ChangeNotifier {
         month,
       );
       _currentMonth = DateTime(year, month);
+      // A day belongs to a month. Moving months has to drop the selection, or
+      // the view stays narrowed to a day that is not loaded.
+      _selectedDay = null;
     } catch (e) {
       _error = 'Failed to load transactions: $e';
     } finally {
@@ -328,7 +400,7 @@ class TransactionProvider extends ChangeNotifier {
   }
 
   double getSpendingByCategory() {
-    return _transactions
+    return _viewTransactions
         .where((t) => t.isExpense)
         .fold(0.0, (sum, t) => sum + t.amount);
   }
@@ -369,7 +441,7 @@ class TransactionProvider extends ChangeNotifier {
   List<CategorySlice> getSpendingBreakdownSlices() {
     final slices = <String, CategorySlice>{};
 
-    for (final t in _transactions.whereType<Expense>()) {
+    for (final t in _viewTransactions.whereType<Expense>()) {
       if (!t.amount.isFinite || t.amount <= 0) continue;
       // `metaFor` gives every custom name its own `custom:<name>` id, so
       // distinct names stay distinct slices.
@@ -392,7 +464,7 @@ class TransactionProvider extends ChangeNotifier {
   List<MapEntry<String, double>> getIncomeBreakdown() {
     Map<String, double> income = {};
 
-    for (var t in _transactions.whereType<Income>()) {
+    for (var t in _viewTransactions.whereType<Income>()) {
       income[t.category] = (income[t.category] ?? 0) + t.amount;
     }
 
@@ -401,10 +473,17 @@ class TransactionProvider extends ChangeNotifier {
     return entries;
   }
 
+  /// Spending per day across the current view.
+  ///
+  /// For a whole month that is the month's spending over its length. For a
+  /// selected day it is simply that day's spending, because dividing one day's
+  /// spend by 30 would be meaningless.
   double getAverageDailySpending() {
-    if (_currentMonth == null) return 0;
+    final day = _selectedDay;
+    if (day != null) return getSpendingByCategory();
 
-    int daysInMonth = DateTime(
+    if (_currentMonth == null) return 0;
+    final daysInMonth = DateTime(
       _currentMonth!.year,
       _currentMonth!.month + 1,
       0,
