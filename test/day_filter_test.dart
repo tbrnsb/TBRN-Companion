@@ -254,4 +254,46 @@ void main() {
       expect(provider.dailyTotals, isEmpty);
     });
   });
+
+  group('date ranges', () {
+    test('a one-day range includes that day', () async {
+      final provider = TransactionProvider();
+      await provider.loadTransactionsForMonth(2024, 3);
+      await provider.addTransaction(
+        _expense(100, ExpenseCategory.food, date: DateTime(2024, 3, 12, 9)),
+      );
+      await provider.addTransaction(
+        _expense(50, ExpenseCategory.food, date: DateTime(2024, 3, 13, 9)),
+      );
+
+      // The boundary used to be compared with isAfter, which is strict, so a
+      // one-day range silently returned nothing.
+      final onThe12th = provider.getTransactionsInDateRange(
+        DateTime(2024, 3, 12),
+        DateTime(2024, 3, 12),
+      );
+      expect(onThe12th, hasLength(1));
+      expect(onThe12th.single.amount, 100);
+    });
+
+    test('a range includes both boundary days', () async {
+      final provider = TransactionProvider();
+      await provider.loadTransactionsForMonth(2024, 3);
+      await provider.addTransaction(
+        _expense(100, ExpenseCategory.food, date: DateTime(2024, 3, 12, 9)),
+      );
+      await provider.addTransaction(
+        _expense(50, ExpenseCategory.food, date: DateTime(2024, 3, 14, 9)),
+      );
+      await provider.addTransaction(
+        _expense(25, ExpenseCategory.food, date: DateTime(2024, 3, 15, 9)),
+      );
+
+      final range = provider.getTransactionsInDateRange(
+        DateTime(2024, 3, 12),
+        DateTime(2024, 3, 14),
+      );
+      expect(range.map((t) => t.amount), [100, 50]);
+    });
+  });
 }

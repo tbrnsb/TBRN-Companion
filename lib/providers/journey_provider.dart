@@ -47,6 +47,30 @@ class JourneyProvider extends ChangeNotifier {
         .toList();
   }
 
+  /// Journeys whose start date falls on [day].
+  List<Journey> journeysStartingOn(DateTime day) {
+    return _journeys.where((j) => _isSameDay(j.startTime, day)).toList();
+  }
+
+  /// Journeys that finished on [day].
+  ///
+  /// An open-ended journey has no end date, so it is not "finishing" on any
+  /// particular day and is excluded.
+  List<Journey> journeysEndingOn(DateTime day) {
+    return _journeys
+        .where((j) => j.endTime != null && _isSameDay(j.endTime!, day))
+        .toList();
+  }
+
+  /// Whether anything at all is recorded on [day].
+  bool hasActivityOn(DateTime day) {
+    return journeysStartingOn(day).isNotEmpty ||
+        journeysEndingOn(day).isNotEmpty;
+  }
+
+  static bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
   Map<String, dynamic> getMonthlySummary(DateTime month) {
     final journeys = getJourneysForMonth(month);
     final totalMinutes = journeys.fold<int>(
