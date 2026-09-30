@@ -396,12 +396,11 @@ class TransactionProvider extends ChangeNotifier {
 
     final journey = await _storageService.getJourney(journeyId);
     if (journey == null || !journey.isShared) return;
-    if (journey.removedIds.contains(transaction.id)) return;
 
     try {
-      await _storageService.updateJourney(
-        journey.copyWith(removedIds: [...journey.removedIds, transaction.id]),
-      );
+      // withRemoved is the only way to add a tombstone, so the size cap lives
+      // with the data rather than at each call site.
+      await _storageService.updateJourney(journey.withRemoved(transaction.id));
     } catch (_) {
       // The deletion already succeeded. Failing here would report a problem the
       // user cannot act on, and the cost is only that a re-shared file might
