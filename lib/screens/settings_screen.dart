@@ -10,6 +10,14 @@ import 'package:flutter_application_1/services/csv_export.dart';
 import 'package:flutter_application_1/services/storage_service.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 
+/// The width at which "Add demo data" and "Clear demo data" sit side by side
+/// without either label wrapping.
+///
+/// Measured, not guessed: each button needs its icon, the internal gap, its own
+/// horizontal padding and its label, so two of them plus the gap between them
+/// is what has to fit. Below this they stack.
+const _sideBySideWidth = 380.0;
+
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -492,24 +500,52 @@ class _DemoSectionState extends State<_DemoSection> {
                 'labelled "[Demo]" so you can tell them apart from your own.',
               ),
               const SizedBox(height: AppSpacing.sm),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _loading ? null : _addDemo,
-                      icon: const Icon(Icons.add_rounded),
-                      label: const Text('Add demo data'),
+              // Side by side, these two labels plus their icons need more room
+              // than a 360dp phone has, so each one wrapped onto two lines and
+              // the pair looked broken. Below the width where they genuinely
+              // fit, they stack instead. The labels are not shortened: "Clear
+              // demo data" says what it does, and truncating it to "Clear demo…"
+              // on the one button that deletes things is the wrong trade.
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final sideBySide = constraints.maxWidth >= _sideBySideWidth;
+                  final add = OutlinedButton.icon(
+                    onPressed: _loading ? null : _addDemo,
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text(
+                      'Add demo data',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _loading ? null : _clearDemo,
-                      icon: const Icon(Icons.delete_outline_rounded),
-                      label: const Text('Clear demo data'),
+                  );
+                  final clear = OutlinedButton.icon(
+                    onPressed: _loading ? null : _clearDemo,
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    label: const Text(
+                      'Clear demo data',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                ],
+                  );
+
+                  if (!sideBySide) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        add,
+                        const SizedBox(height: AppSpacing.sm),
+                        clear,
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: add),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(child: clear),
+                    ],
+                  );
+                },
               ),
             ],
           ),

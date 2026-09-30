@@ -72,6 +72,53 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  group('one way to create a checklist', () {
+    testWidgets('the empty state offers exactly one call to action', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      final empty = (await tester.runAsync(() async {
+        await StorageService().clear();
+        final provider = ChecklistProvider();
+        await provider.initialize();
+        return provider;
+      }))!;
+      await settleUi(tester);
+
+      await tester.pumpWidget(_app(empty));
+      await settleUi(tester);
+
+      expect(find.text('No checklists yet'), findsOneWidget);
+      // The empty state's own button.
+      expect(find.text('Create Checklist'), findsOneWidget);
+      // And no FAB saying "New Checklist" underneath it. Two buttons doing the
+      // same thing, worded differently, on the same screen.
+      expect(find.text('New Checklist'), findsNothing);
+      expect(find.byType(FloatingActionButton), findsNothing);
+    });
+
+    testWidgets('the FAB comes back once there is a checklist', (tester) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      final withOne = (await tester.runAsync(() async {
+        await StorageService().clear();
+        final provider = ChecklistProvider();
+        await provider.initialize();
+        await provider.addChecklist(
+          Checklist(name: 'Weekend', description: ''),
+        );
+        return provider;
+      }))!;
+      await settleUi(tester);
+
+      await tester.pumpWidget(_app(withOne));
+      await settleUi(tester);
+
+      expect(find.text('No checklists yet'), findsNothing);
+      expect(find.text('New Checklist'), findsOneWidget);
+      expect(find.byType(FloatingActionButton), findsOneWidget);
+    });
+  });
+
   group('trip suggestions are actionable', () {
     testWidgets('suggestions are buttons, not inert chips', (tester) async {
       usePhoneLayout(tester, TestViewports.phonePortrait);
