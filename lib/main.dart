@@ -39,7 +39,7 @@ class MainApp extends StatelessWidget {
       child: Consumer<SettingsProvider>(
         builder: (context, settings, _) {
           return MaterialApp(
-            title: 'Daily Context Companion',
+            title: 'TBRN',
             debugShowCheckedModeBanner: false,
             themeMode: settings.themeMode,
             theme: AppTheme.light(),

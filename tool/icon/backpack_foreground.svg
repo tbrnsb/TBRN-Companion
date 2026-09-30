@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="432" height="432" viewBox="0 0 432 432">
+  <!--
+    Adaptive-icon foreground layer.
+
+    The canvas is 108dp but only the middle 66dp is guaranteed not to be
+    clipped by the launcher's mask, so the backpack is drawn at roughly 58% of
+    the canvas and centred, on transparency. The background colour is supplied
+    by the adaptive-icon XML.
+
+    Same palette as the legacy icon: carafe body, jet handle.
+  -->
+  <g transform="translate(216 216) scale(0.58) translate(-256 -256)">
+    <path d="M212 150v-16c0-25 20-46 44-46s44 21 44 46v16"
+          fill="none" stroke="#2B2722" stroke-width="22" stroke-linecap="round"/>
+    <path d="M256 126c-72 0-126 34-126 96v148c0 33 27 60 60 60h132c33 0 60-27 60-60V222c0-62-54-96-126-96z"
+          fill="#4B392F"/>
+    <rect x="132" y="206" width="22" height="76" rx="11" fill="#2B2722" opacity="0.5"/>
+    <rect x="358" y="206" width="22" height="76" rx="11" fill="#2B2722" opacity="0.5"/>
+    <path d="M130 226c0-58 56-100 126-100s126 42 126 100c0 16-10 26-26 26H156c-16 0-26-10-26-26z"
+          fill="#2B2722" opacity="0.45"/>
+    <rect x="164" y="304" width="184" height="86" rx="30" fill="#F0E1CA"/>
+    <rect x="238" y="292" width="36" height="26" rx="12" fill="#F0E1CA"/>
+  </g>
+</svg>
