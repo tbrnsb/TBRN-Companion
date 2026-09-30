@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -86,9 +87,15 @@ void main() {
       await tester.pumpWidget(_app(journeys));
       await settleUi(tester);
 
+      // Derived from the clock, not a literal. This asserted 'September', which
+      // passed for the whole of one month and then failed at midnight on the
+      // 1st of the next — a test that breaks on a date rather than on a change
+      // in the code is worse than no test, because it trains you to ignore it.
+      //
       // Containing, not exact: the label is the month and the year, and the
       // assertion that matters is that it laid out without overflowing.
-      expect(find.textContaining('September'), findsOneWidget);
+      final currentMonth = DateFormat.yMMMM().format(DateTime.now());
+      expect(find.textContaining(currentMonth), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });

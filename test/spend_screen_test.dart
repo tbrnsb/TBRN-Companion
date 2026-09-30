@@ -14,7 +14,9 @@ import 'package:flutter_application_1/screens/transactions/income_detail_screen.
 import 'package:flutter_application_1/screens/transactions/transactions_screen.dart';
 import 'package:flutter_application_1/services/storage_service.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:flutter_application_1/widgets/chart_pager.dart';
 import 'package:flutter_application_1/widgets/spend_breakdown_card.dart';
+import 'package:flutter_application_1/widgets/spend_trend_cards.dart';
 
 import 'visual_smoke_test.dart' show initTestStorage;
 import 'test_viewports.dart';
@@ -570,6 +572,209 @@ void main() {
       await scrollTo(tester, find.text('-Rs. 120'));
       expect(find.text('-Rs. 120'), findsOneWidget);
       expect(find.text('+Rs. 900'), findsOneWidget);
+    });
+  });
+
+  group('the chart pager', () {
+    // The three time-series charts used to stack in a column, which put the
+    // first transaction row about eleven hundred pixels down: the screen opened
+    // as a wall of graphs.
+    Future<void> openPager(WidgetTester tester, Size size) async {
+      usePhoneLayout(tester, size);
+      final now = DateTime.now();
+      final provider = await seedProvider(tester, [
+        _income(4000, 'salary', 'Payday'),
+        for (var i = 1; i <= 12; i++)
+          _expense(
+            100 + i * 20,
+            ExpenseCategory.food,
+            'Lunch',
+          ).copyWith(date: DateTime(now.year, now.month, i)),
+      ]);
+      await tester.pumpWidget(
+        _spendApp(
+          transactions: provider,
+          settings: await seededSettings(tester),
+        ),
+      );
+      await settleUi(tester);
+    }
+
+    testWidgets('one time-series chart is on screen at a time', (tester) async {
+      await openPager(tester, TestViewports.phonePortrait);
+      await scrollTo(tester, find.byType(ChartPager));
+
+      // Three pages exist, but only the first is laid out and painted.
+      expect(find.byKey(const ValueKey('chart-page-0')), findsOneWidget);
+      expect(find.byKey(const ValueKey('chart-page-1')), findsNothing);
+      expect(find.text('In and out, by day'), findsOneWidget);
+    });
+
+    testWidgets('the dots say how many there are without swiping', (
+      tester,
+    ) async {
+      await openPager(tester, TestViewports.phonePortrait);
+      await scrollTo(tester, find.byType(ChartPager));
+
+      // A carousel whose only way forward is a swipe has no affordance and
+      // nobody finds page two.
+      expect(find.byKey(const ValueKey('chart-dot-0')), findsOneWidget);
+      expect(find.byKey(const ValueKey('chart-dot-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('chart-dot-2')), findsOneWidget);
+      expect(find.text('1 of 3 · Daily'), findsOneWidget);
+    });
+
+    testWidgets('tapping a dot moves to that chart', (tester) async {
+      await openPager(tester, TestViewports.phonePortrait);
+      await scrollTo(tester, find.byType(ChartPager));
+
+      await tester.tap(find.byKey(const ValueKey('chart-dot-1')));
+      await settleUi(tester);
+
+      expect(find.text('2 of 3 · Balance'), findsOneWidget);
+      expect(find.byKey(const ValueKey('chart-page-1')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('chart-dot-2')));
+      await settleUi(tester);
+      expect(find.text('3 of 3 · Weekly'), findsOneWidget);
+    });
+
+    testWidgets('the dot tap targets are big enough for a thumb', (
+      tester,
+    ) async {
+      await openPager(tester, TestViewports.phoneSmall);
+      await scrollTo(tester, find.byType(ChartPager));
+
+      // The dot itself is 8 pixels. The padded box around it is the target,
+      // and an 8-pixel target is far below what a thumb can hit.
+      final target = tester.getRect(find.byKey(const ValueKey('chart-dot-0')));
+      expect(target.width, greaterThanOrEqualTo(32));
+      expect(target.height, greaterThanOrEqualTo(24));
+      final last = tester.getRect(find.byKey(const ValueKey('chart-dot-2')));
+      expect(
+        last.right,
+        lessThan(tester.view.physicalSize.width),
+        reason: 'the indicator row must not run off the edge',
+      );
+    });
+
+    testWidgets('the two sections are labelled and separate', (tester) async {
+      await openPager(tester, TestViewports.phonePortrait);
+
+      // Checked before scrolling: the breakdown header sits ABOVE the pager, and
+      // a lazy list disposes what has been scrolled past, so a test that jumped
+      // to the pager first would be asserting on a row that no longer exists.
+      await scrollTo(tester, find.text('Where did it go'));
+      expect(find.text('Where did it go'), findsOneWidget);
+      expect(find.text('Spending by category'), findsOneWidget);
+
+      await scrollTo(tester, find.text('When did it change'));
+      expect(find.text('When did it change'), findsOneWidget);
+    });
+
+    testWidgets('the breakdowns stack rather than sharing a row', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phoneSmall);
+      final now = DateTime.now();
+      final provider = await seedProvider(tester, [
+        _income(4000, 'salary', 'Payday'),
+        _expense(
+          200,
+          ExpenseCategory.food,
+          'Lunch',
+        ).copyWith(date: DateTime(now.year, now.month, 2)),
+        _expense(
+          120,
+          ExpenseCategory.travel,
+          'Bus',
+        ).copyWith(date: DateTime(now.year, now.month, 3)),
+      ]);
+      await tester.pumpWidget(
+        _spendApp(
+          transactions: provider,
+          settings: await seededSettings(tester),
+        ),
+      );
+      await settleUi(tester);
+      await scrollTo(tester, find.text('Where did it go'));
+
+      // Never side by side: at 360dp a row of two donuts is about 165 pixels
+      // each and the donut alone is already 132.
+      final spending = tester.getRect(find.text('Spending by category'));
+      final income = tester.getRect(find.text('Income by category'));
+      expect(
+        income.top,
+        greaterThanOrEqualTo(spending.bottom),
+        reason: 'the two donuts must stack, not share a row',
+      );
+    });
+
+    testWidgets('fits at 360dp', (tester) async {
+      usePhoneLayout(
+        tester,
+        TestViewports.phoneSmall,
+        because: 'a pager plus an indicator row is where overflow appears',
+      );
+      final now = DateTime.now();
+      final provider = await seedProvider(tester, [
+        _income(4000, 'salary', 'Payday'),
+        for (var i = 1; i <= 12; i++)
+          _expense(
+            100 + i * 20,
+            ExpenseCategory.food,
+            'Lunch',
+          ).copyWith(date: DateTime(now.year, now.month, i)),
+      ]);
+      await tester.pumpWidget(
+        _spendApp(
+          transactions: provider,
+          settings: await seededSettings(tester),
+        ),
+      );
+      await settleUi(tester);
+      await scrollTo(tester, find.byType(ChartPager));
+
+      expect(find.byKey(const ValueKey('chart-pager-count')), findsOneWidget);
+    });
+
+    testWidgets('fits at 412dp', (tester) async {
+      await openPager(tester, TestViewports.phonePortrait);
+      await scrollTo(tester, find.byType(ChartPager));
+
+      expect(find.byKey(const ValueKey('chart-pager-count')), findsOneWidget);
+    });
+
+    testWidgets('a filtered day is still marked on the chart', (tester) async {
+      await openPager(tester, TestViewports.phonePortrait);
+      await scrollTo(tester, find.byType(ChartPager));
+
+      final provider = Provider.of<TransactionProvider>(
+        tester.element(find.byType(TransactionsScreen)),
+        listen: false,
+      );
+      final now = DateTime.now();
+      provider.setSelectedDay(DateTime(now.year, now.month, 5));
+      await settleUi(tester);
+
+      // The daily chart is the page with a day axis; the highlight is passed to
+      // it so the graph and the day filter cannot disagree about what is being
+      // looked at.
+      expect(find.byType(DailyTotalsChart), findsOneWidget);
+    });
+
+    testWidgets('the pager has a fixed height so pages cannot jump', (
+      tester,
+    ) async {
+      await openPager(tester, TestViewports.phonePortrait);
+      await scrollTo(tester, find.byType(ChartPager));
+
+      final before = tester.getRect(find.byType(ChartPager));
+      await tester.tap(find.byKey(const ValueKey('chart-dot-2')));
+      await settleUi(tester);
+      final after = tester.getRect(find.byType(ChartPager));
+
+      expect(after.height, moreOrLessEquals(before.height));
     });
   });
 }
