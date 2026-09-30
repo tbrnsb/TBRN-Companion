@@ -1,6 +1,7 @@
 export 'app_gear.dart';
 export 'app_motion.dart';
 export 'app_stat_tile.dart';
+export 'chart_pager.dart';
 export 'context_card.dart';
 export 'empty_state.dart';
 export 'section_header.dart';
