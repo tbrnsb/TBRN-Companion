@@ -544,11 +544,11 @@ void main() {
           .toList();
 
       expect(labels, [
-        'Pack',
-        'Journey',
         'Transactions',
+        'Journey',
+        'Pack',
         'Places',
-      ], reason: 'the dock order is fixed and money sits closer to the thumb');
+      ], reason: 'the dock order is fixed and money leads');
       expect(
         find.descendant(
           of: find.byType(NavigationBar),
@@ -577,7 +577,7 @@ void main() {
       // has to render inside.
       final slot = bar.width / count;
 
-      for (final label in ['Pack', 'Journey', 'Transactions', 'Places']) {
+      for (final label in ['Transactions', 'Journey', 'Pack', 'Places']) {
         final finder = find.descendant(
           of: find.byType(NavigationBar),
           matching: find.text(label),
@@ -686,9 +686,9 @@ void main() {
 /// The body each dock slot is expected to show, in the fixed dock order.
 Type _screenForTab(int tab) {
   return switch (tab) {
-    0 => ChecklistsScreen,
+    0 => TransactionsScreen,
     1 => JourneysScreen,
-    2 => TransactionsScreen,
+    2 => ChecklistsScreen,
     _ => LocationsScreen,
   };
 }
