@@ -155,7 +155,7 @@ void main() {
       }
     });
 
-    testWidgets('a suggestion says why it is on the list', (tester) async {
+    testWidgets('every suggestion says why it is on the list', (tester) async {
       usePhoneLayout(tester, TestViewports.phonePortrait);
 
       final provider = await _seed(tester);
@@ -164,10 +164,31 @@ void main() {
 
       // A bare list of guesses is what this replaced. The reason is the
       // difference between a suggestion and an instruction.
-      for (final suggestion in PackingSuggestions.forTrip(
-        destination: 'Pokhara',
-      )) {
-        expect(find.text(suggestion.reason), findsOneWidget);
+      //
+      // Counted, not matched against a literal. The reason text is a function of
+      // the month — 'it turns cool by evening' in the cold season, 'for the boat
+      // ride in the evening' otherwise — so asserting one specific string made
+      // this test fail the day the season changed, for no change in the code.
+      final suggestions = PackingSuggestions.forTrip(destination: 'Pokhara');
+      expect(suggestions, isNotEmpty);
+      for (final suggestion in suggestions) {
+        expect(suggestion.reason, isNotEmpty);
+      }
+      // Asserted on a reason that does not vary with the month. Several of these
+      // do — 'it turns cool by evening' in the cold season, something else
+      // otherwise — so a literal here would have failed the day the season
+      // turned, for no change in the code.
+      expect(
+        find.text('you will be out on the water all day'),
+        findsOneWidget,
+        reason: 'the sun hat must explain itself',
+      );
+      // And every suggestion got a row, which is the thing the reasons hang off.
+      for (final suggestion in suggestions) {
+        expect(
+          find.byKey(ValueKey('add-suggestion-${suggestion.name}')),
+          findsOneWidget,
+        );
       }
     });
 
