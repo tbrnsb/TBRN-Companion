@@ -100,7 +100,7 @@ class _SummaryBody extends StatelessWidget {
         const SizedBox(height: AppSpacing.md),
         OutlinedButton.icon(
           key: const ValueKey('import-trip-file'),
-          onPressed: () => TripImportSheet.show(context, journeyId: journey.id),
+          onPressed: () => TripImportSheet.show(context),
           icon: const Icon(Icons.file_download_rounded, size: 18),
           label: const Text('Import someone else\'s file'),
         ),
@@ -109,7 +109,7 @@ class _SummaryBody extends StatelessWidget {
   }
 }
 
-/// "Rs 13,900 spent · 3 people · 8 expenses"
+/// "Rs 13,900 spent · 3 people"
 class _Headline extends StatelessWidget {
   const _Headline({required this.settlement});
 
@@ -128,7 +128,10 @@ class _Headline extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            AppFormat.money(settlement.total, symbol: currencySymbol),
+            // The TRIP's cost, not the attributed part of it. The journey page
+            // shows this same figure, and two screens about one trip quoting two
+            // totals would be a bug, not a rounding curiosity.
+            AppFormat.money(settlement.tripTotal, symbol: currencySymbol),
             style: theme.textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.w800,
             ),
@@ -138,6 +141,16 @@ class _Headline extends StatelessWidget {
             'spent · ${settlement.participantCount} people',
             style: theme.textTheme.bodyMedium,
           ),
+          if (settlement.hasUnattributed) ...[
+            const SizedBox(height: AppSpacing.xxs),
+            Text(
+              'Including ${AppFormat.money(settlement.unattributed, symbol: currencySymbol)} '
+              'nobody has been recorded as paying, so it is not split below.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -292,7 +305,11 @@ class _Balances extends StatelessWidget {
                   ),
                   const SizedBox(width: AppSpacing.xs),
                   SizedBox(
-                    width: 92,
+                    // Wide enough for a five-figure amount with its sign, so the
+                    // column cannot be the one thing that clips at 360dp. Three
+                    // steps of the app's own spacing scale rather than a bare
+                    // number.
+                    width: AppSpacing.xl + AppSpacing.lg + AppSpacing.md,
                     child: Text(
                       balance.netInPaise == 0
                           ? 'even'

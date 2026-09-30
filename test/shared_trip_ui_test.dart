@@ -985,6 +985,65 @@ void main() {
     });
   });
 
+  group('money nobody has claimed', () {
+    testWidgets('the summary shows the trip total and explains the gap', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, _tallPhone);
+
+      await tester.runAsync(() async {
+        await StorageService().clear();
+        await _seedWorkingTrip(localParticipantId: 'you');
+        // Saved before "Paid by" existed, or imported from a file whose
+        // participants have not merged yet.
+        await StorageService().addTransaction(
+          Expense(
+            id: 'unclaimed',
+            amount: 1000,
+            category: ExpenseCategory.food,
+            description: 'Mystery',
+            journeyId: 'trip-1',
+          ),
+        );
+      });
+      final p = await _providers(tester);
+
+      await tester.pumpWidget(
+        _app(p, const TripSummaryScreen(journeyId: 'trip-1')),
+      );
+      await _settle(tester);
+
+      // The trip cost is Rs 14,900, which is what the journey page's Spent tile
+      // shows. Two screens about one trip quoting two totals would be a bug.
+      expect(find.text('Rs. 14,900'), findsOneWidget);
+      // And the difference is explained rather than quietly dropped.
+      expect(
+        find.textContaining('Including Rs. 1,000 nobody has been recorded'),
+        findsOneWidget,
+      );
+      // The settlement itself is still only over the money that was attributed.
+      expect(find.text('Sita pays You'), findsOneWidget);
+    });
+
+    testWidgets('no explanation when everything is attributed', (tester) async {
+      usePhoneLayout(tester, _tallPhone);
+
+      await tester.runAsync(() async {
+        await StorageService().clear();
+        await _seedWorkingTrip(localParticipantId: 'you');
+      });
+      final p = await _providers(tester);
+
+      await tester.pumpWidget(
+        _app(p, const TripSummaryScreen(journeyId: 'trip-1')),
+      );
+      await _settle(tester);
+
+      expect(find.text('Rs. 13,900'), findsOneWidget);
+      expect(find.textContaining('Including Rs.'), findsNothing);
+    });
+  });
+
   group('the import flow', () {
     TripSnapshot snapshotFromRaj() {
       return TripSnapshot.fromJourney(

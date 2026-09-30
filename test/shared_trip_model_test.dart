@@ -603,6 +603,86 @@ void main() {
     });
   });
 
+  group('a trip with money nobody has claimed', () {
+    test('the snapshot total includes it and the settlement does not', () async {
+      // Two screens about one trip: the journey page says "spent Rs 15,000" and
+      // the summary must say the same. Folding an unclaimed expense into
+      // somebody's total would make the settlement wrong in the direction that
+      // suits them, and dropping it would make the two screens disagree.
+      final snapshot = TripSnapshot.fromJourney(
+        journey: _sharedJourney(
+          participants: [_person('you', 'You'), _person('raj', 'Raj')],
+        ),
+        expenses: [
+          _expense(id: 'mine', amount: 500, paidBy: 'you'),
+          _expense(id: 'theirs', amount: 500, paidBy: 'raj'),
+          _expense(id: 'unclaimed', amount: 200),
+        ],
+        exportedBy: 'You',
+      );
+
+      expect(snapshot.total, 1200);
+
+      final settlement = settlementFor(
+        snapshot.participantTotals(),
+        unattributedInPaise: 20000,
+      );
+      expect(settlement.total, 1000);
+      expect(settlement.tripTotal, 1200);
+      expect(settlement.hasUnattributed, isTrue);
+      // Nobody's share is inflated by the money nobody claimed.
+      expect(settlement.balances.every((b) => b.shareInPaise == 50000), isTrue);
+    });
+
+    test('an expense whose payer is not on the roster is not attributed', () async {
+      final snapshot = TripSnapshot.fromJourney(
+        journey: _sharedJourney(
+          participants: [_person('you', 'You'), _person('raj', 'Raj')],
+        ),
+        expenses: [
+          _expense(id: 'mine', amount: 500, paidBy: 'you'),
+          _expense(id: 'ghost', amount: 300, paidBy: 'someone-not-here'),
+        ],
+        exportedBy: 'You',
+      );
+
+      // The payer id is KEPT on the record — it is real data — but it resolves
+      // to nobody, so it is not folded into anyone's total.
+      expect(snapshot.expenses.last.paidByParticipantId, 'someone-not-here');
+      expect(
+        snapshot.participantTotals().fold<int>(
+          0,
+          (s, t) => s + t.amountPaidInPaise,
+        ),
+        50000,
+      );
+    });
+  });
+
+  group('a snapshot whose trip will not parse', () {
+    test('is refused with a message, not thrown', () {
+      // The journey came from somebody else's phone. A truncated download or a
+      // hand-edited date must not take the import flow down with an unhandled
+      // FormatException.
+      final result = TripSnapshot.decode(
+        jsonEncode({
+          'kind': 'tbrn-trip-snapshot',
+          'exportedBy': 'Raj',
+          'journey': {
+            'id': 'x',
+            'destination': 'Pokhara',
+            'origin': 'Kathmandu',
+            'startTime': 'not a date at all',
+          },
+          'expenses': <dynamic>[],
+        }),
+      );
+
+      expect(result.isValid, isFalse);
+      expect(result.message, contains('could not be read'));
+    });
+  });
+
   group('the exported file on disk', () {
     test('is written as JSON with a safe name', () async {
       final snapshot = TripSnapshot.fromJourney(
