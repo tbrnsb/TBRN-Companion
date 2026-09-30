@@ -204,7 +204,17 @@ void main() {
       expect(find.byKey(const ValueKey('open-trip-summary')), findsOneWidget);
     });
 
-    testWidgets('a solo trip shows no shared section at all', (tester) async {
+    testWidgets('a solo trip still offers a way to add the first person', (
+      tester,
+    ) async {
+      // THE BUG THIS STAGE FIXES.
+      //
+      // The section used to render only once a participant existed, and the
+      // add-participant field lived inside it. The only call site of
+      // addParticipant in the whole app was that field, so a solo trip had no
+      // way to become shared — the feature was unreachable from the UI, and no
+      // test caught it because the test above asserted the hidden section was
+      // "correct".
       usePhoneLayout(tester, _tallPortrait);
 
       await tester.runAsync(() async {
@@ -226,8 +236,46 @@ void main() {
       await tester.pumpWidget(_app(p, JourneyDetailScreen(journey: solo)));
       await _settle(tester);
 
-      expect(find.text('Shared'), findsNothing);
+      expect(find.text('Shared'), findsOneWidget);
+      expect(find.text('Solo so far'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('add-participant-field')),
+        findsOneWidget,
+        reason: 'a solo trip must be able to become shared',
+      );
+
+      // There is nobody to be "you" out of yet, so that question is not asked.
       expect(find.text('Which one are you?'), findsNothing);
+      // And a trip with one person is not a settlement.
+      expect(find.byKey(const ValueKey('open-trip-summary')), findsNothing);
+    });
+
+    testWidgets('the add field fits at 360dp on a solo trip', (tester) async {
+      usePhoneLayout(tester, _tallPhone);
+
+      await tester.runAsync(() async {
+        await StorageService().clear();
+        await StorageService().addJourney(
+          Journey(
+            id: 'solo',
+            origin: 'Kathmandu',
+            destination: 'Pokhara',
+            startTime: DateTime.now().subtract(const Duration(days: 1)),
+          ),
+        );
+      });
+      final p = await _providers(tester);
+      final solo = (await tester.runAsync(
+        () => StorageService().getJourney('solo'),
+      ))!;
+
+      await tester.pumpWidget(_app(p, JourneyDetailScreen(journey: solo)));
+      await _settle(tester);
+
+      expect(
+        find.byKey(const ValueKey('add-participant-submit')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('the current answer is marked on the right chip', (

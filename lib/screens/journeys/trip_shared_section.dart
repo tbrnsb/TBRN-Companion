@@ -16,9 +16,10 @@ import 'package:flutter_application_1/widgets/widgets.dart';
 /// each person fronted, and the way into the summary that turns all of it into
 /// "who pays whom".
 ///
-/// Shown whenever the trip has at least one person on it, so adding the second
-/// name is a thing the user can do from here rather than a mode they have to
-/// discover first.
+/// It renders on EVERY trip, including one with nobody else on it, because the
+/// field that adds the first person lives in here. Hiding the section until a
+/// participant existed made the whole feature unreachable: a solo trip had no way
+/// to become shared, because the only way in was the section that was not there.
 class TripSharedSection extends StatelessWidget {
   const TripSharedSection({super.key, required this.journeyId});
 
@@ -28,9 +29,13 @@ class TripSharedSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final journeys = context.watch<JourneyProvider>();
     final journey = journeys.getJourneyById(journeyId);
-    if (journey == null || journey.participants.isEmpty) {
-      return const SizedBox.shrink();
-    }
+    // A vanished journey is the only reason to render nothing. An EMPTY roster
+    // used to hide this section too, which made the feature unreachable: the
+    // only call site of addParticipant in the whole app is the field below, so a
+    // solo trip could never become a shared one. There was no other way in.
+    if (journey == null) return const SizedBox.shrink();
+
+    final hasPeople = journey.participants.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -54,10 +59,24 @@ class TripSharedSection extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _WhoAmI(journey: journey),
-              const SizedBox(height: AppSpacing.md),
-              _ParticipantList(journey: journey),
-              const SizedBox(height: AppSpacing.md),
+              // On a solo trip there is nobody to be, so the who-am-I question is
+              // not asked and the roster is not drawn — there is nothing in
+              // either. The add field still is, because it is the way in.
+              if (hasPeople) ...[
+                _WhoAmI(journey: journey),
+                const SizedBox(height: AppSpacing.md),
+                _ParticipantList(journey: journey),
+                const SizedBox(height: AppSpacing.md),
+              ] else ...[
+                Text(
+                  'Going with someone? Add them here and you can split what the '
+                  'trip costs between you.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+              ],
               _AddParticipantField(journey: journey),
               if (journey.isShared) ...[
                 const SizedBox(height: AppSpacing.md),
