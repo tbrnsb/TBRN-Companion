@@ -65,3 +65,4 @@ opencode.jsonc
 # inside the repo it duplicates is dead weight in every clone forever.
 backup/
 .verify-logs/
+.rewrite/
