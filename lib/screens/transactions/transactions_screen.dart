@@ -45,6 +45,16 @@ class TransactionsScreen extends StatelessWidget {
           // metadata for every entry.
           final expenseSegments = _expenseSegments(provider);
           final incomeSegments = _incomeSegments(provider);
+          // Feeds the by-day and running-balance charts. Empty when nothing is
+          // recorded, and both cards render nothing rather than an empty frame.
+          final dailyTotals = [
+            for (final total in provider.dailyTotals)
+              DayTotal(
+                date: total.day,
+                income: total.income,
+                expenses: total.expenses,
+              ),
+          ];
 
           return RefreshIndicator(
             onRefresh: () => provider.loadTransactionsForMonth(
@@ -92,6 +102,24 @@ class TransactionsScreen extends StatelessWidget {
                     title: 'Income by category',
                     segments: incomeSegments,
                     currencySymbol: currencySymbol,
+                  ),
+                ],
+                if (dailyTotals.isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  AppSurface(
+                    tier: AppSurfaceTier.raised,
+                    child: DailyTotalsChart(
+                      days: dailyTotals,
+                      currencySymbol: currencySymbol,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  AppSurface(
+                    tier: AppSurfaceTier.raised,
+                    child: CumulativeBalanceChart(
+                      days: dailyTotals,
+                      currencySymbol: currencySymbol,
+                    ),
                   ),
                 ],
                 if (transactions.isEmpty) ...[

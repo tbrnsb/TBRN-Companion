@@ -4,3 +4,4 @@ export 'context_card.dart';
 export 'empty_state.dart';
 export 'section_header.dart';
 export 'spend_breakdown_card.dart';
+export 'spend_trend_cards.dart';

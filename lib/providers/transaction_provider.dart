@@ -160,6 +160,35 @@ class TransactionProvider extends ChangeNotifier {
       .map((t) => DateTime(t.date.year, t.date.month, t.date.day))
       .toSet();
 
+  /// Money in and out per day, oldest first, for days that have any.
+  ///
+  /// Only days with something on them are included. A daily chart across the
+  /// whole month pads most of its width with zeroes, which is the same reason
+  /// the journeys 7-day bar chart was deleted: a chart of mostly empty bars
+  /// looks like a rendering fault and carries no information.
+  List<({DateTime day, double income, double expenses})> get dailyTotals {
+    final totals = <DateTime, ({double income, double expenses})>{};
+
+    for (final t in _viewTransactions) {
+      final day = DateTime(t.date.year, t.date.month, t.date.day);
+      final current = totals[day] ?? (income: 0.0, expenses: 0.0);
+      totals[day] = (
+        income: current.income + (t.isIncome ? t.amount : 0),
+        expenses: current.expenses + (t.isExpense ? t.amount : 0),
+      );
+    }
+
+    final days = totals.keys.toList()..sort();
+    return [
+      for (final day in days)
+        (
+          day: day,
+          income: totals[day]!.income,
+          expenses: totals[day]!.expenses,
+        ),
+    ];
+  }
+
   /// Money in and out for the current view.
   ///
   /// Follows a selected day, because the user asked to see one day and
