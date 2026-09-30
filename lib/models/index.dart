@@ -1,5 +1,8 @@
 export 'checklist.dart';
 export 'journey.dart';
+export 'trip_participant.dart';
+export 'trip_code.dart';
+export 'trip_settlement.dart';
 export 'location.dart';
 export 'location_log.dart';
 export 'transaction.dart';

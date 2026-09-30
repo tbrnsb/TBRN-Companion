@@ -64,6 +64,39 @@ fail() {
 }
 
 # ---------------------------------------------------------------------------
+# The shared tmpfs is shared with other tools and fills up.
+#
+# The Flutter tool leaves ~13MB per test file in the system temp directory and
+# does not always clean up after itself — a full suite leaves hundreds of them,
+# which is gigabytes. /tmp here is a 3.6GB tmpfs. Once it fills, the suite cannot
+# write its listener files and "never finishes", and the Gradle build fails with
+# "Disk quota exceeded" on CompressAssetsWorkAction. Both failures look like
+# problems with the code under test and neither is one.
+#
+# So the gate sweeps its own mess before running. Only two patterns, both owned
+# by the Flutter tool and both created by running this script:
+#   /tmp/.9adb*.so       the test compiler's kernel snapshots
+#   /tmp/flutter_tools.* scratch directories from killed runs
+# Nothing else in /tmp is touched — it is shared, and other tools have their own
+# state in there that is none of this script's business.
+sweep_flutter_temp() {
+  local freed_before freed_after
+  freed_before=$(df -k /tmp 2>/dev/null | awk 'NR==2 {print $4}')
+  rm -f /tmp/.9adb*.so 2>/dev/null
+  rm -rf /tmp/flutter_tools.* 2>/dev/null
+  freed_after=$(df -k /tmp 2>/dev/null | awk 'NR==2 {print $4}')
+  if [ -n "${freed_before:-}" ] && [ -n "${freed_after:-}" ]; then
+    local freed=$((freed_after - freed_before))
+    if [ "$freed" -gt 0 ]; then
+      printf '  swept %s MB of leftover Flutter temp files from /tmp\n' \
+        "$((freed / 1024))"
+    fi
+  fi
+}
+
+sweep_flutter_temp
+
+# ---------------------------------------------------------------------------
 step "1/4  formatting"
 # --set-exit-if-changed makes this a check, not a rewrite. A tree that is not
 # formatted cannot be promoted, so a formatter run never silently edits the
@@ -110,9 +143,18 @@ fi
 # ---------------------------------------------------------------------------
 if [ "$SKIP_BUILD" -eq 0 ]; then
   step "4/4  debug APK  (limit ${BUILD_TIMEOUT}s)"
+  # Sweep again. The test run above leaks a fresh batch, and Gradle's asset
+  # compressor is the first thing to hit a full tmpfs — it fails with
+  # "Disk quota exceeded", which reads like a broken build rather than a full
+  # disk.
+  sweep_flutter_temp
   if timeout "${BUILD_TIMEOUT}" flutter build apk --debug \
       > "$LOG_DIR/build.log" 2>&1; then
     green "  build succeeded"
+  elif grep -q 'Disk quota exceeded' "$LOG_DIR/build.log"; then
+    fail "the build failed because /tmp is full, not because of the code"
+    red   "  /tmp is a shared tmpfs. Free space and re-run:"
+    red   "    rm -f /tmp/.9adb*.so; rm -rf /tmp/flutter_tools.*"
   else
     fail "flutter build apk --debug failed or timed out"
     tail -20 "$LOG_DIR/build.log"

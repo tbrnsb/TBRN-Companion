@@ -357,14 +357,55 @@ class TransactionProvider extends ChangeNotifier {
     }
   }
 
+  /// Deletes a transaction.
+  ///
+  /// When it is an expense on a SHARED trip, the trip is also told it was
+  /// deleted. That tombstone is what stops the next file a friend shares from
+  /// putting the expense straight back: an import only ever adds, so without a
+  /// record of the deletion the user would watch it reappear every time, with
+  /// nothing they can do about it.
   Future<void> deleteTransaction(String id) async {
+    final transaction = _transactions
+        .where((t) => t.id == id)
+        .cast<Transaction?>()
+        .firstWhere((_) => true, orElse: () => null);
+
     try {
       await _storageService.deleteTransaction(id);
       _transactions.removeWhere((t) => t.id == id);
       notifyListeners();
+
+      if (transaction != null) {
+        await _noteRemovalOnJourney(transaction);
+      }
     } catch (e) {
       _error = 'Failed to delete transaction: $e';
       notifyListeners();
+    }
+  }
+
+  /// Writes the tombstone directly to storage.
+  ///
+  /// Deliberately not through [JourneyProvider]: that provider caches journeys
+  /// and re-saving one from a stale copy here would overwrite whatever else
+  /// changed since it was loaded. Read, append one id, write back — three
+  /// statements against the source of truth.
+  Future<void> _noteRemovalOnJourney(Transaction transaction) async {
+    final journeyId = transaction.journeyId;
+    if (journeyId == null) return;
+
+    final journey = await _storageService.getJourney(journeyId);
+    if (journey == null || !journey.isShared) return;
+    if (journey.removedIds.contains(transaction.id)) return;
+
+    try {
+      await _storageService.updateJourney(
+        journey.copyWith(removedIds: [...journey.removedIds, transaction.id]),
+      );
+    } catch (_) {
+      // The deletion already succeeded. Failing here would report a problem the
+      // user cannot act on, and the cost is only that a re-shared file might
+      // offer the expense back once.
     }
   }
 
