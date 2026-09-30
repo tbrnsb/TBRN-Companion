@@ -9,3 +9,4 @@ export 'transaction.dart';
 export 'expense_category_meta.dart';
 export 'shared_trip_visibility.dart';
 export 'transaction_search.dart';
+export 'budget.dart';

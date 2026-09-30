@@ -9,6 +9,66 @@ enum TransactionFilter { all, expenses, income }
 class TransactionProvider extends ChangeNotifier {
   final StorageService _storageService = StorageService();
 
+  /// Which participant is "me" on each shared trip, by journey id.
+  ///
+  /// The shared-trip rule cannot be evaluated without it — see
+  /// `isMyLedgerEntry` — so it is read once here and handed to the predicate.
+  /// Populated by [loadLocalParticipants], which [initialize] awaits.
+  final Map<String, String?> _localParticipantByJourney = {};
+
+  /// Resolves the local participant for a trip. Missing trips resolve to null,
+  /// which is a real state: a journey whose participant list has not been
+  /// answered yet.
+  String? _localParticipantFor(String journeyId) =>
+      _localParticipantByJourney[journeyId];
+
+  /// Reads which participant the user is on every shared trip.
+  ///
+  /// Separate from the month load because it answers a different question, and
+  /// because a trip's answer can change at any time — the user can say "that's
+  /// me" long after the expenses exist. Safe to call again; it merges rather
+  /// than replacing, so a journey added since the last read is picked up
+  /// without dropping the ones already known.
+  Future<void> loadLocalParticipants() async {
+    try {
+      for (final journey in await _storageService.getAllJourneys()) {
+        if (journey.localParticipantId != null) {
+          _localParticipantByJourney[journey.id] = journey.localParticipantId;
+        }
+      }
+    } catch (e) {
+      // Non-fatal, and deliberately silent. Failing here would leave the app with
+      // no ledger at all, which is a far worse outcome than falling back to "no
+      // trip expenses are mine" — a conservative wrong answer rather than a
+      // blank screen.
+      _error = null;
+    }
+  }
+
+  /// Records which participant the user is on [journeyId], without a reload.
+  ///
+  /// Called by the trip screen the moment the answer changes, so the ledger
+  /// corrects itself immediately rather than on the next month load.
+  void setLocalParticipant(String journeyId, String? participantId) {
+    if (participantId == null) {
+      _localParticipantByJourney.remove(journeyId);
+      return;
+    }
+    _localParticipantByJourney[journeyId] = participantId;
+  }
+
+  /// Every transaction on the device, for periods wider than the loaded month.
+  ///
+  /// [transactions] holds ONE month, because the screen browsing a month should
+  /// not hold three years of records. A week or a year budget cannot be answered
+  /// from that, though: reading [spendIndex] with a yearly period off a list
+  /// containing one month would report a year of spending as a month's worth,
+  /// which is worse than reporting nothing.
+  ///
+  /// Loaded alongside the month and kept in step with every write, so the two
+  /// caches cannot disagree. Null until first loaded.
+  List<Transaction>? _allTransactions;
+
   List<Transaction> _transactions = [];
   List<String> _recentCustomCategories = [];
   bool _isLoading = false;
@@ -137,12 +197,19 @@ class TransactionProvider extends ChangeNotifier {
     final query = _search;
     if (query.isEmpty) {
       return _transactions
-          .where((t) => _filterAllows(t) && isMyLedgerEntry(t))
+          .where(
+            (t) =>
+                _filterAllows(t) &&
+                isMyLedgerEntry(t, localParticipantIdFor: _localParticipantFor),
+          )
           .toList();
     }
     return _transactions
         .where(
-          (t) => _filterAllows(t) && isMyLedgerEntry(t) && query.matches(t),
+          (t) =>
+              _filterAllows(t) &&
+              isMyLedgerEntry(t, localParticipantIdFor: _localParticipantFor) &&
+              query.matches(t),
         )
         .toList();
   }
@@ -285,6 +352,9 @@ class TransactionProvider extends ChangeNotifier {
 
   Future<void> initialize() async {
     _currentMonth = DateTime.now();
+    // Before the month load, because a trip expense is only ever classified once
+    // the map that says who "me" is has been read.
+    await loadLocalParticipants();
     await loadRecentCustomCategories();
     await loadTransactionsForMonth(_currentMonth!.year, _currentMonth!.month);
   }
@@ -334,7 +404,9 @@ class TransactionProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _transactions = await _storageService.getAllTransactions();
+      final all = await _storageService.getAllTransactions();
+      _transactions = all;
+      _allTransactions = all;
     } catch (e) {
       _error = 'Failed to load transactions: $e';
     } finally {
@@ -353,6 +425,11 @@ class TransactionProvider extends ChangeNotifier {
         year,
         month,
       );
+      // The wide cache is a separate read rather than a filter of the month just
+      // loaded: a year budget has to see eleven other months, and rebuilding the
+      // whole list here would put the cost of every month change on a screen that
+      // only ever shows one of them.
+      _allTransactions = await _storageService.getAllTransactions();
       _currentMonth = DateTime(year, month);
       // A day belongs to a month. Moving months has to drop the selection, or
       // the view stays narrowed to a day that is not loaded.
@@ -394,6 +471,9 @@ class TransactionProvider extends ChangeNotifier {
       if (_isInLoadedMonth(transaction.date)) {
         _transactions.add(transaction);
       }
+      // The wide cache has to hear about the write too, or a year budget would
+      // keep reporting the figure from before this expense existed.
+      _allTransactions?.add(transaction);
       notifyListeners();
       return true;
     } catch (e) {
@@ -423,6 +503,10 @@ class TransactionProvider extends ChangeNotifier {
       } else if (index != -1) {
         _transactions.removeAt(index);
       }
+      _replaceInWideCache(
+        transaction,
+        keepInMonth: _isInLoadedMonth(transaction.date),
+      );
       notifyListeners();
       return true;
     } catch (e) {
@@ -448,6 +532,7 @@ class TransactionProvider extends ChangeNotifier {
     try {
       await _storageService.deleteTransaction(id);
       _transactions.removeWhere((t) => t.id == id);
+      _allTransactions?.removeWhere((t) => t.id == id);
       notifyListeners();
 
       if (transaction != null) {
@@ -480,6 +565,27 @@ class TransactionProvider extends ChangeNotifier {
       // The deletion already succeeded. Failing here would report a problem the
       // user cannot act on, and the cost is only that a re-shared file might
       // offer the expense back once.
+    }
+  }
+
+  /// Puts [transaction] into the wide cache, or drops it.
+  ///
+  /// [keepInMonth] is false when the record has been re-dated out of the month
+  /// the cache would keep it in — but the wide cache keeps EVERYTHING, so it
+  /// only ever needs a replace, never a drop. Named for the month-list
+  /// decision so both caches are updated from the same call site and cannot
+  /// drift.
+  void _replaceInWideCache(
+    Transaction transaction, {
+    required bool keepInMonth,
+  }) {
+    final cache = _allTransactions;
+    if (cache == null) return;
+    final index = cache.indexWhere((t) => t.id == transaction.id);
+    if (index == -1) {
+      cache.add(transaction);
+    } else {
+      cache[index] = transaction;
     }
   }
 
@@ -533,6 +639,114 @@ class TransactionProvider extends ChangeNotifier {
         .where((t) => t.isExpense)
         .fold(0.0, (sum, t) => sum + t.amount);
   }
+
+  // ===== the one spending accessor =====
+
+  /// THE accessor. Everything that measures money reads through here.
+  ///
+  /// Budgets read this and nothing else — no reaching into [_transactions], no
+  /// recomputing a sum at a call site. That is the whole point: the set of
+  /// transactions that counts as my spending is a DATA-LAYER decision (see
+  /// `isMyLedgerEntry`), and a rule that lives in one place is a rule that every
+  /// consumer picks up at once. A budget that folded its own sum would need
+  /// editing the day that rule changed, and would be the one place left
+  /// disagreeing with the month total printed above it.
+  ///
+  /// Scoped by [period] and anchored on [currentMonth] when no anchor is given,
+  /// so a budget follows the month the user is browsing rather than the wall
+  /// clock — browsing to March should show March's spending, not a March limit
+  /// judged against today's numbers.
+  ///
+  /// Two pools, never mixed:
+  /// - [BudgetSpendIndex.byCategory] is app-level spending. It INCLUDES trip
+  ///   expenses I paid, because that money left my account and the month total
+  ///   directly above the budget counts it. It EXCLUDES expenses another
+  ///   participant paid, which is not my spending anywhere in the app.
+  /// - [BudgetSpendIndex.byJourney] is the trip's own costs, whoever paid. A
+  ///   journey-level limit governs the whole trip, and a reimbursement is not
+  ///   spend: settlement writes no transaction, so there is nothing to exclude.
+  BudgetSpendIndex spendIndex({
+    BudgetPeriod period = BudgetPeriod.month,
+    DateTime? anchor,
+  }) {
+    final month = anchor ?? _currentMonth ?? DateTime.now();
+    final window = period.window(DateTime(month.year, month.month));
+
+    // The source list, chosen by whether the loaded month can answer the window.
+    //
+    // [transactions] holds ONE month — the one on screen. It can answer a month
+    // period only when asked about that same month. In every other case the
+    // window silently clips to whatever happens to be in the loaded list, so a
+    // yearly budget would report a year of spending as a month's worth, and a
+    // month budget anchored on a month the user is not browsing would report
+    // nothing at all. The all-transactions cache is what makes those honest.
+    final anchorMonth = DateTime(month.year, month.month);
+    final loaded = _currentMonth;
+    final loadedIsAnchor =
+        loaded != null &&
+        loaded.year == anchorMonth.year &&
+        loaded.month == anchorMonth.month;
+    final canUseLoaded = period == BudgetPeriod.month && loadedIsAnchor;
+
+    // Falls back to the loaded month when the wide cache has not been read, so
+    // an index is still produced rather than nothing. It will be incomplete for
+    // a wide period, and that is documented on [_allTransactions].
+    final source = canUseLoaded
+        ? _transactions
+        : (_allTransactions ?? _transactions);
+
+    var total = 0.0;
+    final byCategory = <String, double>{};
+    final byJourney = <String, double>{};
+
+    for (final t in source) {
+      if (!t.isExpense) continue;
+      // The shared-trip rule, applied here and nowhere else. Another
+      // participant's trip expense is excluded from BOTH pools: it is not my
+      // spending, and it is not the trip's cost either — the trip's costs are
+      // the expenses, and this one is already counted against the person who
+      // paid it.
+      if (!isMyLedgerEntry(t, localParticipantIdFor: _localParticipantFor)) {
+        continue;
+      }
+      if (t.date.isBefore(window.start) || !t.date.isBefore(window.end)) {
+        continue;
+      }
+
+      total += t.amount;
+      final category = (t as Expense).category;
+      byCategory[category.name] = (byCategory[category.name] ?? 0) + t.amount;
+      final journeyId = t.journeyId;
+      if (journeyId != null) {
+        byJourney[journeyId] = (byJourney[journeyId] ?? 0) + t.amount;
+      }
+    }
+
+    return BudgetSpendIndex(
+      period: period,
+      anchorMonth: DateTime(month.year, month.month),
+      total: total,
+      byCategory: Map.unmodifiable(byCategory),
+      byJourney: Map.unmodifiable(byJourney),
+    );
+  }
+
+  /// App-level spend for one category in one period.
+  ///
+  /// A convenience over [spendIndex] for the call sites that only need one
+  /// number. It still reads the same index rather than summing, so a
+  /// single-category caller cannot drift from the list it sits in.
+  double categorySpend(
+    ExpenseCategory category, {
+    BudgetPeriod period = BudgetPeriod.month,
+    DateTime? anchor,
+  }) => spendIndex(period: period, anchor: anchor).forCategory(category);
+
+  /// Total expense spend in one period.
+  double totalSpend({
+    BudgetPeriod period = BudgetPeriod.month,
+    DateTime? anchor,
+  }) => spendIndex(period: period, anchor: anchor).total;
 
   /// Total income recorded under [category], which is an income category id
   /// such as `salary` (see `IncomeCategory`).
