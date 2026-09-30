@@ -65,18 +65,32 @@ class CategoryRegistry {
     // puts slices of these side by side and two similar browns next to each
     // other are unreadable. design_system_test.dart asserts a minimum
     // separation between every pair.
+    //
+    // They also have to be VISIBLE. A category colour is drawn as an icon tint
+    // and as a legend swatch, on a cream page in light mode and a near-black one
+    // in dark mode, and it has to clear 3:1 against BOTH. Nine of the original
+    // twenty-one did not, and the worst was Travel at 1.78 on near-black — the
+    // carafe brown, which is the same value as the page background family, so on
+    // a dark screen the Travel slice was very nearly invisible.
+    //
+    // Getting there is mostly a lightness move. Hue is what makes a category
+    // recognisable, so every colour below keeps its hue to within two degrees
+    // and its saturation exactly; 15 of the 28 in this file are unchanged. The
+    // one real casualty is Travel, which has to roughly triple in luminance to
+    // clear near-black: a colour that dark cannot be visible on a background
+    // that dark, whatever its hue. It is still a warm brown.
     CategoryMeta(
       id: 'food',
       name: 'Food',
       icon: Icons.restaurant_rounded,
-      color: Color(0xFFB07A2E),
+      color: Color(0xFFA6712B),
       popularity: 0,
     ),
     CategoryMeta(
       id: 'travel',
       name: 'Travel',
       icon: Icons.directions_car_rounded,
-      color: Color(0xFF4B392F),
+      color: Color(0xFF826654),
       popularity: 1,
     ),
     CategoryMeta(
@@ -111,7 +125,7 @@ class CategoryRegistry {
       id: 'health',
       name: 'Health',
       icon: Icons.favorite_rounded,
-      color: Color(0xFFC2703F),
+      color: Color(0xFFBA6B3B),
       popularity: 6,
     ),
     CategoryMeta(
@@ -125,7 +139,7 @@ class CategoryRegistry {
       id: 'other',
       name: 'Other',
       icon: Icons.payments_rounded,
-      color: Color(0xFFA8907D),
+      color: Color(0xFF967A64),
       popularity: 8,
     ),
   ];
@@ -142,7 +156,7 @@ class CategoryRegistry {
       id: 'freelance',
       name: 'Freelance',
       icon: Icons.handshake_rounded,
-      color: Color(0xFF7A9A7A),
+      color: Color(0xFF6A866A),
       popularity: 1,
     ),
     CategoryMeta(
@@ -156,14 +170,14 @@ class CategoryRegistry {
       id: 'bonus',
       name: 'Bonus',
       icon: Icons.emoji_events_rounded,
-      color: Color(0xFFB08C5A),
+      color: Color(0xFF9B794B),
       popularity: 3,
     ),
     CategoryMeta(
       id: 'gift',
       name: 'Gift',
       icon: Icons.volunteer_activism_rounded,
-      color: Color(0xFFA88C78),
+      color: Color(0xFF987962),
       popularity: 4,
     ),
     CategoryMeta(
@@ -215,21 +229,21 @@ class CategoryRegistry {
       id: 'suggested:snacks',
       name: 'Snacks',
       icon: Icons.cookie_rounded,
-      color: Color(0xFF9D174D),
+      color: Color(0xFFBA1859),
       popularity: 22,
     ),
     CategoryMeta(
       id: 'suggested:coffee',
       name: 'Coffee',
       icon: Icons.coffee_rounded,
-      color: Color(0xFF6F4E37),
+      color: Color(0xFF7D593F),
       popularity: 23,
     ),
     CategoryMeta(
       id: 'suggested:electronics',
       name: 'Electronics',
       icon: Icons.memory_rounded,
-      color: Color(0xFF1D4ED8),
+      color: Color(0xFF1E53E1),
       popularity: 24,
     ),
     CategoryMeta(
@@ -257,21 +271,21 @@ class CategoryRegistry {
       id: 'suggested:personal care',
       name: 'Personal Care',
       icon: Icons.content_cut_rounded,
-      color: Color(0xFFA21CAF),
+      color: Color(0xFFA41CB0),
       popularity: 28,
     ),
     CategoryMeta(
       id: 'suggested:books',
       name: 'Books & Study',
       icon: Icons.menu_book_rounded,
-      color: Color(0xFF4338CA),
+      color: Color(0xFF574DD0),
       popularity: 29,
     ),
     CategoryMeta(
       id: 'suggested:pets',
       name: 'Pets',
       icon: Icons.pets_rounded,
-      color: Color(0xFF7C2D12),
+      color: Color(0xFFA64017),
       popularity: 30,
     ),
     CategoryMeta(
