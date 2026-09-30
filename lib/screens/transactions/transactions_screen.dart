@@ -62,9 +62,14 @@ class TransactionsScreen extends StatelessWidget {
                   balance: balance,
                   averageDaily: provider.getAverageDailySpending(),
                   currencySymbol: currencySymbol,
-                  count: provider.transactions.length,
+                  count: provider.filteredTransactions.length,
                   onPrevious: provider.previousMonth,
                   onNext: provider.nextMonth,
+                  onPickDay: () => _pickDay(context, provider),
+                  selectedDayLabel: provider.selectedDay == null
+                      ? null
+                      : DateFormat.yMMMMd().format(provider.selectedDay!),
+                  onClearDay: () => provider.setSelectedDay(null),
                 ),
                 const SizedBox(height: AppSpacing.md),
                 _FilterButtons(
@@ -161,6 +166,92 @@ class TransactionsScreen extends StatelessWidget {
         amount: entry.value,
       );
     }).toList();
+  }
+
+  /// Opens the day picker for the month on screen.
+  ///
+  /// Days that actually have transactions are marked, so the picker is not 30
+  /// equally plausible empty cells. Only days up to today are offered: a
+  /// transaction cannot have been recorded on a day that has not happened.
+  Future<void> _pickDay(
+    BuildContext context,
+    TransactionProvider provider,
+  ) async {
+    final month = provider.currentMonth ?? DateTime.now();
+    final today = DateTime.now();
+    final withData = provider.daysWithTransactions;
+    final lastDay = DateTime(month.year, month.month + 1, 0).day;
+    final maxDay = month.year == today.year && month.month == today.month
+        ? today.day
+        : lastDay;
+
+    final picked = await showModalBottomSheet<DateTime>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                0,
+                AppSpacing.lg,
+                AppSpacing.xs,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Jump to a day',
+                      style: Theme.of(sheetContext).textTheme.titleMedium,
+                    ),
+                  ),
+                  if (provider.selectedDay != null)
+                    TextButton(
+                      onPressed: () => Navigator.pop(sheetContext, null),
+                      child: const Text('Whole month'),
+                    ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+              child: CalendarDatePicker(
+                initialDate:
+                    provider.selectedDay ??
+                    DateTime(month.year, month.month, 1),
+                firstDate: DateTime(month.year, month.month, 1),
+                lastDate: DateTime(month.year, month.month, maxDay),
+                onDateChanged: (day) => Navigator.pop(sheetContext, day),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: Text(
+                withData.isEmpty
+                    ? 'Nothing recorded this month yet.'
+                    : '${withData.length} '
+                          'day${withData.length == 1 ? '' : 's'} '
+                          'have transactions',
+                style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(sheetContext).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (picked == null) {
+      // "Whole month" dismisses with null, which is indistinguishable from the
+      // sheet being swiped away, so treat a null while a day is selected as a
+      // request to clear it.
+      if (provider.selectedDay != null) provider.setSelectedDay(null);
+      return;
+    }
+    provider.setSelectedDay(picked);
   }
 
   List<Widget> _groupTransactions(List<Transaction> transactions) {
@@ -267,6 +358,9 @@ class _MonthSummaryCard extends StatelessWidget {
     required this.count,
     required this.onPrevious,
     required this.onNext,
+    required this.onPickDay,
+    required this.selectedDayLabel,
+    required this.onClearDay,
   });
 
   final DateTime month;
@@ -278,6 +372,14 @@ class _MonthSummaryCard extends StatelessWidget {
   final int count;
   final VoidCallback onPrevious;
   final VoidCallback onNext;
+
+  /// Opens the day picker.
+  final VoidCallback onPickDay;
+
+  /// Non-null when the view is narrowed to a single day; shown as a chip the
+  /// user can dismiss to get the whole month back.
+  final String? selectedDayLabel;
+  final VoidCallback onClearDay;
 
   @override
   Widget build(BuildContext context) {
@@ -299,10 +401,36 @@ class _MonthSummaryCard extends StatelessWidget {
                 onPressed: onPrevious,
                 icon: const Icon(Icons.chevron_left_rounded),
               ),
-              Text(
-                DateFormat.yMMMM().format(month),
-                style: textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
+              // Tappable, because the month header is the natural place to reach
+              // for a day. It used to be a plain Text.
+              Flexible(
+                child: TextButton(
+                  onPressed: onPickDay,
+                  style: TextButton.styleFrom(
+                    foregroundColor: colorScheme.onPrimaryContainer,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm,
+                      vertical: AppSpacing.xxs,
+                    ),
+                    minimumSize: const Size(0, 36),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.calendar_today_rounded, size: 16),
+                      const SizedBox(width: AppSpacing.xs),
+                      Flexible(
+                        child: Text(
+                          DateFormat.yMMMM().format(month),
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               IconButton(
@@ -331,6 +459,21 @@ class _MonthSummaryCard extends StatelessWidget {
               color: colorScheme.onSurfaceVariant,
             ),
           ),
+          if (selectedDayLabel != null) ...[
+            const SizedBox(height: AppSpacing.xs),
+            // The escape hatch from a day view. Without it there is no way back
+            // to the month except the calendar.
+            Align(
+              alignment: Alignment.centerLeft,
+              child: InputChip(
+                avatar: const Icon(Icons.event_rounded, size: 18),
+                label: Text(selectedDayLabel!),
+                onDeleted: onClearDay,
+                deleteButtonTooltipMessage: 'Show the whole month',
+                onPressed: onPickDay,
+              ),
+            ),
+          ],
           const SizedBox(height: AppSpacing.md),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
