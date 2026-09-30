@@ -1064,6 +1064,81 @@ void main() {
     });
   });
 
+  group('the removal tombstones are capped', () {
+    test('the list never grows past 200, dropping the oldest', () {
+      // removedIds only ever grows, and a trip shared between friends can
+      // accumulate deletions for years. The stored record has to stay bounded.
+      var journey = Journey(id: 't', destination: 'd', origin: 'o');
+      for (var i = 0; i < 250; i++) {
+        journey = journey.withRemoved('id-$i');
+      }
+
+      expect(journey.removedIds, hasLength(200));
+      // Oldest dropped, newest kept — the newest deletion is the one most
+      // likely to still have a file in flight that would otherwise resurrect it.
+      expect(journey.removedIds.first, 'id-50');
+      expect(journey.removedIds.last, 'id-249');
+      expect(journey.isRemoved('id-0'), isFalse);
+      expect(journey.isRemoved('id-249'), isTrue);
+    });
+
+    test('the newest tombstone still protects a deletion', () {
+      var journey = Journey(id: 't', destination: 'd', origin: 'o');
+      for (var i = 0; i < 500; i++) {
+        journey = journey.withRemoved('id-$i');
+      }
+      expect(journey.removedIds, hasLength(200));
+      expect(journey.isRemoved('id-499'), isTrue);
+    });
+
+    test('adding the same id twice does not grow the list', () {
+      var journey = Journey(id: 't', destination: 'd', origin: 'o');
+      journey = journey.withRemoved('same');
+      journey = journey.withRemoved('same');
+      journey = journey.withRemoved('same');
+
+      expect(journey.removedIds, ['same']);
+    });
+
+    test('an empty id is not tombstoned', () {
+      final journey = Journey(id: 't', destination: 'd', origin: 'o');
+
+      expect(journey.withRemoved('').removedIds, isEmpty);
+    });
+
+    test('reading a record already over the cap does not drop tombstones', () {
+      // Truncating on READ is how a deleted expense comes back. Loading is
+      // deliberately lossless; the cap applies the next time one is added.
+      final json = Journey.fromJson({
+        'id': 't',
+        'destination': 'd',
+        'origin': 'o',
+        'startTime': '2026-01-01T00:00:00.000',
+        'createdAt': '2026-01-01T00:00:00.000',
+        'updatedAt': '2026-01-01T00:00:00.000',
+        'removedIds': [for (var i = 0; i < 300; i++) 'id-$i'],
+      });
+
+      expect(json.removedIds, hasLength(300));
+      expect(json.isRemoved('id-0'), isTrue);
+      expect(json.withRemoved('new').removedIds, hasLength(200));
+      expect(json.withRemoved('new').isRemoved('id-0'), isFalse);
+    });
+
+    test('a trip with no tombstones loads from before the field existed', () {
+      final legacy = Journey.fromJson({
+        'id': 'old',
+        'destination': 'Pokhara',
+        'origin': 'Kathmandu',
+        'startTime': '2026-01-01T00:00:00.000',
+        'createdAt': '2026-01-01T00:00:00.000',
+        'updatedAt': '2026-01-01T00:00:00.000',
+      });
+
+      expect(legacy.removedIds, isEmpty);
+    });
+  });
+
   group('merge is by id, not by name', () {
     test('two different people with the same name stay two people', () async {
       const importer = TripImporter();

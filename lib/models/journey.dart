@@ -69,7 +69,20 @@ class Journey {
   ///
   /// Ids are UUIDs minted by this app and unique across every record type, so
   /// one list covers deleted expenses and deleted participants alike.
+  ///
+  /// Capped at [_maxRemovedIds]. It only ever grows, and a trip shared between
+  /// friends can accumulate deletions over years; without a cap the journey
+  /// record grows without bound and every read pays for it. Dropping the OLDEST
+  /// is the right end to drop: the newest deletion is the one most likely to
+  /// still have a file in flight that would otherwise resurrect it, and an old
+  /// one whose file has long since been re-shared is not coming back.
   final List<String> removedIds;
+
+  /// How many tombstones one trip keeps.
+  ///
+  /// Generous enough that nobody will ever hit it in practice — 200 deleted rows
+  /// on a single trip — while keeping the stored record a bounded size.
+  static const int _maxRemovedIds = 200;
 
   Journey({
     String? id,
@@ -226,6 +239,23 @@ class Journey {
   /// Checked by the importer before adding anything: a file that still lists a
   /// deleted record must not put it back.
   bool isRemoved(String recordId) => removedIds.contains(recordId);
+
+  /// This trip with [recordId] tombstoned, oldest tombstones dropped past
+  /// [_maxRemovedIds].
+  ///
+  /// The one way to add a tombstone, so the cap cannot be forgotten at a call
+  /// site. Existing records are left alone: an already-over-cap list loads and
+  /// stays as it is until the next deletion, when it is pruned. Losing a
+  /// tombstone on READ is how a deleted expense reappears, so reading is
+  /// deliberately lossless.
+  Journey withRemoved(String recordId) {
+    if (recordId.isEmpty || removedIds.contains(recordId)) return this;
+
+    final next = [...removedIds, recordId];
+    final overflow = next.length - _maxRemovedIds;
+    final trimmed = overflow > 0 ? next.sublist(overflow, next.length) : next;
+    return copyWith(removedIds: trimmed);
+  }
 
   /// Derived status: completed if done; upcoming if it starts in the future;
   /// otherwise the journey is currently active.
