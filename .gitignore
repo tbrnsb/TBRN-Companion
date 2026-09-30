@@ -64,3 +64,4 @@ opencode.jsonc
 # in-flight work, and copies of changed files. Useful on disk, but a bundle
 # inside the repo it duplicates is dead weight in every clone forever.
 backup/
+.verify-logs/
