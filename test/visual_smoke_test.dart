@@ -12,6 +12,7 @@ import 'package:flutter_application_1/providers/transaction_provider.dart';
 import 'package:flutter_application_1/services/storage_service.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:flutter_application_1/screens/home_screen.dart';
+import 'package:flutter_application_1/widgets/app_gear.dart';
 
 import 'test_viewports.dart';
 
@@ -78,22 +79,19 @@ void main() {
     );
 
     // The dock order, which is the thing worth asserting: Transactions sits
-    // third, ahead of Places.
-    for (final label in [
-      'Pack',
-      'Journey',
-      'Transactions',
-      'Places',
-      'Settings',
-    ]) {
+    // third, ahead of Places. Four tabs — Settings moved to the app bar gear.
+    for (final label in ['Pack', 'Journey', 'Transactions', 'Places']) {
       expect(tab(label), findsOneWidget, reason: 'no "$label" tab');
       await tester.tap(tab(label));
       await tester.pumpAndSettle();
       expect(find.byType(HomeScreen), findsOneWidget);
+      // Every tab has to keep a way into Settings, or losing the fifth dock
+      // slot would have quietly removed a screen.
+      expect(find.byKey(AppGearButton.buttonKey), findsOneWidget);
     }
   });
 
-  testWidgets('the dock is Pack, Journey, Transactions, Places, Settings', (
+  testWidgets('the dock is Pack, Journey, Transactions, Places', (
     tester,
   ) async {
     usePhoneLayout(tester, TestViewports.phonePortrait);
@@ -109,6 +107,6 @@ void main() {
         .map((d) => (d as NavigationDestination).label)
         .toList();
 
-    expect(labels, ['Pack', 'Journey', 'Transactions', 'Places', 'Settings']);
+    expect(labels, ['Pack', 'Journey', 'Transactions', 'Places']);
   });
 }

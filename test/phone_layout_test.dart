@@ -14,11 +14,17 @@ import 'package:flutter_application_1/providers/journey_provider.dart';
 import 'package:flutter_application_1/providers/location_provider.dart';
 import 'package:flutter_application_1/providers/settings_provider.dart';
 import 'package:flutter_application_1/providers/transaction_provider.dart';
+import 'package:flutter_application_1/screens/checklists/checklists_screen.dart';
 import 'package:flutter_application_1/screens/home_screen.dart';
 import 'package:flutter_application_1/screens/journeys/journey_detail_screen.dart';
+import 'package:flutter_application_1/screens/journeys/journeys_screen.dart';
+import 'package:flutter_application_1/screens/locations/locations_screen.dart';
+import 'package:flutter_application_1/screens/settings_screen.dart';
 import 'package:flutter_application_1/screens/transactions/add_expense_sheet.dart';
+import 'package:flutter_application_1/screens/transactions/transactions_screen.dart';
 import 'package:flutter_application_1/services/storage_service.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:flutter_application_1/widgets/app_gear.dart';
 import 'package:flutter_application_1/widgets/app_stat_tile.dart';
 import 'package:flutter_application_1/widgets/spend_breakdown_card.dart';
 
@@ -513,7 +519,45 @@ void main() {
     });
   });
 
-  group('bottom navigation labels', () {
+  group('the dock', () {
+    testWidgets('has exactly four tabs and no Settings destination', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phoneSmall);
+
+      await tester.pumpWidget(_navApp());
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final destinations = tester
+          .widget<NavigationBar>(find.byType(NavigationBar))
+          .destinations;
+
+      expect(
+        destinations.length,
+        4,
+        reason: 'Settings is a drawer opened from the gear, not a fifth tab',
+      );
+      // `destinations` is typed List<Widget>; the labels live on
+      // NavigationDestination, which is what every destination in this dock is.
+      final labels = destinations
+          .map((d) => (d as NavigationDestination).label)
+          .toList();
+
+      expect(labels, [
+        'Pack',
+        'Journey',
+        'Transactions',
+        'Places',
+      ], reason: 'the dock order is fixed and money sits closer to the thumb');
+      expect(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text('Settings'),
+        ),
+        findsNothing,
+      );
+    });
+
     testWidgets('every tab label renders whole at 360dp', (tester) async {
       usePhoneLayout(
         tester,
@@ -533,13 +577,7 @@ void main() {
       // has to render inside.
       final slot = bar.width / count;
 
-      for (final label in [
-        'Pack',
-        'Journey',
-        'Transactions',
-        'Places',
-        'Settings',
-      ]) {
+      for (final label in ['Pack', 'Journey', 'Transactions', 'Places']) {
         final finder = find.descendant(
           of: find.byType(NavigationBar),
           matching: find.text(label),
@@ -559,6 +597,100 @@ void main() {
       }
     });
   });
+
+  group('the settings gear', () {
+    testWidgets('is on the app bar of all four tabs', (tester) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+
+      await tester.pumpWidget(_navApp());
+      await settleUi(tester);
+
+      for (var tab = 0; tab < 4; tab++) {
+        await tester.tap(find.byType(NavigationDestination).at(tab));
+        await settleUi(tester);
+
+        expect(
+          find.byKey(AppGearButton.buttonKey),
+          findsOneWidget,
+          reason: 'tab $tab has no way into Settings',
+        );
+        // Tapping the destination really moved the body, rather than leaving
+        // the first tab under four identical app bars.
+        expect(
+          find.byType(_screenForTab(tab)),
+          findsOneWidget,
+          reason: 'tab $tab did not switch the body',
+        );
+      }
+    });
+
+    testWidgets('opens Settings, and back returns to the same tab', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+
+      await tester.pumpWidget(_navApp());
+      await settleUi(tester);
+
+      // Start on Places so a bug that ignores the tapped index is visible.
+      await tester.tap(find.byType(NavigationDestination).at(3));
+      await settleUi(tester);
+
+      await tester.tap(find.byKey(AppGearButton.buttonKey));
+      await settleUi(tester);
+
+      expect(find.byType(SettingsScreen), findsOneWidget);
+
+      // The point of pushing rather than swapping: back goes where you were.
+      await tester.pageBack();
+      await settleUi(tester);
+
+      expect(find.byType(SettingsScreen), findsNothing);
+      expect(find.byType(LocationsScreen), findsOneWidget);
+    });
+
+    testWidgets('Settings still works from the gear — not an empty shell', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+
+      await tester.pumpWidget(_navApp());
+      await settleUi(tester);
+
+      await tester.tap(find.byKey(AppGearButton.buttonKey));
+      await settleUi(tester);
+
+      // The sections the drawer is actually for. If the route stopped building
+      // them this test fails instead of a user finding an empty screen.
+      expect(find.text('Currency'), findsOneWidget);
+      expect(find.text('Theme'), findsOneWidget);
+    });
+
+    testWidgets('a very long tab title does not squeeze the gear out', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phoneSmall);
+
+      await tester.pumpWidget(_navApp());
+      await settleUi(tester);
+
+      // Places has the longest title of the four; the gear has to stay inside
+      // the viewport whatever the app bar title measures.
+      final gear = tester.getRect(find.byKey(AppGearButton.buttonKey));
+      expect(gear.right, lessThanOrEqualTo(tester.view.physicalSize.width));
+      expect(gear.width, greaterThan(0));
+    });
+  });
+}
+
+/// The body each dock slot is expected to show, in the fixed dock order.
+Type _screenForTab(int tab) {
+  return switch (tab) {
+    0 => ChecklistsScreen,
+    1 => JourneysScreen,
+    2 => TransactionsScreen,
+    _ => LocationsScreen,
+  };
 }
 
 Widget _navApp() {
