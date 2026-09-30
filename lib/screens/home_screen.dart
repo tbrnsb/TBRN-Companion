@@ -70,28 +70,31 @@ class _HomeScreenState extends State<HomeScreen> {
           indicatorColor: colorScheme.primaryContainer,
           selectedIndex: _selectedIndex,
           destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.checklist_rounded),
-              label: 'Pack',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.route_rounded),
-              label: 'Journey',
-            ),
-            // Third, ahead of Places. The dock order is Pack, Journey,
-            // Transactions, Places: money is a thing you look at far
-            // more often than saved places, so it sits closer to the thumb.
-            // Settings is no longer a destination — it is a gear in each
-            // screen's app bar, because it is a drawer you open rather than a
-            // place you browse.
+            // Money first. The dock order is Transactions, Journey, Pack,
+            // Places: a spending ledger is something you look at daily, a trip
+            // and a packing list are tied to a date, and saved places are looked
+            // up rather than browsed. Putting the two most-frequent things on
+            // the thumb's natural arc beats keeping the original order, where
+            // the two you open most were the second and third slots.
             NavigationDestination(
               icon: Icon(Icons.receipt_long_rounded),
               label: 'Transactions',
             ),
             NavigationDestination(
+              icon: Icon(Icons.route_rounded),
+              label: 'Journey',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.checklist_rounded),
+              label: 'Pack',
+            ),
+            NavigationDestination(
               icon: Icon(Icons.location_on_rounded),
               label: 'Places',
             ),
+            // Settings is not a destination. It is a gear in each screen's app
+            // bar, because it is a drawer you open rather than a place you
+            // browse.
           ],
           onDestinationSelected: (index) {
             HapticFeedback.lightImpact();
@@ -105,13 +108,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildBody() {
+    // Indexed to match `destinations` above. Kept adjacent to it deliberately:
+    // these two lists have to stay in the same order, and when they drifted the
+    // dock showed one label while the body showed another.
     switch (_selectedIndex) {
       case 0:
-        return const ChecklistsScreen();
+        return const TransactionsScreen();
       case 1:
         return const JourneysScreen();
       case 2:
-        return const TransactionsScreen();
+        return const ChecklistsScreen();
       case 3:
         return const LocationsScreen();
       default:

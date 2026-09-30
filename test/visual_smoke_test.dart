@@ -78,9 +78,10 @@ void main() {
       matching: find.text(label),
     );
 
-    // The dock order, which is the thing worth asserting: Transactions sits
-    // third, ahead of Places. Four tabs — Settings moved to the app bar gear.
-    for (final label in ['Pack', 'Journey', 'Transactions', 'Places']) {
+    // The dock order, which is the thing worth asserting: Transactions leads,
+    // ahead of Journey and Pack. Four tabs — Settings moved to the app bar
+    // gear.
+    for (final label in ['Transactions', 'Journey', 'Pack', 'Places']) {
       expect(tab(label), findsOneWidget, reason: 'no "$label" tab');
       await tester.tap(tab(label));
       await tester.pumpAndSettle();
@@ -91,7 +92,7 @@ void main() {
     }
   });
 
-  testWidgets('the dock is Pack, Journey, Transactions, Places', (
+  testWidgets('the dock is Transactions, Journey, Pack, Places', (
     tester,
   ) async {
     usePhoneLayout(tester, TestViewports.phonePortrait);
@@ -107,6 +108,6 @@ void main() {
         .map((d) => (d as NavigationDestination).label)
         .toList();
 
-    expect(labels, ['Pack', 'Journey', 'Transactions', 'Places']);
+    expect(labels, ['Transactions', 'Journey', 'Pack', 'Places']);
   });
 }
