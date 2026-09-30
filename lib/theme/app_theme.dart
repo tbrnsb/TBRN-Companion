@@ -22,12 +22,34 @@ class AppColors {
   static const Color mocha = Color(0xFF6B5646); // secondary dark
   static const Color latte = Color(0xFFEFE7DA); // subtle fill
 
+  // Light-mode surface ladder.
+  //
+  // These exist because Material's container roles are what `Card`, `ListTile`,
+  // menus, dialogs, bottom sheets, filled text fields, chips and snack bars all
+  // paint themselves with. Leaving them unset made every one of them resolve to
+  // the same cream as the page — surfaceContainerLow through surfaceContainerHigh
+  // were all #f8f1e5 — so there was no elevation anywhere in light mode and every
+  // card vanished into the background. A warm ladder, lightest at the top, gives
+  // each component the right tone without any of them being hand-painted.
+  static const Color surfaceLowest = Color(0xFFFDF9F2); // raised cards
+  static const Color surfaceLow = Color(0xFFF8F1E5); // the page
+  static const Color surfaceMid = Color(0xFFF3EADB);
+  static const Color surfaceHigh = Color(0xFFEDE2CE);
+  static const Color surfaceHighest = Color(0xFFE6DAC3);
+  static const Color surfaceRecessed = Color(0xFFEADFCB);
+  static const Color outlineSoft = Color(0xFFD8C7A8);
+
   // Dark-mode tones (near-black warm foundation, solid opaque surfaces)
   static const Color darkBackground = Color(0xFF100D0A); // app background
   static const Color darkSurface = Color(0xFF171310); // content surfaces
   static const Color darkSurfaceHigh = Color(0xFF221C16); // secondary surfaces
   static const Color darkBorder = Color(0xFF2E2720); // subtle opaque borders
   static const Color darkCream = Color(0xFFE8D9C2); // muted primary text
+  // Dark ladder, same reason as the light one. These extend the two tones that
+  // already existed rather than replacing them, so the surfaces the app already
+  // painted keep their colour and Material's own components gain steps.
+  static const Color darkSurfaceHigher = Color(0xFF2A231C);
+  static const Color darkSurfaceMid = Color(0xFF1C1712);
 
   // Semantic (kept warm/desaturated to fit palette)
   static const Color success = Color(0xFF5C7A52);
@@ -99,7 +121,10 @@ class AppSurfaces {
         border: BorderSide.none,
       ),
       AppSurfaceTier.raised => (
-        color: isDark ? AppColors.darkSurface : Colors.white,
+        // The lightest warm tone, not Colors.white. Pure white on a cream page
+        // reads as clinical and broke the palette; this is the same "one step
+        // above the page" relationship, kept in the warm family.
+        color: isDark ? AppColors.darkSurface : AppColors.surfaceLowest,
         border: BorderSide(color: scheme.outlineVariant),
       ),
       AppSurfaceTier.accent => (
@@ -205,12 +230,22 @@ class AppTheme {
       onTertiaryContainer: AppColors.carafe,
       error: AppColors.error,
       onError: AppColors.creamLight,
-      surface: AppColors.creamLight,
+      surface: AppColors.surfaceLow,
       onSurface: AppColors.jet,
-      surfaceContainerHighest: AppColors.latte,
+      // The full ladder. Without these, Material's own container roles all
+      // collapsed onto the page colour.
+      surfaceDim: AppColors.surfaceRecessed,
+      surfaceBright: AppColors.surfaceLowest,
+      surfaceContainerLowest: AppColors.surfaceLowest,
+      surfaceContainerLow: AppColors.surfaceLow,
+      surfaceContainer: AppColors.surfaceMid,
+      surfaceContainerHigh: AppColors.surfaceHigh,
+      surfaceContainerHighest: AppColors.surfaceHighest,
       onSurfaceVariant: AppColors.mocha,
       outline: AppColors.khaki,
-      outlineVariant: AppColors.sand,
+      // Was `sand`, which was so close to the page that borders all but
+      // disappeared and a raised card had no edge to sit on.
+      outlineVariant: AppColors.outlineSoft,
       shadow: AppColors.jet,
       inverseSurface: AppColors.jet,
       onInverseSurface: AppColors.cream,
@@ -239,7 +274,13 @@ class AppTheme {
       onError: AppColors.jet,
       surface: AppColors.darkSurface,
       onSurface: AppColors.cream,
-      surfaceContainerHighest: AppColors.darkSurfaceHigh,
+      surfaceDim: AppColors.darkBackground,
+      surfaceBright: AppColors.darkSurfaceHigh,
+      surfaceContainerLowest: AppColors.darkBackground,
+      surfaceContainerLow: AppColors.darkSurface,
+      surfaceContainer: AppColors.darkSurfaceMid,
+      surfaceContainerHigh: AppColors.darkSurfaceHigh,
+      surfaceContainerHighest: AppColors.darkSurfaceHigher,
       onSurfaceVariant: AppColors.khaki,
       outline: AppColors.mocha,
       outlineVariant: AppColors.darkBorder,

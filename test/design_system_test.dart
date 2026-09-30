@@ -48,6 +48,83 @@ void main() {
       expect(tileMaterial.type, MaterialType.canvas);
     });
 
+    test('the light surface ladder actually has steps', () {
+      // The bug this pins: Material's container roles were left unset, so
+      // surfaceContainerLow through surfaceContainerHigh all resolved to the
+      // page colour. Card, ListTile, menus, dialogs, sheets, filled fields and
+      // chips paint themselves with those roles, so with no ladder there was no
+      // elevation in light mode and every card vanished into the background.
+      final scheme = AppTheme.light().colorScheme;
+
+      final ladder = <String, Color>{
+        'lowest': scheme.surfaceContainerLowest,
+        'low': scheme.surfaceContainerLow,
+        'mid': scheme.surfaceContainer,
+        'high': scheme.surfaceContainerHigh,
+        'highest': scheme.surfaceContainerHighest,
+      };
+      final names = ladder.keys.toList();
+      for (var i = 0; i < names.length - 1; i++) {
+        expect(
+          _colourDistance(ladder[names[i]]!, ladder[names[i + 1]]!),
+          greaterThan(0),
+          reason:
+              '${names[i]} and ${names[i + 1]} are the same colour, so a card '
+              'painted with one is invisible against a card painted with the '
+              'other',
+        );
+      }
+    });
+
+    test('a raised card is visibly above the page', () {
+      final scheme = AppTheme.light().colorScheme;
+      final page = scheme.surface;
+      final raised = AppSurfaces.specFor(AppSurfaceTier.raised, scheme).color;
+
+      // A card has to separate from the page it sits on, or the layout has no
+      // structure to read.
+      expect(_colourDistance(page, raised), greaterThan(6));
+    });
+
+    test('the raised card stays inside the warm palette', () {
+      final scheme = AppTheme.light().colorScheme;
+      final raised = AppSurfaces.specFor(AppSurfaceTier.raised, scheme).color;
+
+      // It used to be Colors.white, which is off-palette next to a cream page
+      // and reads as clinical rather than warm.
+      expect(raised, isNot(const Color(0xFFFFFFFF)));
+      // Warm means at least as much red as blue.
+      expect(raised.r, greaterThanOrEqualTo(raised.b));
+    });
+
+    test('the dark surface ladder has steps too', () {
+      // Dark had the same defect as light: every container role collapsed onto
+      // the surface colour, so Material's own components had no elevation.
+      final scheme = AppTheme.dark().colorScheme;
+      final ladder = <Color>[
+        scheme.surfaceContainerLowest,
+        scheme.surfaceContainerLow,
+        scheme.surfaceContainer,
+        scheme.surfaceContainerHigh,
+        scheme.surfaceContainerHighest,
+      ];
+      for (var i = 0; i < ladder.length - 1; i++) {
+        expect(
+          _colourDistance(ladder[i], ladder[i + 1]),
+          greaterThan(0),
+          reason: 'step $i and ${i + 1} of the dark ladder are identical',
+        );
+      }
+      // Dark climbs the other way: each step is lighter than the last.
+      for (var i = 0; i < ladder.length - 1; i++) {
+        expect(
+          ladder[i + 1].computeLuminance(),
+          greaterThan(ladder[i].computeLuminance()),
+          reason: 'the dark ladder should get lighter as it rises',
+        );
+      }
+    });
+
     testWidgets('each tier produces a distinct fill', (tester) async {
       usePhoneLayout(tester, TestViewports.phonePortrait);
 
