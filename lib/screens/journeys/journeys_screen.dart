@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'package:flutter_application_1/models/index.dart';
+import 'package:flutter_application_1/providers/checklist_provider.dart';
 import 'package:flutter_application_1/providers/journey_provider.dart';
 import 'package:flutter_application_1/providers/location_provider.dart';
 import 'package:flutter_application_1/screens/journeys/journey_detail_screen.dart';
@@ -729,6 +730,45 @@ class _ActiveJourneyCard extends StatelessWidget {
   }
 }
 
+/// "4 of 9 packed" on a journey row.
+///
+/// A trip's own item list had no ticks and no progress, so a trip that was fully
+/// packed and a trip that had not been started looked identical from the
+/// timeline. This reads the checklist the trip now owns.
+class _PackProgressLine extends StatelessWidget {
+  const _PackProgressLine({required this.progress});
+
+  final PackProgress progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final complete = progress.total > 0 && progress.packed == progress.total;
+
+    return Row(
+      children: [
+        Icon(
+          complete ? Icons.check_circle_rounded : Icons.backpack_rounded,
+          size: 14,
+          color: complete
+              ? AppColors.success
+              : theme.colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(width: AppSpacing.xxs),
+        Text(
+          complete ? 'Packed' : progress.label,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: complete
+                ? AppColors.success
+                : theme.colorScheme.onSurfaceVariant,
+            fontWeight: complete ? FontWeight.w600 : null,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _JourneyTile extends StatelessWidget {
   const _JourneyTile({required this.journey});
 
@@ -742,6 +782,12 @@ class _JourneyTile extends StatelessWidget {
         : 'In progress';
     final colorScheme = Theme.of(context).colorScheme;
     final status = journey.status;
+
+    // Where the trip got to. Null when it has no checklist, which is different
+    // from "nothing packed" and is the cue to offer the one-tap pack.
+    final progress = context.watch<ChecklistProvider>().packProgressFor(
+      journey.id,
+    );
 
     final statusColor = switch (status) {
       // AppColors rather than literals, so the journey timeline stays in the
@@ -786,6 +832,10 @@ class _JourneyTile extends StatelessWidget {
                 ],
               ),
               Text('Started: $start · Ended: $end'),
+              if (progress != null) ...[
+                const SizedBox(height: AppSpacing.xxs),
+                _PackProgressLine(progress: progress),
+              ],
             ],
           ),
           trailing: const Icon(Icons.chevron_right_rounded),
