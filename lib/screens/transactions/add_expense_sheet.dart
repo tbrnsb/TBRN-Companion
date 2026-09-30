@@ -46,6 +46,12 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
   late final TextEditingController _descriptionController;
   late ExpenseCategory _category;
   String? _customCategoryName;
+
+  /// Defaults to cash for a new entry so the common Nepal case is one tap and
+  /// a save. An existing record keeps whatever it was filed with, including
+  /// nothing at all — an old record that predates this field is not retrofitted
+  /// with a guess.
+  late PaymentMethod _paymentMethod;
   late DateTime _date;
   String? _locationId;
   String? _journeyId;
@@ -83,6 +89,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
       }
     }
     _customCategoryName = existing?.customCategoryName;
+    _paymentMethod = existing?.paymentMethod ?? PaymentMethod.cash;
     _date = existing?.date ?? DateTime.now();
     _locationId = existing?.locationId;
     _journeyId =
@@ -202,6 +209,15 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
                 decoration: const InputDecoration(
                   hintText: 'Description (optional)',
                 ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+
+              _PaymentMethodPicker(
+                value: _paymentMethod,
+                onChanged: (method) {
+                  HapticFeedback.selectionClick();
+                  setState(() => _paymentMethod = method);
+                },
               ),
               const SizedBox(height: AppSpacing.md),
 
@@ -358,6 +374,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
               : null,
           locationId: _locationId,
           journeyId: _journeyId,
+          paymentMethod: _paymentMethod,
           date: _date,
           clearLocation: _locationId == null,
           clearJourney: _journeyId == null,
@@ -404,6 +421,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
             ? (_customCategoryName ?? 'Other')
             : null,
         journeyId: _journeyId,
+        paymentMethod: _paymentMethod,
         latitude: position?.latitude,
         longitude: position?.longitude,
         locationCapturedAt: position != null ? DateTime.now() : null,
@@ -495,6 +513,135 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
             child: const Text('Yes'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Cash or online, as two equal halves of one control.
+///
+/// Not a dropdown: there are only two answers, and a two-item menu costs a tap
+/// to open and a tap to choose, where this is one tap. Not a switch either,
+/// because "Online" is not the negation of "Cash" and a switch invites reading
+/// it as on/off.
+class _PaymentMethodPicker extends StatelessWidget {
+  const _PaymentMethodPicker({required this.value, required this.onChanged});
+
+  final PaymentMethod value;
+  final ValueChanged<PaymentMethod> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _CategorySectionLabel('How did you pay?'),
+        const SizedBox(height: AppSpacing.xs),
+        Row(
+          children: [
+            for (final method in PaymentMethod.values) ...[
+              if (method != PaymentMethod.values.first)
+                const SizedBox(width: AppSpacing.xs),
+              Expanded(
+                child: _PaymentMethodOption(
+                  method: method,
+                  selected: method == value,
+                  onTap: () => onChanged(method),
+                  textTheme: textTheme,
+                  selectedBackground: colorScheme.primaryContainer,
+                  selectedForeground: colorScheme.onPrimaryContainer,
+                  idleBackground: colorScheme.surfaceContainerHighest,
+                  idleForeground: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _PaymentMethodOption extends StatelessWidget {
+  const _PaymentMethodOption({
+    required this.method,
+    required this.selected,
+    required this.onTap,
+    required this.textTheme,
+    required this.selectedBackground,
+    required this.selectedForeground,
+    required this.idleBackground,
+    required this.idleForeground,
+  });
+
+  final PaymentMethod method;
+  final bool selected;
+  final VoidCallback onTap;
+  final TextTheme textTheme;
+  final Color selectedBackground;
+  final Color selectedForeground;
+  final Color idleBackground;
+  final Color idleForeground;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      // A stable identity, so the selected state can be read back rather than
+      // inferred from pixel colours.
+      key: ValueKey('pay-${method.name}'),
+      button: true,
+      selected: selected,
+      inMutuallyExclusiveGroup: true,
+      label: 'Pay ${method.label}',
+      child: InkWell(
+        borderRadius: AppRadii.smallRadius,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: AppMotion.fast,
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: AppSpacing.sm,
+          ),
+          decoration: BoxDecoration(
+            color: selected ? selectedBackground : idleBackground,
+            borderRadius: AppRadii.smallRadius,
+            border: Border.all(
+              color: selected
+                  ? Theme.of(context).colorScheme.primary
+                  : Colors.transparent,
+              width: 1.5,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                method == PaymentMethod.cash
+                    ? Icons.payments_rounded
+                    : Icons.smartphone_rounded,
+                size: 18,
+                color: selected ? selectedForeground : idleForeground,
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              // Flexible rather than a fixed gap: "Online" plus its icon has to
+              // survive a 360dp phone and a large text scale, and a Row will
+              // overflow rather than shrink.
+              Flexible(
+                child: Text(
+                  method.label,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: selected ? selectedForeground : idleForeground,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

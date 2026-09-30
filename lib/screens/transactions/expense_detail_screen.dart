@@ -122,6 +122,17 @@ class ExpenseDetailScreen extends StatelessWidget {
             label: 'Category',
             value: current.effectiveCategoryName,
           ),
+          // Shown only when it was actually recorded. Every transaction written
+          // before this field existed has none, and printing "Cash" for those
+          // would be a fact the user never entered.
+          if (current.paymentMethod != null)
+            _DetailRow(
+              icon: current.paymentMethod == PaymentMethod.cash
+                  ? Icons.payments_rounded
+                  : Icons.smartphone_rounded,
+              label: current.isExpense ? 'Paid by' : 'Received by',
+              value: current.paymentMethod!.label,
+            ),
           if (location != null)
             _DetailRow(
               icon: Icons.place_rounded,

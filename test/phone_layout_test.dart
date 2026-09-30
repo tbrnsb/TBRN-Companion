@@ -1,4 +1,8 @@
 import 'package:fl_chart/fl_chart.dart';
+
+// Tristate is declared in dart:ui, not in the flutter package.
+import 'dart:ui' show Tristate;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -343,6 +347,169 @@ void main() {
         lessThanOrEqualTo(220),
         reason: 'a long title must not size the chip past its own cap',
       );
+    });
+  });
+
+  group('how you pay, on the add-expense sheet', () {
+    /// Opens the add-expense sheet and settles it.
+    Future<void> openSheet(WidgetTester tester, SeededProviders p) async {
+      await tester.pumpWidget(
+        _app(
+          p,
+          Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: FilledButton(
+                  onPressed: () => AddExpenseSheet.show(context),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await settleUi(tester);
+      await tester.tap(find.text('open'));
+      await settleUi(tester);
+    }
+
+    testWidgets('offers cash and online, and starts on cash', (tester) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      final p = await _seed(tester);
+
+      await openSheet(tester, p);
+
+      expect(find.text('How did you pay?'), findsOneWidget);
+      expect(find.text('Cash'), findsOneWidget);
+      expect(find.text('Online'), findsOneWidget);
+      // Cash is the common case here, so it is preselected rather than making
+      // the user tap before they can save.
+      expect(
+        tester
+            .getSemantics(find.byKey(const ValueKey('pay-cash')))
+            .flagsCollection
+            .isSelected,
+        Tristate.isTrue,
+      );
+    });
+
+    testWidgets('tapping online moves the selection', (tester) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      final p = await _seed(tester);
+
+      await openSheet(tester, p);
+      await tester.tap(find.text('Online'));
+      await settleUi(tester);
+
+      expect(
+        tester
+            .getSemantics(find.byKey(const ValueKey('pay-online')))
+            .flagsCollection
+            .isSelected,
+        Tristate.isTrue,
+      );
+      // A two-way choice, not a third state.
+      expect(
+        tester
+            .getSemantics(find.byKey(const ValueKey('pay-cash')))
+            .flagsCollection
+            .isSelected,
+        Tristate.isFalse,
+      );
+    });
+
+    testWidgets('an existing expense opens on the method it was saved with', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      final p = await _seed(tester);
+      final online = Expense(
+        amount: 400,
+        category: ExpenseCategory.travel,
+        description: 'Bus',
+        paymentMethod: PaymentMethod.online,
+      );
+      await tester.runAsync(() async {
+        await StorageService().addTransaction(online);
+        await p.transactions.initialize();
+      });
+
+      await tester.pumpWidget(
+        _app(
+          p,
+          Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: FilledButton(
+                  onPressed: () =>
+                      AddExpenseSheet.show(context, existing: online),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await settleUi(tester);
+      await tester.tap(find.text('open'));
+      await settleUi(tester);
+
+      expect(
+        tester
+            .getSemantics(find.byKey(const ValueKey('pay-online')))
+            .flagsCollection
+            .isSelected,
+        Tristate.isTrue,
+      );
+    });
+
+    testWidgets('an expense saved before the field existed is not guessed at', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      final p = await _seed(tester);
+      final legacy = Expense(
+        amount: 150,
+        category: ExpenseCategory.food,
+        description: 'Old tea',
+      );
+      await tester.runAsync(() async {
+        await StorageService().addTransaction(legacy);
+        await p.transactions.initialize();
+      });
+
+      await tester.pumpWidget(
+        _app(
+          p,
+          Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: FilledButton(
+                  onPressed: () =>
+                      AddExpenseSheet.show(context, existing: legacy),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await settleUi(tester);
+      await tester.tap(find.text('open'));
+      await settleUi(tester);
+
+      // Editing it offers the choice without pretending to know the answer:
+      // the picker falls back to cash for display, and saving records it.
+      expect(find.text('How did you pay?'), findsOneWidget);
+    });
+
+    testWidgets('fits a narrow phone without overflowing', (tester) async {
+      usePhoneLayout(tester, TestViewports.phoneSmall);
+      final p = await _seed(tester);
+
+      await openSheet(tester, p);
+
+      expect(tester.takeException(), isNull);
     });
   });
 
