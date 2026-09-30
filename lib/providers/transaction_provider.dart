@@ -16,6 +16,7 @@ class TransactionProvider extends ChangeNotifier {
   DateTime? _currentMonth;
   TransactionFilter _filter = TransactionFilter.all;
   DateTime? _selectedDay;
+  TransactionSearchQuery _search = TransactionSearchQuery.none;
 
   List<Transaction> get transactions => _transactions;
   List<String> get recentCustomCategories => _recentCustomCategories;
@@ -89,6 +90,80 @@ class TransactionProvider extends ChangeNotifier {
     _filter = value;
     notifyListeners();
   }
+
+  // ===== search =====
+
+  /// The current search, or [TransactionSearchQuery.none].
+  TransactionSearchQuery get search => _search;
+
+  bool get hasActiveSearch => _search.isNotEmpty;
+
+  set search(TransactionSearchQuery value) {
+    if (value == _search) return;
+    _search = value;
+    notifyListeners();
+  }
+
+  void clearSearch() {
+    if (_search == TransactionSearchQuery.none) return;
+    _search = TransactionSearchQuery.none;
+    notifyListeners();
+  }
+
+  /// The rows a search returns, in the order the screen shows them.
+  ///
+  /// Read from [transactions] — the whole loaded MONTH — and not from
+  /// [filteredTransactions]. `filteredTransactions` is already narrowed twice
+  /// over, by a selected day and by the All/Expenses/Income chips, so searching
+  /// inside it hides whatever the other two choices happen to be excluding. A
+  /// search that cannot find a row because of an unrelated toggle is a search
+  /// that looks broken.
+  ///
+  /// What IS composed in, and why each part is a separate condition rather than
+  /// a fold into `filteredTransactions`:
+  ///
+  /// - the [TransactionFilter] chips, because those are the user's own explicit
+  ///   choice about what kind of money to look at;
+  /// - the shared-trip rule, [isMyLedgerEntry], as its own clause. It is NOT part
+  ///   of the month or filter composition, and folding it in there would make a
+  ///   correctness rule invisible and re-derivable in the wrong place. Another
+  ///   participant's trip spending must not be findable and must not be counted
+  ///   in any total a search shows.
+  ///
+  /// A selected day deliberately does NOT narrow this. The day filter is a
+  /// browsing convenience; a search is a question about the month, and the user
+  /// can always narrow further with the day picker.
+  List<Transaction> get searchResults {
+    final query = _search;
+    if (query.isEmpty) {
+      return _transactions
+          .where((t) => _filterAllows(t) && isMyLedgerEntry(t))
+          .toList();
+    }
+    return _transactions
+        .where(
+          (t) => _filterAllows(t) && isMyLedgerEntry(t) && query.matches(t),
+        )
+        .toList();
+  }
+
+  bool _filterAllows(Transaction t) => switch (_filter) {
+    TransactionFilter.all => true,
+    TransactionFilter.expenses => t.isExpense,
+    TransactionFilter.income => t.isIncome,
+  };
+
+  /// Money out of the search result set, and money into it.
+  ///
+  /// Deliberately read from [searchResults] rather than recomputed, so a total
+  /// shown beside search results can never disagree with the rows above it.
+  double get searchTotalExpenses => searchResults
+      .where((t) => t.isExpense)
+      .fold(0.0, (sum, t) => sum + t.amount);
+
+  double get searchTotalIncome => searchResults
+      .where((t) => t.isIncome)
+      .fold(0.0, (sum, t) => sum + t.amount);
 
   List<Transaction> get filteredTransactions {
     // A selected day narrows the view, so the balance, the breakdown charts and
