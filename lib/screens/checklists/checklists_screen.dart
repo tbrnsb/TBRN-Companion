@@ -20,6 +20,10 @@ class ChecklistsScreen extends StatefulWidget {
 class _ChecklistsScreenState extends State<ChecklistsScreen> {
   @override
   Widget build(BuildContext context) {
+    // Watched here, outside the Consumer below, because the FAB decision needs
+    // the same "is it empty" answer the empty state is built from.
+    final isEmpty = context.watch<ChecklistProvider>().checklists.isEmpty;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Smart Packing')),
       body: Consumer3<ChecklistProvider, LocationProvider, JourneyProvider>(
@@ -88,16 +92,24 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
               );
             },
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          HapticFeedback.heavyImpact();
-          Navigator.of(
-            context,
-          ).push(MaterialPageRoute(builder: (_) => const AddChecklistScreen()));
-        },
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('New Checklist'),
-      ),
+      // Hidden while the list is empty. The empty state already offers
+      // "Create Checklist" in the middle of the screen, and a FAB saying
+      // "New Checklist" underneath it gave the user two buttons doing the same
+      // thing, worded differently, on the same screen. The empty state's
+      // action is the one call to action; the FAB returns once there is
+      // something to add to.
+      floatingActionButton: isEmpty
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () {
+                HapticFeedback.heavyImpact();
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AddChecklistScreen()),
+                );
+              },
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('New Checklist'),
+            ),
     );
   }
 

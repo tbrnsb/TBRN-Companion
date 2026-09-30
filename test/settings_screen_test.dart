@@ -78,6 +78,92 @@ void main() {
     await StorageService().clear();
   });
 
+  group('the demo buttons fit their labels', () {
+    /// How many lines [label] is actually laid out on.
+    ///
+    /// Measured from the rendered box, not read back off the widget. A `Text`
+    /// carrying `maxLines: 1` will happily ellipsise when squeezed, so reading
+    /// `maxLines` back would pass whether or not the label fit — and the whole
+    /// point is whether it fits. A single line is a bit over one font size tall;
+    /// two lines is a bit over two, so 1.6 separates them.
+    double labelLines(WidgetTester tester, String label) {
+      final text = tester.widget<Text>(find.text(label));
+      final fontSize = text.style?.fontSize ?? 14;
+      return tester.getSize(find.text(label)).height / fontSize;
+    }
+
+    testWidgets('neither label wraps at 360dp', (tester) async {
+      usePhoneLayout(tester, TestViewports.phoneSmall);
+
+      await tester.pumpWidget(_app());
+      await settleUi(tester);
+      await scrollTo(tester, find.text('Clear demo data'));
+
+      // Side by side at this width, the labels used to break onto two lines and
+      // the pair looked broken.
+      expect(find.text('Clear demo data'), findsOneWidget);
+      expect(find.text('Add demo data'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the labels are laid out on a single line at 360dp', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phoneSmall);
+
+      await tester.pumpWidget(_app());
+      await settleUi(tester);
+      await scrollTo(tester, find.text('Clear demo data'));
+
+      // Each button is given the full width once they stack, so the label has
+      // room and must not be the two-line button that was reported.
+      final clear = tester.getRect(find.text('Clear demo data'));
+      final add = tester.getRect(find.text('Add demo data'));
+      // Stacked, not side by side: the second sits below the first.
+      expect(clear.top, greaterThan(add.top));
+      // One line, not two. This is the assertion that would have failed before.
+      expect(
+        labelLines(tester, 'Clear demo data'),
+        lessThan(1.6),
+        reason: 'the label wrapped onto a second line',
+      );
+      expect(
+        labelLines(tester, 'Add demo data'),
+        lessThan(1.6),
+        reason: 'the label wrapped onto a second line',
+      );
+    });
+
+    testWidgets('they still sit side by side when there is room', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, const Size(500, 900));
+
+      await tester.pumpWidget(_app());
+      await settleUi(tester);
+      await scrollTo(tester, find.text('Clear demo data'));
+
+      final clear = tester.getRect(find.text('Clear demo data'));
+      final add = tester.getRect(find.text('Add demo data'));
+      // Side by side, so their tops line up.
+      expect((clear.top - add.top).abs(), lessThan(2));
+    });
+
+    testWidgets('the labels are not shortened to make them fit', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phoneSmall);
+
+      await tester.pumpWidget(_app());
+      await settleUi(tester);
+      await scrollTo(tester, find.text('Clear demo data'));
+
+      // Truncating the one button that deletes things would be the wrong trade.
+      expect(find.text('Clear demo data'), findsOneWidget);
+      expect(find.textContaining('Clear demo…'), findsNothing);
+    });
+  });
+
   group('the two destructive actions are separate and honestly labelled', () {
     testWidgets('both are present and the demo one is not a wipe', (
       tester,
