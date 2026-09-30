@@ -183,10 +183,136 @@ class CategoryRegistry {
     popularity: 99,
   );
 
+  /// Types offered from the "Other" screen that are deliberately NOT among the
+  /// main nine.
+  ///
+  /// These are not `ExpenseCategory` values on purpose. A transaction stores
+  /// its category by name, so adding enum values would mean every one of these
+  /// needed a slot in `_expenseMetas` — which would push them into the
+  /// add-expense chip row and into the nine-way breakdown, quietly redefining
+  /// what "the main categories" means. Choosing one of these files the expense
+  /// as `ExpenseCategory.other` with `customName` set, which is exactly what
+  /// the storage already handles for a hand-typed name.
+  ///
+  /// The user asked for these specifically after the Other screen offered the
+  /// main nine a second time instead of anything new.
+  static const List<CategoryMeta> _suggestedExpenseMetas = [
+    CategoryMeta(
+      id: 'suggested:fruits',
+      name: 'Fruits',
+      icon: Icons.apple_rounded,
+      color: Color(0xFFC2410C),
+      popularity: 20,
+    ),
+    CategoryMeta(
+      id: 'suggested:vegetables',
+      name: 'Vegetables',
+      icon: Icons.eco_rounded,
+      color: Color(0xFF3F7D20),
+      popularity: 21,
+    ),
+    CategoryMeta(
+      id: 'suggested:snacks',
+      name: 'Snacks',
+      icon: Icons.cookie_rounded,
+      color: Color(0xFF9D174D),
+      popularity: 22,
+    ),
+    CategoryMeta(
+      id: 'suggested:coffee',
+      name: 'Coffee',
+      icon: Icons.coffee_rounded,
+      color: Color(0xFF6F4E37),
+      popularity: 23,
+    ),
+    CategoryMeta(
+      id: 'suggested:electronics',
+      name: 'Electronics',
+      icon: Icons.memory_rounded,
+      color: Color(0xFF1D4ED8),
+      popularity: 24,
+    ),
+    CategoryMeta(
+      id: 'suggested:phone',
+      name: 'Phone & Internet',
+      icon: Icons.smartphone_rounded,
+      color: Color(0xFF0E7490),
+      popularity: 25,
+    ),
+    CategoryMeta(
+      id: 'suggested:sports',
+      name: 'Sports',
+      icon: Icons.sports_cricket_rounded,
+      color: Color(0xFF15803D),
+      popularity: 26,
+    ),
+    CategoryMeta(
+      id: 'suggested:kids',
+      name: 'Kids',
+      icon: Icons.child_care_rounded,
+      color: Color(0xFFB45309),
+      popularity: 27,
+    ),
+    CategoryMeta(
+      id: 'suggested:personal care',
+      name: 'Personal Care',
+      icon: Icons.content_cut_rounded,
+      color: Color(0xFFA21CAF),
+      popularity: 28,
+    ),
+    CategoryMeta(
+      id: 'suggested:books',
+      name: 'Books & Study',
+      icon: Icons.menu_book_rounded,
+      color: Color(0xFF4338CA),
+      popularity: 29,
+    ),
+    CategoryMeta(
+      id: 'suggested:pets',
+      name: 'Pets',
+      icon: Icons.pets_rounded,
+      color: Color(0xFF7C2D12),
+      popularity: 30,
+    ),
+    CategoryMeta(
+      id: 'suggested:gifts',
+      name: 'Gifts',
+      icon: Icons.card_giftcard_rounded,
+      // Violet rather than the obvious blue: blue put it 139 from "Phone &
+      // Internet", under the 150 the separation check requires. design_system_test
+      // covers the suggested types alongside the main nine for this reason.
+      color: Color(0xFF7C3AED),
+      popularity: 31,
+    ),
+  ];
+
+  /// The suggested types, in the order they are offered.
+  static List<CategoryMeta> suggestedExpenseTypes() =>
+      List.unmodifiable(_suggestedExpenseMetas);
+
+  /// The suggested type called [name], or null if it is not one of them.
+  ///
+  /// Matched on the id rather than the display name so a rename cannot silently
+  /// orphan an expense that was filed under the old label.
+  static CategoryMeta? suggestedForName(String? name) {
+    if (name == null) return null;
+    final wanted = name.trim().toLowerCase();
+    if (wanted.isEmpty) return null;
+    for (final meta in _suggestedExpenseMetas) {
+      if (meta.id.substring('suggested:'.length) == wanted) return meta;
+    }
+    return null;
+  }
+
   static CategoryMeta metaFor(ExpenseCategory category, {String? customName}) {
     if (category == ExpenseCategory.other &&
         customName != null &&
         customName.isNotEmpty) {
+      // A suggested type keeps its own icon and colour instead of collapsing to
+      // the generic "Custom" sparkle, so "Fruits" reads as fruit in the
+      // breakdown donut and on the detail screen, not as an unnamed other.
+      final suggested = suggestedForName(customName);
+      if (suggested != null) return suggested;
       return CategoryMeta(
         id: 'custom:${customName.toLowerCase()}',
         name: customName,

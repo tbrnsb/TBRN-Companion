@@ -31,7 +31,6 @@ class OtherCategoryScreen extends StatefulWidget {
     super.key,
     this.currentCustomName,
     this.savedCustomNames = const [],
-    this.suggestedNames = const [],
   });
 
   /// The custom name already chosen, so the list can show it as selected.
@@ -41,21 +40,18 @@ class OtherCategoryScreen extends StatefulWidget {
   final List<String> savedCustomNames;
 
   /// Free-text suggestions from the provider, used to seed new names.
-  final List<String> suggestedNames;
 
   /// Opens the screen and returns the choice, or null if dismissed.
   static Future<OtherCategoryChoice?> show(
     BuildContext context, {
     String? currentCustomName,
     List<String> savedCustomNames = const [],
-    List<String> suggestedNames = const [],
   }) {
     return Navigator.of(context).push<OtherCategoryChoice>(
       MaterialPageRoute(
         builder: (_) => OtherCategoryScreen(
           currentCustomName: currentCustomName,
           savedCustomNames: savedCustomNames,
-          suggestedNames: suggestedNames,
         ),
       ),
     );
@@ -64,6 +60,9 @@ class OtherCategoryScreen extends StatefulWidget {
   @override
   State<OtherCategoryScreen> createState() => _OtherCategoryScreenState();
 }
+
+/// How many suggested types are shown before the list is expanded.
+const _collapsedCount = 4;
 
 class _OtherCategoryScreenState extends State<OtherCategoryScreen> {
   /// Which group is expanded. The extra types are behind a dropdown because
@@ -76,22 +75,36 @@ class _OtherCategoryScreenState extends State<OtherCategoryScreen> {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
 
-    // The named types other than `other` itself, in the same order the add
-    // sheet uses so the two lists agree.
-    final namedTypes = CategoryRegistry.expenseCategories()
-        .where((m) => m.id != 'other')
-        .toList();
-    final primary = _showMore ? namedTypes : namedTypes.take(4).toList();
-    // Always the same rows; whether they are shown is decided by _showMore.
-    final overflow = namedTypes.skip(4).toList();
-
-    // Saved custom names, plus whatever the provider suggests, deduplicated
-    // and never blank.
+    // Only names the user genuinely saved. This list used to be merged with a
+    // `suggestedNames` input, and the provider filled that input with the nine
+    // built-in category names — so Food, Travel and Gear appeared under "Your
+    // categories" wearing the generic custom sparkle icon, as though the user
+    // had created them. There is deliberately no suggestion input any more: the
+    // section stays empty until the user names something themselves, which is
+    // the only honest reading of the heading.
     final customNames = <String>{
       ...widget.savedCustomNames,
       if (widget.currentCustomName != null) widget.currentCustomName!,
-      ...widget.suggestedNames,
     }.where((n) => n.trim().isNotEmpty).toList();
+    final savedLower = customNames.map((n) => n.toLowerCase()).toSet();
+
+    // The suggested types, which are everything the main nine do not already
+    // cover. The main nine used to be listed here again, which made this screen
+    // a duplicate of the chip row above it and offered the user nothing new.
+    //
+    // Anything the user has already saved is dropped: "Coffee" appearing once
+    // as a suggested type and again under "Your categories" is the same
+    // duplication this screen was reported for, just moved.
+    final namedTypes = CategoryRegistry.suggestedExpenseTypes()
+        .where((m) => !savedLower.contains(m.name.toLowerCase()))
+        .toList();
+    // Always the first few, collapsed or not. This used to be
+    // `_showMore ? namedTypes : namedTypes.take(4)`, so expanding made
+    // `primary` the whole list while `overflow` still held its last four — the
+    // screen then rendered those four a second time under the toggle, which is
+    // where the duplicated Housing/Shopping/Health/Utilities rows came from.
+    final primary = namedTypes.take(_collapsedCount).toList();
+    final overflow = namedTypes.skip(_collapsedCount).toList();
 
     return Scaffold(
       appBar: AppBar(title: const Text('What kind of other?')),
@@ -109,12 +122,8 @@ class _OtherCategoryScreenState extends State<OtherCategoryScreen> {
             _CategoryRow(
               meta: meta,
               selected: false,
-              onTap: () => Navigator.pop(
-                context,
-                OtherCategoryChoice.named(
-                  ExpenseCategory.values.firstWhere((c) => c.name == meta.id),
-                ),
-              ),
+              onTap: () =>
+                  Navigator.pop(context, OtherCategoryChoice.other(meta.name)),
             ),
           // The toggle stays put once expanded. It used to sit inside
           // `overflow.isNotEmpty`, and `overflow` is empty while expanded, so
@@ -134,11 +143,7 @@ class _OtherCategoryScreenState extends State<OtherCategoryScreen> {
                   selected: false,
                   onTap: () => Navigator.pop(
                     context,
-                    OtherCategoryChoice.named(
-                      ExpenseCategory.values.firstWhere(
-                        (c) => c.name == meta.id,
-                      ),
-                    ),
+                    OtherCategoryChoice.other(meta.name),
                   ),
                 ),
             ],

@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+
+// Tristate is declared in dart:ui, not in the flutter package.
+import 'dart:ui' show Tristate;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -37,7 +41,8 @@ Widget _host(
 /// a semantics-label finder resolves to the generated semantics fragment and
 /// not to the `Semantics` widget in the source tree.
 bool _isSelected(WidgetTester tester, Finder finder) {
-  return tester.getSemantics(finder).flagsCollection.isSelected;
+  return tester.getSemantics(finder).flagsCollection.isSelected ==
+      Tristate.isTrue;
 }
 
 void main() {
@@ -257,13 +262,22 @@ void main() {
       await tester.pumpWidget(_host(const AddLocationScreen()));
       await tester.pumpAndSettle();
 
-      final homeChoice = find.bySemanticsLabel('home');
-      expect(tester.widget<Semantics>(homeChoice).properties.selected, isFalse);
+      Finder homeChoice() => find.byKey(const ValueKey('place-icon-home'));
+      expect(
+        _isSelected(tester, homeChoice()),
+        isFalse,
+        reason: 'nothing is chosen before the user picks',
+      );
 
-      await tester.tap(homeChoice);
+      await tester.tap(homeChoice());
       await tester.pumpAndSettle();
 
-      expect(tester.widget<Semantics>(homeChoice).properties.selected, isTrue);
+      expect(_isSelected(tester, homeChoice()), isTrue);
+      // Choosing an icon replaces the choice rather than adding to it.
+      expect(
+        _isSelected(tester, find.byKey(const ValueKey('place-icon-park'))),
+        isFalse,
+      );
     });
 
     testWidgets('an existing place opens for editing with its icon chosen', (
@@ -282,7 +296,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Edit place'), findsOneWidget);
-      expect(find.widgetWithText(TextFormField, 'Phewa Lake'), findsOneWidget);
+      // Not `widgetWithText`: the name shows both as the field's value and as
+      // its floating label, so that finder matches two ancestor paths.
+      final name = tester.widget<TextFormField>(
+        find.byType(TextFormField).first,
+      );
+      expect(name.controller!.text, 'Phewa Lake');
       expect(
         _isSelected(tester, find.byKey(const ValueKey('place-icon-water'))),
         isTrue,

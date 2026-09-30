@@ -42,10 +42,7 @@ Widget _app() {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
-      home: const OtherCategoryScreen(
-        savedCustomNames: ['Coffee', 'Tickets'],
-        suggestedNames: ['Groceries', 'Coffee'],
-      ),
+      home: const OtherCategoryScreen(savedCustomNames: ['Coffee', 'Tickets']),
     ),
   );
 }
@@ -86,8 +83,37 @@ void main() {
       expect(find.text('What kind of other?'), findsOneWidget);
       // Named types, shown as rows with icons rather than a dropdown.
       expect(find.byType(ListTile), findsWidgets);
-      expect(find.text('Food'), findsOneWidget);
-      expect(find.text('Travel'), findsOneWidget);
+      expect(find.text('Fruits'), findsOneWidget);
+      expect(find.text('Vegetables'), findsOneWidget);
+    });
+
+    testWidgets('does not repeat the main nine back at the user', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phoneSmall);
+
+      await tester.pumpWidget(_app());
+      await settleUi(tester);
+
+      // The main categories are already the chip row on the add-expense sheet.
+      // Listing them here again made this screen a duplicate of that row and
+      // offered nothing new, which is what the user reported.
+      for (final alreadyThere in [
+        'Food',
+        'Travel',
+        'Entertainment',
+        'Gear',
+        'Housing',
+        'Shopping',
+        'Health',
+        'Utilities',
+      ]) {
+        expect(
+          find.text(alreadyThere),
+          findsNothing,
+          reason: '$alreadyThere is chosen from the chip row, not from here',
+        );
+      }
     });
 
     testWidgets('the extra types are behind a control that expands', (
@@ -98,25 +124,49 @@ void main() {
       await tester.pumpWidget(_app());
       await settleUi(tester);
 
-      // Nine categories is too long for a phone, so only a few show first.
+      // A dozen suggested types is too long for a phone, so only a few show.
       expect(find.textContaining('more type'), findsOneWidget);
-      expect(find.text('Utilities'), findsNothing);
+      await scrollTo(tester, find.text('Sports'));
+      expect(find.text('Sports'), findsNothing);
 
-      // Already visible: it sits above the custom-name section. Scrolling to
-      // it only pushed it against the fold and the tap missed.
+      await scrollTo(tester, find.textContaining('more type'));
       await tester.tap(find.textContaining('more type'));
       await settleUi(tester);
 
       // The row stays put and flips to its collapsed label, so it needs no
       // scrolling to find again.
-      // The point is that the hidden types are now reachable, so this asserts
-      // presence rather than a count: a ListView keeps scrolled-past children
-      // in its cache, so a second copy can legitimately be in the tree.
       expect(find.text('Fewer types'), findsOneWidget);
       expect(find.textContaining('more type'), findsNothing);
-      await scrollTo(tester, find.text('Utilities'));
-      expect(find.text('Utilities'), findsWidgets);
-      expect(find.text('Health'), findsWidgets);
+      await scrollTo(tester, find.text('Sports'));
+      expect(find.text('Sports'), findsWidgets);
+    });
+
+    testWidgets('expanding never shows the same type twice', (tester) async {
+      // The reported bug: `primary` became the whole list when expanded while
+      // `overflow` still held its last four, so the bottom half of the list
+      // rendered a second time under the toggle. Every type must appear once.
+      //
+      // A deliberately tall viewport, so the whole list is built at once. A lazy
+      // ListView disposes rows scrolled past, and this test only ever scrolls
+      // downwards, so a disposed row could never be found again and the check
+      // would report a false pass.
+      usePhoneLayout(tester, const Size(411, 2400));
+
+      await tester.pumpWidget(_app());
+      await settleUi(tester);
+
+      await tester.tap(find.textContaining('more type'));
+      await settleUi(tester);
+
+      for (final meta in CategoryRegistry.suggestedExpenseTypes()) {
+        // "Coffee" is in this test's savedCustomNames, so the suggested list
+        // deliberately omits it and it appears once, under "Your categories".
+        expect(
+          find.text(meta.name),
+          findsOneWidget,
+          reason: '${meta.name} must not be listed twice',
+        );
+      }
     });
 
     testWidgets('saved custom names are listed, with the current one ticked', (
@@ -142,6 +192,53 @@ void main() {
       expect(find.text('Tickets'), findsOneWidget);
       // The one already in use is marked, so the screen does not ask again for
       // something it already knows.
+      expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+    });
+
+    testWidgets('"Your categories" is empty until the user saves one', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phoneSmall);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<TransactionProvider>(
+          create: (_) => TransactionProvider()..initialize(),
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const OtherCategoryScreen(),
+          ),
+        ),
+      );
+      await settleUi(tester);
+
+      // The user has never named a category, so this section must say so rather
+      // than listing the built-in ones as if they were theirs.
+      await scrollTo(tester, find.text('None saved yet.'));
+      expect(find.text('None saved yet.'), findsOneWidget);
+      expect(find.text('Your categories'), findsOneWidget);
+    });
+
+    testWidgets('a suggested type is not listed under "Your categories"', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phoneSmall);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<TransactionProvider>(
+          create: (_) => TransactionProvider()..initialize(),
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const OtherCategoryScreen(
+              currentCustomName: 'Tickets',
+              savedCustomNames: ['Tickets'],
+            ),
+          ),
+        ),
+      );
+      await settleUi(tester);
+
+      // Only the saved name may be ticked, so a suggested type can never be
+      // mistaken for one the user created.
       expect(find.byIcon(Icons.check_rounded), findsOneWidget);
     });
 
