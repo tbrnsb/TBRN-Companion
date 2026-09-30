@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!--
+    Daily Companion launcher icon: a backpack.
+
+    Drawn in the app's own palette so the icon and the app agree:
+      carafe #4B392F  the body and the rolled top
+      cream  #F0E1CA  the background and the front pocket
+      jet    #2B2722  the handle and the outline accents
+
+    Silhouette first, because this has to stay legible at 48px (the mdpi
+    launcher size). What survives at that size is: a tall rounded body, a
+    rolled-over top, a wide front pocket, and a handle. The first attempt at
+    this had a domed top and a straight seam and read as a briefcase.
+  -->
+  <rect width="512" height="512" rx="112" fill="#F0E1CA"/>
+
+  <!-- handle, behind the body so it reads as attached rather than floating -->
+  <path d="M212 150v-16c0-25 20-46 44-46s44 21 44 46v16"
+        fill="none" stroke="#2B2722" stroke-width="20" stroke-linecap="round"/>
+
+  <!-- body: a tall rounded rectangle, only slightly domed on top -->
+  <path d="M256 126c-72 0-126 34-126 96v148c0 33 27 60 60 60h132c33 0 60-27 60-60V222c0-62-54-96-126-96z"
+        fill="#4B392F"/>
+
+  <!-- shoulder straps, hinted as two notches at the sides of the rolled top -->
+  <rect x="132" y="206" width="22" height="76" rx="11" fill="#2B2722" opacity="0.5"/>
+  <rect x="358" y="206" width="22" height="76" rx="11" fill="#2B2722" opacity="0.5"/>
+
+  <!-- rolled top: a band with a curved lower edge, the key backpack cue -->
+  <path d="M130 226c0-58 56-100 126-100s126 42 126 100c0 16-10 26-26 26H156c-16 0-26-10-26-26z"
+        fill="#2B2722" opacity="0.45"/>
+
+  <!-- front pocket, wide and low, which is where a backpack is loaded from -->
+  <rect x="164" y="304" width="184" height="86" rx="30" fill="#F0E1CA"/>
+
+  <!-- pocket clasp -->
+  <rect x="238" y="292" width="36" height="26" rx="12" fill="#F0E1CA"/>
+</svg>
