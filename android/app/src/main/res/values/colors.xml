@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The icon's background layer. Cream, the app's own light surface colour, so
+      the launcher icon and the app agree instead of the launcher supplying a
+      default blue.
+    -->
+    <color name="ic_launcher_background">#F0E1CA</color>
+</resources>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive launcher icon, Android 8+.
+
+  Without this the launcher falls back to the legacy PNG and applies its own
+  mask to it, which double-rounds the rounded square already drawn into the
+  PNG. Splitting it into a background colour and a foreground layer lets the
+  launcher shape it, and is what the platform expects on Android 16.
+
+  The foreground keeps the backpack inside the 66dp safe zone of the 108dp
+  canvas, so no part of it is clipped by a circular or squircle mask.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <monochrome android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>
