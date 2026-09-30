@@ -15,7 +15,6 @@ dependencies:
   
   # Location & Geofencing
   geolocator: ^10.0.0
-  location: ^5.0.0
   
   # Local Database
   hive: ^2.2.0
