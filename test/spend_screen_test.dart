@@ -520,7 +520,10 @@ void main() {
       await settleUi(tester);
 
       expect(find.textContaining('Rs. '), findsWidgets);
-      // Expense is negative, income positive.
+      // Expense is negative, income positive. Scrolled to, because the two new
+      // trend cards push the transaction rows past the fold at 412dp — and
+      // scrolling is what a user does to reach them.
+      await scrollTo(tester, find.text('-Rs. 120'));
       expect(find.text('-Rs. 120'), findsOneWidget);
       expect(find.textContaining('Rs.  '), findsNothing); // no double space
     });
@@ -541,6 +544,7 @@ void main() {
       await settleUi(tester);
 
       expect(find.textContaining('€ '), findsWidgets);
+      await scrollTo(tester, find.text('-€ 120'));
       expect(find.text('-€ 120'), findsOneWidget);
       expect(find.textContaining('Rs.'), findsNothing);
     });

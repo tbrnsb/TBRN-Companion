@@ -204,4 +204,54 @@ void main() {
       expect(notifications, 1);
     });
   });
+
+  group('daily totals for the charts', () {
+    test('one entry per day that has something, oldest first', () async {
+      final provider = TransactionProvider();
+      await provider.loadTransactionsForMonth(2024, 3);
+      await provider.addTransaction(
+        _expense(100, ExpenseCategory.food, date: DateTime(2024, 3, 9)),
+      );
+      await provider.addTransaction(
+        _expense(50, ExpenseCategory.food, date: DateTime(2024, 3, 4)),
+      );
+      await provider.addTransaction(
+        Income(
+          amount: 900,
+          category: 'salary',
+          description: 'Payday',
+          date: DateTime(2024, 3, 4),
+        ),
+      );
+
+      final totals = provider.dailyTotals;
+
+      // Days with nothing are omitted rather than plotted as zero-height bars.
+      // A chart padded out with empty days is what the journeys 7-day chart
+      // was, and it was deleted for carrying no information.
+      expect(totals, hasLength(2));
+      expect(totals.first.day, DateTime(2024, 3, 4));
+      expect(totals.first.income, 900);
+      expect(totals.first.expenses, 50);
+      expect(totals.last.day, DateTime(2024, 3, 9));
+      expect(totals.last.expenses, 100);
+      expect(totals.last.income, 0);
+    });
+
+    test('daily totals follow a selected day', () async {
+      final provider = await providerWithTwoDays();
+
+      provider.setSelectedDay(DateTime(2024, 3, 4));
+
+      final totals = provider.dailyTotals;
+      expect(totals, hasLength(1));
+      expect(totals.single.expenses, 160);
+    });
+
+    test('a month with nothing recorded yields no chart data', () async {
+      final provider = TransactionProvider();
+      await provider.loadTransactionsForMonth(2024, 1);
+      expect(provider.dailyTotals, isEmpty);
+    });
+  });
 }
