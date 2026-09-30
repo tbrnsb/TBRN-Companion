@@ -89,6 +89,10 @@ class TransactionsScreen extends StatelessWidget {
                   filter: provider.filter,
                   onFilterChanged: (filter) => provider.filter = filter,
                 ),
+
+                // Anything still owed on a shared trip. Renders nothing when
+                // there is none, which is the case on most days.
+                const TripOutstandingCard(),
                 if (expenseSegments.isNotEmpty &&
                     provider.filter != TransactionFilter.income) ...[
                   const SizedBox(height: AppSpacing.md),

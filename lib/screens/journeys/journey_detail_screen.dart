@@ -10,6 +10,7 @@ import 'package:flutter_application_1/providers/settings_provider.dart';
 import 'package:flutter_application_1/providers/transaction_provider.dart';
 import 'package:flutter_application_1/screens/checklists/add_checklist_screen.dart';
 import 'package:flutter_application_1/screens/checklists/checklist_detail_screen.dart';
+import 'package:flutter_application_1/screens/journeys/trip_shared_section.dart';
 import 'package:flutter_application_1/screens/transactions/add_transaction_sheet.dart';
 import 'package:flutter_application_1/screens/transactions/expense_detail_screen.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
@@ -211,8 +212,12 @@ class JourneyDetailScreen extends StatelessWidget {
           else
             ...checklists.map((c) => _ChecklistRow(checklist: c)),
 
+          // Only renders once the trip has at least one person on it, so the
+          // block cannot be a dead section on a solo trip.
+          TripSharedSection(journeyId: current.id),
+
           const SizedBox(height: AppSpacing.lg),
-          const SectionHeader('Places'),
+          SectionHeader('Places'),
           const SizedBox(height: AppSpacing.xs),
           if (places.isEmpty)
             _InlineHint(
