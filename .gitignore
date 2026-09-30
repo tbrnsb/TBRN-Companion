@@ -59,3 +59,8 @@ app.*.map.json
 
 # OpenCode agent tooling config (per-machine, not app source)
 opencode.jsonc
+
+# Session recovery material: a git bundle of this repo's own history, a patch of
+# in-flight work, and copies of changed files. Useful on disk, but a bundle
+# inside the repo it duplicates is dead weight in every clone forever.
+backup/
