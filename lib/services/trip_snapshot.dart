@@ -112,7 +112,19 @@ class TripSnapshot {
       );
     }
 
-    final journey = Journey.fromJson(Map<String, dynamic>.from(rawJourney));
+    // The journey itself is parsed defensively too, not just the expense rows.
+    // `Journey.fromJson` trusts `startTime` enough to throw on a malformed one,
+    // and this file came from somebody else's phone — a truncated download or a
+    // hand-edit would otherwise take the whole import flow down with an
+    // unhandled FormatException the user cannot see the cause of.
+    final Journey journey;
+    try {
+      journey = Journey.fromJson(Map<String, dynamic>.from(rawJourney));
+    } catch (_) {
+      return const TripSnapshotParseResult.invalid(
+        'The trip in that file could not be read.',
+      );
+    }
 
     // Expenses are read one at a time and a row that will not parse is skipped
     // rather than failing the whole file. Half a trip beats none of it, and the

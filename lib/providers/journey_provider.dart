@@ -409,13 +409,40 @@ class JourneyProvider extends ChangeNotifier {
     ];
   }
 
+  /// Trip money that belongs to no named participant, in paise.
+  ///
+  /// An expense on this trip with no payer — saved before "Paid by" existed, or
+  /// whose payer is not on the roster — still counts as spent. It is reported
+  /// separately rather than folded into somebody's total, because dividing it
+  /// between people who never paid it would quietly make the settlement wrong
+  /// in the direction that suits them.
+  Future<int> unattributedInPaiseFor(String journeyId) async {
+    final journey = getJourneyById(journeyId);
+    if (journey == null) return 0;
+
+    final rosterIds = journey.participants.map((p) => p.id).toSet();
+    var total = 0;
+    for (final transaction in await _storage.getTransactionsByJourney(
+      journeyId,
+    )) {
+      if (transaction is! Expense) continue;
+      final payer = transaction.paidByParticipantId;
+      if (payer != null && rosterIds.contains(payer)) continue;
+      total += paise(transaction.amount);
+    }
+    return total;
+  }
+
   /// The full settlement for a shared trip, read from storage.
   ///
   /// One function because the balances and the transfers have to be the same
   /// answer; a screen that showed one and settled with the other would be
   /// confidently wrong.
   Future<TripSettlement> tripSettlement(String journeyId) async {
-    return settlementFor(await participantTotalsFor(journeyId));
+    return settlementFor(
+      await participantTotalsFor(journeyId),
+      unattributedInPaise: await unattributedInPaiseFor(journeyId),
+    );
   }
 
   /// Marks one transfer paid, or unmarks it.

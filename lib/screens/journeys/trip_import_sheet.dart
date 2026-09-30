@@ -23,15 +23,13 @@ import 'package:flutter_application_1/utils/format.dart';
 /// answer it: Raj's copy records Raj as "me", so Sita importing it must not end
 /// up as Raj.
 class TripImportSheet extends StatefulWidget {
-  const TripImportSheet({super.key, required this.journeyId});
+  const TripImportSheet({super.key});
 
-  final String journeyId;
-
-  static Future<bool?> show(BuildContext context, {required String journeyId}) {
+  static Future<bool?> show(BuildContext context) {
     return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => TripImportSheet(journeyId: journeyId),
+      builder: (_) => const TripImportSheet(),
     );
   }
 
@@ -346,7 +344,9 @@ class _PreviewRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 84,
+            // Enough for the longest label here ("Sent by"); the value takes
+            // whatever is left.
+            width: AppSpacing.lg + AppSpacing.lg + AppSpacing.sm,
             child: Text(
               label,
               style: theme.textTheme.bodySmall?.copyWith(
