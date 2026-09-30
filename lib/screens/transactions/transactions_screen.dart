@@ -93,51 +93,64 @@ class TransactionsScreen extends StatelessWidget {
                 // Anything still owed on a shared trip. Renders nothing when
                 // there is none, which is the case on most days.
                 const TripOutstandingCard(),
-                if (expenseSegments.isNotEmpty &&
-                    provider.filter != TransactionFilter.income) ...[
+                // "Where did it go": the two breakdowns, stacked.
+                //
+                // Stacked, never side by side. At 360dp a row of two donuts is
+                // about 165 pixels each and the donut alone is already 132 —
+                // two of them would be unreadable rather than compact.
+                if (expenseSegments.isNotEmpty ||
+                    incomeSegments.isNotEmpty) ...[
                   const SizedBox(height: AppSpacing.md),
-                  SpendBreakdownCard(
-                    title: 'Spending by category',
-                    segments: expenseSegments,
-                    currencySymbol: currencySymbol,
-                  ),
+                  const SectionHeader('Where did it go'),
+                  const SizedBox(height: AppSpacing.xs),
+                  if (expenseSegments.isNotEmpty &&
+                      provider.filter != TransactionFilter.income) ...[
+                    // SpendBreakdownCard carries its own raised surface, so it
+                    // is not wrapped again here — that would be a card inside a
+                    // card with two borders and two shadows' worth of padding.
+                    SpendBreakdownCard(
+                      title: 'Spending by category',
+                      segments: expenseSegments,
+                      currencySymbol: currencySymbol,
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                  ],
+                  if (incomeSegments.isNotEmpty &&
+                      provider.filter != TransactionFilter.expenses)
+                    SpendBreakdownCard(
+                      title: 'Income by category',
+                      segments: incomeSegments,
+                      currencySymbol: currencySymbol,
+                    ),
                 ],
-                if (incomeSegments.isNotEmpty &&
-                    provider.filter != TransactionFilter.expenses) ...[
-                  const SizedBox(height: AppSpacing.md),
-                  SpendBreakdownCard(
-                    title: 'Income by category',
-                    segments: incomeSegments,
-                    currencySymbol: currencySymbol,
-                  ),
-                ],
+                // "When did it change": the three time series, one at a time.
                 if (dailyTotals.isNotEmpty) ...[
                   const SizedBox(height: AppSpacing.md),
-                  AppSurface(
-                    tier: AppSurfaceTier.raised,
-                    child: DailyTotalsChart(
-                      days: dailyTotals,
-                      currencySymbol: currencySymbol,
-                      // So the chart marks the day the filter is on, instead of
-                      // showing a filtered day at the same weight as the rest.
-                      highlightedDate: provider.selectedDay,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  AppSurface(
-                    tier: AppSurfaceTier.raised,
-                    child: CumulativeBalanceChart(
-                      days: dailyTotals,
-                      currencySymbol: currencySymbol,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  AppSurface(
-                    tier: AppSurfaceTier.raised,
-                    child: WeeklyTotalsChart(
-                      days: dailyTotals,
-                      currencySymbol: currencySymbol,
-                    ),
+                  const SectionHeader('When did it change'),
+                  const SizedBox(height: AppSpacing.xs),
+                  // The pager fixes its own page height internally; wrapping it
+                  // in a SizedBox here would duplicate that number and go stale
+                  // the moment a chart's caption changed length.
+                  ChartPager(
+                    labels: const ['Daily', 'Balance', 'Weekly'],
+                    pages: [
+                      DailyTotalsChart(
+                        days: dailyTotals,
+                        currencySymbol: currencySymbol,
+                        // So the chart marks the day the filter is on, instead
+                        // of showing a filtered day at the same weight as the
+                        // rest. On every page that has a day axis.
+                        highlightedDate: provider.selectedDay,
+                      ),
+                      CumulativeBalanceChart(
+                        days: dailyTotals,
+                        currencySymbol: currencySymbol,
+                      ),
+                      WeeklyTotalsChart(
+                        days: dailyTotals,
+                        currencySymbol: currencySymbol,
+                      ),
+                    ],
                   ),
                 ],
                 if (transactions.isEmpty) ...[
@@ -442,33 +455,53 @@ class _MonthSummaryCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              IconButton(
-                tooltip: 'Previous month',
-                onPressed: onPrevious,
-                icon: const Icon(Icons.chevron_left_rounded),
+              // Fixed-width rather than a bare IconButton. A Material IconButton
+              // claims 48x48 minimum, which is 96 of the 296 available at 360dp
+              // before the month name gets anything — and it overflowed the row
+              // by a pixel, which no test caught because no test ever rendered
+              // this screen at 360dp. The month label itself is the big tap
+              // target; these are just affordances either side of it.
+              SizedBox(
+                width: AppSpacing.xl + AppSpacing.sm,
+                height: AppSpacing.xl + AppSpacing.sm,
+                child: IconButton(
+                  tooltip: 'Previous month',
+                  onPressed: onPrevious,
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.chevron_left_rounded),
+                ),
               ),
               // Tappable, because the month header is the natural place to reach
               // for a day. It used to be a plain Text.
-              Flexible(
+              Expanded(
                 child: TextButton(
                   onPressed: onPickDay,
                   style: TextButton.styleFrom(
                     foregroundColor: colorScheme.onPrimaryContainer,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.sm,
-                      vertical: AppSpacing.xxs,
-                    ),
+                    // A zero minimum width, and no horizontal padding. Without
+                    // this Material gives the button an intrinsic width the row
+                    // cannot shrink past, and at 360dp the month name is pushed
+                    // out by exactly one pixel.
+                    padding: EdgeInsets.zero,
                     minimumSize: const Size(0, 36),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
                   ),
                   child: Row(
-                    mainAxisSize: MainAxisSize.min,
+                    // NOT mainAxisSize.min. A min-size Row asks for its
+                    // children's full intrinsic width and has no free space to
+                    // hand out, which makes the Flexible below a no-op — the
+                    // month name escapes at its natural width, the button
+                    // cannot shrink, and the row overflows at 360dp. Letting it
+                    // fill and shrinking the Flexible is what makes the
+                    // ellipsis work.
                     children: [
                       const Icon(Icons.calendar_today_rounded, size: 16),
                       const SizedBox(width: AppSpacing.xs),
                       Flexible(
                         child: Text(
                           DateFormat.yMMMM().format(month),
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w700,
@@ -479,10 +512,15 @@ class _MonthSummaryCard extends StatelessWidget {
                   ),
                 ),
               ),
-              IconButton(
-                tooltip: 'Next month',
-                onPressed: onNext,
-                icon: const Icon(Icons.chevron_right_rounded),
+              SizedBox(
+                width: AppSpacing.xl + AppSpacing.sm,
+                height: AppSpacing.xl + AppSpacing.sm,
+                child: IconButton(
+                  tooltip: 'Next month',
+                  onPressed: onNext,
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.chevron_right_rounded),
+                ),
               ),
             ],
           ),
@@ -522,37 +560,51 @@ class _MonthSummaryCard extends StatelessWidget {
           ],
           const SizedBox(height: AppSpacing.md),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Income',
-                    style: textTheme.labelMedium?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
+              // Both halves flex. Two unconstrained Columns with
+              // `spaceBetween` is the one layout here that cannot give: it asks
+              // for both figures at their natural width and has no room to
+              // distribute, so a four-figure income and a four-figure expense
+              // side by side overflow the row at 360dp — one pixel, which no test
+              // caught because no test had ever rendered this screen at 360dp.
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Income',
+                      style: textTheme.labelMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                  Text(
-                    AppFormat.money(totalIncome, symbol: currencySymbol),
-                    style: textTheme.bodyLarge,
-                  ),
-                ],
+                    Text(
+                      AppFormat.money(totalIncome, symbol: currencySymbol),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.bodyLarge,
+                    ),
+                  ],
+                ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Expenses',
-                    style: textTheme.labelMedium?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Expenses',
+                      style: textTheme.labelMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                  Text(
-                    AppFormat.money(totalExpenses, symbol: currencySymbol),
-                    style: textTheme.bodyLarge,
-                  ),
-                ],
+                    Text(
+                      AppFormat.money(totalExpenses, symbol: currencySymbol),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.bodyLarge,
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -678,11 +730,20 @@ class _TransactionTile extends StatelessWidget {
           AppFormat.time(transaction.date),
           if (locationName != null) '📍 $locationName',
         ].join(' · '),
+        // Ellipsis, like the title. A long place name plus a category plus a
+        // time is more than a 360dp row can hold, and an unbounded Text here
+        // pushed the row one pixel past its own width.
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: textTheme.bodySmall?.copyWith(
           color: colorScheme.onSurfaceVariant,
         ),
       ),
       trailing: Text(
+        // Bounded for the same reason as the subtitle: a five-figure amount
+        // with a currency prefix is not a short string.
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         AppFormat.signedMoney(
           transaction.amount,
           isExpense: isExpense,
