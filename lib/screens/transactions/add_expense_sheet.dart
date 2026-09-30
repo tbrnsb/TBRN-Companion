@@ -55,6 +55,14 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
   late DateTime _date;
   String? _locationId;
   String? _journeyId;
+
+  /// Which participant fronted this, on a shared trip.
+  ///
+  /// Null on a personal trip and on an expense saved before this field existed,
+  /// which are the same thing: nobody tracked a payer. Defaults to the user's
+  /// own participant so the common case — "I paid" — needs no interaction at
+  /// all. It is one field inside the sheet, not a new step in the flow.
+  String? _paidByParticipantId;
   bool _saving = false;
   String? _saveError;
 
@@ -96,6 +104,39 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
         existing?.journeyId ??
         widget.initialJourneyId ??
         context.read<JourneyProvider>().activeJourney?.id;
+    _paidByParticipantId = existing?.paidByParticipantId;
+    _syncPaidByWithTrip();
+  }
+
+  /// Points the payer at the user whenever the selected trip is a shared one.
+  ///
+  /// Called when the trip changes and once at the start, so switching to a
+  /// shared trip starts with the payer already being the user — the field is a
+  /// confirmation, not an obstacle. Switching to a personal trip, or to one
+  /// where this user is not on the roster, clears it, because recording a payer
+  /// for a trip that is not shared would be asserting something untrue.
+  void _syncPaidByWithTrip() {
+    final trip = _selectedJourney;
+    if (trip == null || !trip.isShared) {
+      _paidByParticipantId = null;
+      return;
+    }
+    final known = trip.participants.any((p) => p.id == _paidByParticipantId);
+    if (known) return;
+
+    _paidByParticipantId =
+        trip.localParticipant?.id ?? trip.participants.first.id;
+  }
+
+  /// The journey this expense is being filed against, if it is one of the
+  /// journeys this phone knows.
+  Journey? get _selectedJourney {
+    final id = _journeyId;
+    if (id == null) return null;
+    for (final journey in context.read<JourneyProvider>().journeys) {
+      if (journey.id == id) return journey;
+    }
+    return null;
   }
 
   @override
@@ -253,7 +294,10 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
                           ),
                         ),
                       ],
-                      onChanged: (v) => setState(() => _journeyId = v),
+                      onChanged: (v) => setState(() {
+                        _journeyId = v;
+                        _syncPaidByWithTrip();
+                      }),
                     ),
                   if (locations.isNotEmpty)
                     _ContextMenuChip<String?>(
@@ -283,6 +327,15 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
                 ],
               ),
               const SizedBox(height: AppSpacing.lg),
+
+              if (_selectedJourney?.isShared ?? false) ...[
+                _PaidByPicker(
+                  journey: _selectedJourney!,
+                  value: _paidByParticipantId,
+                  onChanged: (id) => setState(() => _paidByParticipantId = id),
+                ),
+                const SizedBox(height: AppSpacing.md),
+              ],
 
               if (_saveError != null) ...[
                 Container(
@@ -378,6 +431,8 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
           date: _date,
           clearLocation: _locationId == null,
           clearJourney: _journeyId == null,
+          paidByParticipantId: _paidByParticipantId,
+          clearPaidByParticipant: _paidByParticipantId == null,
         ),
       );
       if (!mounted) return;
@@ -422,6 +477,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
             : null,
         journeyId: _journeyId,
         paymentMethod: _paymentMethod,
+        paidByParticipantId: _paidByParticipantId,
         latitude: position?.latitude,
         longitude: position?.longitude,
         locationCapturedAt: position != null ? DateTime.now() : null,
@@ -524,6 +580,62 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
 /// to open and a tap to choose, where this is one tap. Not a switch either,
 /// because "Online" is not the negation of "Cash" and a switch invites reading
 /// it as on/off.
+/// "Paid by" — the one extra field a shared trip asks for.
+///
+/// A single row of chips rather than a dropdown or a step of its own: the person
+/// recording the expense usually is the person who paid, so the common case
+/// needs no interaction, and the whole field disappears on a trip that is not
+/// shared rather than sitting there disabled.
+class _PaidByPicker extends StatelessWidget {
+  const _PaidByPicker({
+    required this.journey,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final Journey journey;
+  final String? value;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _CategorySectionLabel('Paid by'),
+        const SizedBox(height: AppSpacing.xs),
+        Wrap(
+          spacing: AppSpacing.xs,
+          runSpacing: AppSpacing.xs,
+          children: [
+            for (final participant in journey.participants)
+              ChoiceChip(
+                key: ValueKey('paid-by-${participant.id}'),
+                label: Text(
+                  participant.id == journey.localParticipantId
+                      ? '${participant.name} (you)'
+                      : participant.name,
+                ),
+                selected: participant.id == value,
+                onSelected: (_) => onChanged(participant.id),
+              ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          'One person fronts the amount and everyone splits it evenly. Change '
+          'this if someone else handed over the cash.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _PaymentMethodPicker extends StatelessWidget {
   const _PaymentMethodPicker({required this.value, required this.onChanged});
 

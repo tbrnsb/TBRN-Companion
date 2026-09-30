@@ -312,6 +312,18 @@ class StorageService {
     return journeys;
   }
 
+  /// One journey by id, or null.
+  ///
+  /// A plain read. Used where a specific trip is being looked at — importing a
+  /// snapshot into the trip it came from, say — where scanning the whole box for
+  /// one record would be wasteful and slightly obscure about which record it
+  /// meant.
+  Future<Journey?> getJourney(String id) async {
+    final data = _journeysBox.get(id);
+    if (data == null) return null;
+    return Journey.fromJson(Map<String, dynamic>.from(data));
+  }
+
   Future<void> updateJourney(Journey journey) async {
     await _journeysBox.put(
       journey.id,

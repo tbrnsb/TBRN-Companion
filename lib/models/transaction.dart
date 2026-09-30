@@ -123,6 +123,19 @@ class Expense extends Transaction {
   final double? longitude;
   final DateTime? locationCapturedAt;
 
+  /// Which participant fronted this expense, on a shared trip.
+  ///
+  /// It lives ON THE EXPENSE and not in a box of its own, deliberately. A
+  /// separate `payments` box would outlive the expenses it points at: delete an
+  /// expense and its payer record would sit there forever pointing at nothing,
+  /// needing its own cleanup and its own migration story. Here the payment dies
+  /// with its expense, and there is nothing to reconcile.
+  ///
+  /// Null on every expense written before this field existed, and null on an
+  /// expense on a trip that is not shared — those are ordinary expenses and the
+  /// app must not imply a payment was tracked for them.
+  final String? paidByParticipantId;
+
   bool get hasCoordinates => latitude != null && longitude != null;
 
   Expense({
@@ -137,6 +150,7 @@ class Expense extends Transaction {
     this.longitude,
     this.locationCapturedAt,
     this.journeyId,
+    this.paidByParticipantId,
     super.date,
     super.createdAt,
   }) : super(type: TransactionType.expense);
@@ -158,6 +172,8 @@ class Expense extends Transaction {
     json['latitude'] = latitude;
     json['longitude'] = longitude;
     json['locationCapturedAt'] = locationCapturedAt?.toIso8601String();
+    // Optional: absent on every expense written before the field existed.
+    json['paidByParticipantId'] = paidByParticipantId;
     return json;
   }
 
@@ -179,6 +195,12 @@ class Expense extends Transaction {
           ? null
           : DateTime.tryParse(json['locationCapturedAt']),
       journeyId: json['journeyId'],
+      // Not validated against the journey's participant list here, and that is
+      // the point: an expense whose payer id resolves to nobody — imported
+      // before the participants merged, or a participant since deleted — has to
+      // load and display. Validating would turn a recoverable display name into
+      // a thrown error on the way past real user data.
+      paidByParticipantId: json['paidByParticipantId']?.toString(),
       date: DateTime.parse(json['date']),
       createdAt: _parseCreatedAt(json['createdAt']),
     );
@@ -195,11 +217,13 @@ class Expense extends Transaction {
     double? longitude,
     DateTime? locationCapturedAt,
     String? journeyId,
+    String? paidByParticipantId,
     DateTime? date,
     DateTime? createdAt,
     bool clearLocation = false,
     bool clearCoordinates = false,
     bool clearJourney = false,
+    bool clearPaidByParticipant = false,
   }) {
     return Expense(
       id: id,
@@ -215,6 +239,9 @@ class Expense extends Transaction {
           ? null
           : (locationCapturedAt ?? this.locationCapturedAt),
       journeyId: clearJourney ? null : (journeyId ?? this.journeyId),
+      paidByParticipantId: clearPaidByParticipant
+          ? null
+          : (paidByParticipantId ?? this.paidByParticipantId),
       date: date ?? this.date,
       createdAt: createdAt ?? this.createdAt,
     );
@@ -304,6 +331,15 @@ extension TransactionExtensions on Transaction {
   String? get journeyId {
     if (this is Expense) {
       return (this as Expense).journeyId;
+    }
+    return null;
+  }
+
+  /// Which participant paid, for a shared trip. Null for income and for any
+  /// expense saved before the field existed.
+  String? get paidByParticipantId {
+    if (this is Expense) {
+      return (this as Expense).paidByParticipantId;
     }
     return null;
   }
