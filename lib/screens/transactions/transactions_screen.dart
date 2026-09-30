@@ -7,6 +7,7 @@ import 'package:flutter_application_1/models/index.dart';
 import 'package:flutter_application_1/providers/location_provider.dart';
 import 'package:flutter_application_1/providers/settings_provider.dart';
 import 'package:flutter_application_1/providers/transaction_provider.dart';
+import 'package:flutter_application_1/screens/budgets/budgets_screen.dart';
 import 'package:flutter_application_1/screens/transactions/add_transaction_sheet.dart';
 import 'package:flutter_application_1/screens/transactions/expense_detail_screen.dart';
 import 'package:flutter_application_1/screens/transactions/income_detail_screen.dart';
@@ -97,6 +98,11 @@ class TransactionsScreen extends StatelessWidget {
                   filter: provider.filter,
                   onFilterChanged: (filter) => provider.filter = filter,
                 ),
+                const SizedBox(height: AppSpacing.sm),
+                // A single quiet row rather than a card. Budgets are read far
+                // less often than transactions are added, so they get one line
+                // here and the full screen behind the link.
+                _BudgetsLink(),
                 const SizedBox(height: AppSpacing.sm),
                 TransactionSearchBar(
                   query: provider.search,
@@ -427,6 +433,61 @@ class TransactionsScreen extends StatelessWidget {
     if (diff == 0) return 'Today';
     if (diff == 1) return 'Yesterday';
     return DateFormat.yMMMd().format(day);
+  }
+}
+
+/// The one line that gets to the budgets screen.
+///
+/// Carries the month's total spend, read through the provider's accessor, and
+/// nothing else.
+///
+/// Deliberately does NOT also count the overspent budgets. It could, but that
+/// means rebuilding a [BudgetStatus] per limit here — a second place the
+/// near-limit and overspend thresholds live, free to drift from the budgets
+/// screen's copy. The count belongs where the limits are, one tap away.
+class _BudgetsLink extends StatelessWidget {
+  const _BudgetsLink();
+
+  @override
+  Widget build(BuildContext context) {
+    final transactions = context.watch<TransactionProvider>();
+    final currency = context.select<SettingsProvider, String>(
+      (s) => s.currency.symbol,
+    );
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    final anchor = transactions.currentMonth ?? DateTime.now();
+    final index = transactions.spendIndex(anchor: anchor);
+
+    return InkWell(
+      key: const ValueKey('budgets-link'),
+      borderRadius: AppRadii.smallRadius,
+      onTap: () =>
+          Navigator.of(context)
+              .push(MaterialPageRoute(builder: (_) => const BudgetsScreen())),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxs),
+        child: Row(
+          children: [
+            Icon(Icons.donut_small_rounded, size: 18, color: scheme.primary),
+            const SizedBox(width: AppSpacing.xs),
+            Expanded(
+              child: Text(
+                'Budgets · '
+                '${AppFormat.money(index.total, symbol: currency)} this month',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, size: 18, color: scheme.primary),
+          ],
+        ),
+      ),
+    );
   }
 }
 
