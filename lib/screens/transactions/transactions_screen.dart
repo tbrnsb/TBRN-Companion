@@ -132,8 +132,16 @@ class TransactionsScreen extends StatelessWidget {
                   // in a SizedBox here would duplicate that number and go stale
                   // the moment a chart's caption changed length.
                   ChartPager(
-                    labels: const ['Daily', 'Balance', 'Weekly'],
+                    labels: const ['Heatmap', 'Daily', 'Balance', 'Weekly'],
                     pages: [
+                      SpendingHeatmap(
+                        days: dailyTotals,
+                        currencySymbol: currencySymbol,
+                        // The day the filter is on, outlined, so the grid and
+                        // the day filter cannot disagree about what is being
+                        // looked at.
+                        highlightedDate: provider.selectedDay,
+                      ),
                       DailyTotalsChart(
                         days: dailyTotals,
                         currencySymbol: currencySymbol,
