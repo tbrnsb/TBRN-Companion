@@ -224,7 +224,13 @@ void main() {
       // The breakdown donut puts these side by side. Two warm browns next to
       // each other are unreadable, and a screenshot is the only way to notice
       // by eye, so the separation is asserted numerically instead.
-      final metas = CategoryRegistry.expenseCategories();
+      final metas = [
+        ...CategoryRegistry.expenseCategories(),
+        // The suggested "Other" types land in the same donut, so they have to
+        // separate from the main nine and from each other too — checking only
+        // the nine would let a suggested colour collide with a main one.
+        ...CategoryRegistry.suggestedExpenseTypes(),
+      ];
       // The closest pair in the current palette sits at 188 on a 0-441 scale,
       // so 150 leaves headroom while still catching a genuinely confusable pair.
       const minimumSeparation = 150.0;

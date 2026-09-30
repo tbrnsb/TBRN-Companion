@@ -427,7 +427,6 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
       context,
       currentCustomName: _customCategoryName,
       savedCustomNames: transactions.recentCustomCategories,
-      suggestedNames: transactions.categorySuggestions,
     );
     if (choice == null || !mounted) return;
 

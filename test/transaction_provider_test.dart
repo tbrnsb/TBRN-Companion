@@ -459,7 +459,57 @@ void main() {
       final recent = provider.recentCategories;
 
       expect(recent.single.name, 'Coffee');
-      expect(recent.single.id, 'custom:coffee');
+      // "Coffee" is one of the suggested "Other" types, so it now resolves to
+      // that type and carries its own cup icon instead of the generic custom
+      // sparkle. The name is still the user's own, which is what matters here.
+      expect(recent.single.id, 'suggested:coffee');
+    });
+
+    test('a hand-typed name still gets the generic custom treatment', () async {
+      final provider = await _providerFor(2024, 1);
+      await provider.addTransaction(
+        _expense(30, ExpenseCategory.other, custom: 'Temple Entry'),
+      );
+
+      final recent = provider.recentCategories;
+
+      expect(recent.single.name, 'Temple Entry');
+      expect(recent.single.id, 'custom:temple entry');
+    });
+
+    test('a suggested type keeps its own icon and colour', () async {
+      // The point of the suggested types: "Fruits" should read as fruit in the
+      // donut, not as an anonymous other.
+      final fruits = CategoryRegistry.metaFor(
+        ExpenseCategory.other,
+        customName: 'Fruits',
+      );
+
+      expect(fruits.name, 'Fruits');
+      expect(fruits.id, 'suggested:fruits');
+
+      // A name the user typed gets the generic custom icon and colour; a
+      // suggested one gets its own. If these ever matched, every suggested type
+      // would be indistinguishable from a hand-typed name.
+      final handTyped = CategoryRegistry.metaFor(
+        ExpenseCategory.other,
+        customName: 'Anything else',
+      );
+      expect(fruits.icon, isNot(handTyped.icon));
+      expect(fruits.color, isNot(handTyped.color));
+    });
+
+    test('a suggested type is matched regardless of capitalisation', () {
+      for (final spelling in ['Fruits', 'fruits', '  FRUITS  ']) {
+        expect(
+          CategoryRegistry.metaFor(
+            ExpenseCategory.other,
+            customName: spelling,
+          ).id,
+          'suggested:fruits',
+          reason: spelling,
+        );
+      }
     });
 
     test('popular categories rank by usage and keep types distinct', () async {

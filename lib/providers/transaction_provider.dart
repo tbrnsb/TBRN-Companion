@@ -208,23 +208,6 @@ class TransactionProvider extends ChangeNotifier {
 
   double get balance => totalIncome - totalExpenses;
 
-  List<String> get categorySuggestions {
-    const defaults = [
-      'Food',
-      'Travel',
-      'Gear',
-      'Entertainment',
-      'Utilities',
-      'Housing',
-      'Shopping',
-      'Health',
-      'Other',
-    ];
-    final merged = [...defaults, ..._recentCustomCategories];
-    final unique = merged.toSet().toList();
-    return unique;
-  }
-
   Future<void> initialize() async {
     _currentMonth = DateTime.now();
     await loadRecentCustomCategories();
