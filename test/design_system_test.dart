@@ -8,6 +8,59 @@ import 'package:flutter_application_1/widgets/app_motion.dart';
 import 'test_viewports.dart';
 
 void main() {
+  group('category colour contrast', () {
+    // A category colour is an icon tint and a legend swatch. If it does not
+    // clear 3:1 against the surface it is drawn on, the category is a guess.
+    //
+    // Both surfaces, not one: the same token is used in light mode on cream and
+    // in dark mode on near-black, and 3:1 is a claim about a specific
+    // background. Nine of the original twenty-one failed one or the other, and
+    // Travel failed dark at 1.78 — the carafe brown on a near-black background.
+    //
+    // The threshold is 3.0 and the palettes clear 3.10, so rounding in a colour
+    // space or a future tweak has a little room before this fails.
+    const minimumContrast = 3.0;
+
+    test('every category colour clears 3:1 on the light page', () {
+      final tooLow = <String>[];
+      for (final meta in _everyCategoryColour()) {
+        final ratio = _contrastRatio(meta.$2, AppColors.surfaceLow);
+        if (ratio < minimumContrast) {
+          tooLow.add('${meta.$1} ${ratio.toStringAsFixed(2)} on cream');
+        }
+      }
+      expect(tooLow, isEmpty, reason: tooLow.join('; '));
+    });
+
+    test('every category colour clears 3:1 on the dark background', () {
+      final tooLow = <String>[];
+      for (final meta in _everyCategoryColour()) {
+        final ratio = _contrastRatio(meta.$2, AppColors.darkBackground);
+        if (ratio < minimumContrast) {
+          tooLow.add('${meta.$1} ${ratio.toStringAsFixed(2)} on near-black');
+        }
+      }
+      expect(tooLow, isEmpty, reason: tooLow.join('; '));
+    });
+
+    test('the palette did not get washed out fixing contrast', () {
+      // Clearing 3:1 in a narrow luminance band is easy to do by desaturating
+      // everything toward grey, and a donut of grey slices is worse than one of
+      // low-contrast slices. Every category has to keep real chroma.
+      for (final meta in _everyCategoryColour()) {
+        final hsv = HSVColor.fromColor(meta.$2);
+        expect(
+          hsv.saturation,
+          greaterThan(0.05),
+          reason:
+              '${meta.$1} is nearly grey (saturation '
+              '${hsv.saturation.toStringAsFixed(2)}); the categories have to '
+              'stay tellable apart by colour',
+        );
+      }
+    });
+  });
+
   group('surface tiers', () {
     testWidgets('a surface is an ink surface, not a decorated box', (
       tester,
@@ -369,4 +422,37 @@ double _colourDistance(Color a, Color b) {
   // Weighted to approximate perceived difference: the eye is most sensitive to
   // green and least to blue.
   return (dr * dr * 0.30 + dg * dg * 0.59 + db * db * 0.11);
+}
+
+/// Every colour a category can be drawn in, paired with a name for the failure
+/// message.
+///
+/// All four lists, not just the nine: the donut check only covers expense and
+/// suggested, but an income category colour is drawn as a legend swatch and a
+/// chip exactly the same way, so it has the same obligation.
+Iterable<(String, Color)> _everyCategoryColour() sync* {
+  for (final meta in CategoryRegistry.expenseCategories()) {
+    yield (meta.name, meta.color);
+  }
+  for (final meta in CategoryRegistry.suggestedExpenseTypes()) {
+    yield (meta.name, meta.color);
+  }
+  for (final meta in CategoryRegistry.incomeCategories()) {
+    yield (meta.name, meta.color);
+  }
+  yield ('Custom', CategoryRegistry.metaFor(ExpenseCategory.other).color);
+}
+
+/// WCAG relative-luminance contrast ratio between [a] and [b], 1.0 to 21.0.
+///
+/// The standard formula, on the real surfaces rather than a mock, because the
+/// whole point is that these two specific backgrounds are the ones a category
+/// is drawn against. [Color.r] and friends are 0-1 doubles in current Flutter,
+/// so they are scaled back to 0-255 before the transfer function.
+double _contrastRatio(Color a, Color b) {
+  final la = a.computeLuminance();
+  final lb = b.computeLuminance();
+  final lighter = la > lb ? la : lb;
+  final darker = la > lb ? lb : la;
+  return (lighter + 0.05) / (darker + 0.05);
 }
