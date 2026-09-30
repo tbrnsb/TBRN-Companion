@@ -17,6 +17,7 @@ import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:flutter_application_1/widgets/chart_pager.dart';
 import 'package:flutter_application_1/widgets/spend_breakdown_card.dart';
 import 'package:flutter_application_1/widgets/spend_trend_cards.dart';
+import 'package:flutter_application_1/widgets/spending_heatmap.dart';
 
 import 'visual_smoke_test.dart' show initTestStorage;
 import 'test_viewports.dart';
@@ -604,10 +605,11 @@ void main() {
       await openPager(tester, TestViewports.phonePortrait);
       await scrollTo(tester, find.byType(ChartPager));
 
-      // Three pages exist, but only the first is laid out and painted.
+      // Four pages exist — heatmap, daily, balance, weekly — but only the first
+      // is laid out and painted.
       expect(find.byKey(const ValueKey('chart-page-0')), findsOneWidget);
       expect(find.byKey(const ValueKey('chart-page-1')), findsNothing);
-      expect(find.text('In and out, by day'), findsOneWidget);
+      expect(find.byType(SpendingHeatmap), findsOneWidget);
     });
 
     testWidgets('the dots say how many there are without swiping', (
@@ -618,10 +620,10 @@ void main() {
 
       // A carousel whose only way forward is a swipe has no affordance and
       // nobody finds page two.
-      expect(find.byKey(const ValueKey('chart-dot-0')), findsOneWidget);
-      expect(find.byKey(const ValueKey('chart-dot-1')), findsOneWidget);
-      expect(find.byKey(const ValueKey('chart-dot-2')), findsOneWidget);
-      expect(find.text('1 of 3 · Daily'), findsOneWidget);
+      for (var i = 0; i < 4; i++) {
+        expect(find.byKey(ValueKey('chart-dot-$i')), findsOneWidget);
+      }
+      expect(find.text('1 of 4 · Heatmap'), findsOneWidget);
     });
 
     testWidgets('tapping a dot moves to that chart', (tester) async {
@@ -630,13 +632,16 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('chart-dot-1')));
       await settleUi(tester);
-
-      expect(find.text('2 of 3 · Balance'), findsOneWidget);
+      expect(find.text('2 of 4 · Daily'), findsOneWidget);
       expect(find.byKey(const ValueKey('chart-page-1')), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('chart-dot-2')));
       await settleUi(tester);
-      expect(find.text('3 of 3 · Weekly'), findsOneWidget);
+      expect(find.text('3 of 4 · Balance'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('chart-dot-3')));
+      await settleUi(tester);
+      expect(find.text('4 of 4 · Weekly'), findsOneWidget);
     });
 
     testWidgets('the dot tap targets are big enough for a thumb', (
@@ -650,7 +655,7 @@ void main() {
       final target = tester.getRect(find.byKey(const ValueKey('chart-dot-0')));
       expect(target.width, greaterThanOrEqualTo(32));
       expect(target.height, greaterThanOrEqualTo(24));
-      final last = tester.getRect(find.byKey(const ValueKey('chart-dot-2')));
+      final last = tester.getRect(find.byKey(const ValueKey('chart-dot-3')));
       expect(
         last.right,
         lessThan(tester.view.physicalSize.width),
@@ -757,9 +762,12 @@ void main() {
       provider.setSelectedDay(DateTime(now.year, now.month, 5));
       await settleUi(tester);
 
-      // The daily chart is the page with a day axis; the highlight is passed to
-      // it so the graph and the day filter cannot disagree about what is being
-      // looked at.
+      // Both pages with a day axis take the highlight, so the grid, the bars
+      // and the day filter cannot disagree about what is being looked at.
+      expect(find.byType(SpendingHeatmap), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('chart-dot-1')));
+      await settleUi(tester);
       expect(find.byType(DailyTotalsChart), findsOneWidget);
     });
 
