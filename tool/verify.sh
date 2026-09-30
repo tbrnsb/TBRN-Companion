@@ -27,6 +27,21 @@ cd "$(dirname "$0")/.." || exit 1
 
 TEST_TIMEOUT="${TEST_TIMEOUT:-300}"
 BUILD_TIMEOUT="${BUILD_TIMEOUT:-900}"
+
+# Flutter's test compiler writes a temp dir per test file, and the whole batch
+# lands under TMPDIR. Where that points decides whether the suite runs at all.
+# On the machine this was built on, /tmp is a 3.6GB tmpfs that other tools also
+# use; once it was ~80% full the suite stopped being able to write its listener
+# files and simply never finished. It looked exactly like a code hang — the run
+# would sit there past any sensible timeout — and cost a long hunt through the
+# chart code for a bug that was not there. With TMPDIR on real disk the same
+# suite finishes in well under a minute.
+#
+# So: give the toolchain a temp dir with room, and never let it default to a
+# small shared tmpfs.
+export TMPDIR="${FLUTTER_TMPDIR:-$PWD/.verify-tmp}"
+mkdir -p "$TMPDIR"
+
 SKIP_BUILD=0
 [ "${1:-}" = "--no-build" ] && SKIP_BUILD=1
 

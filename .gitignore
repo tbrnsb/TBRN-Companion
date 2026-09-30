@@ -66,3 +66,4 @@ opencode.jsonc
 backup/
 .verify-logs/
 .rewrite/
+.verify-tmp/
