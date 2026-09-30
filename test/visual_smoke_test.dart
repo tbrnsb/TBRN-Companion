@@ -69,10 +69,46 @@ void main() {
     await tester.pumpWidget(_testApp());
     await tester.pumpAndSettle();
 
-    for (final label in ['Pack', 'Journey', 'Places', 'Spend']) {
-      await tester.tap(find.text(label));
+    // Scoped to the nav bar. "Transactions" is also the app bar title of that
+    // screen, so a bare find.text would match twice once the tab is open and
+    // tester.tap would throw on the ambiguity.
+    Finder tab(String label) => find.descendant(
+      of: find.byType(NavigationBar),
+      matching: find.text(label),
+    );
+
+    // The dock order, which is the thing worth asserting: Transactions sits
+    // third, ahead of Places.
+    for (final label in [
+      'Pack',
+      'Journey',
+      'Transactions',
+      'Places',
+      'Settings',
+    ]) {
+      expect(tab(label), findsOneWidget, reason: 'no "$label" tab');
+      await tester.tap(tab(label));
       await tester.pumpAndSettle();
       expect(find.byType(HomeScreen), findsOneWidget);
     }
+  });
+
+  testWidgets('the dock is Pack, Journey, Transactions, Places, Settings', (
+    tester,
+  ) async {
+    usePhoneLayout(tester, TestViewports.phonePortrait);
+
+    await tester.pumpWidget(_testApp());
+    await tester.pumpAndSettle();
+
+    final labels = tester
+        .widget<NavigationBar>(find.byType(NavigationBar))
+        .destinations
+        // destinations is List<Widget>; every entry here is a
+        // NavigationDestination, which is where the label actually lives.
+        .map((d) => (d as NavigationDestination).label)
+        .toList();
+
+    expect(labels, ['Pack', 'Journey', 'Transactions', 'Places', 'Settings']);
   });
 }

@@ -79,13 +79,16 @@ class _HomeScreenState extends State<HomeScreen> {
               icon: Icon(Icons.route_rounded),
               label: 'Journey',
             ),
+            // Third, ahead of Places. The dock order is Pack, Journey,
+            // Transactions, Places, Settings: money is a thing you look at far
+            // more often than saved places, so it sits closer to the thumb.
+            NavigationDestination(
+              icon: Icon(Icons.receipt_long_rounded),
+              label: 'Transactions',
+            ),
             NavigationDestination(
               icon: Icon(Icons.location_on_rounded),
               label: 'Places',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.receipt_long_rounded),
-              label: 'Spend',
             ),
             NavigationDestination(
               icon: Icon(Icons.settings_rounded),
@@ -110,9 +113,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case 1:
         return const JourneysScreen();
       case 2:
-        return const LocationsScreen();
-      case 3:
         return const TransactionsScreen();
+      case 3:
+        return const LocationsScreen();
       case 4:
         return const SettingsScreen();
       default:
