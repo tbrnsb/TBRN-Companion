@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_application_1/models/index.dart';
@@ -142,12 +143,44 @@ class _SummaryCard extends StatelessWidget {
           ],
         ),
         if (provider.currentPosition == null) ...[
-          const SizedBox(height: 8),
-          Text(
-            'GPS unavailable on this device — distances are hidden.',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
+          const SizedBox(height: AppSpacing.xs),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.location_off_rounded,
+                size: 16,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              Expanded(
+                child: Text(
+                  // The actual reason, and an action that matches it. This used
+                  // to be one fixed sentence that hid all of it.
+                  provider.error ?? 'Finding your location…',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              TextButton(
+                onPressed: provider.status == LocationStatus.locating
+                    ? null
+                    : () => provider.updateCurrentPosition(),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(0, 32),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.xs,
+                  ),
+                ),
+                child: Text(
+                  provider.status == LocationStatus.locating
+                      ? 'Locating…'
+                      : 'Retry',
+                ),
+              ),
+            ],
           ),
         ],
       ],
@@ -314,18 +347,42 @@ class _LocationFormDialogState extends State<_LocationFormDialog> {
                     final provider = context.read<LocationProvider>();
                     await provider.updateCurrentPosition();
                     final pos = provider.currentPosition;
-                    if (pos != null && context.mounted) {
+                    if (!context.mounted) return;
+                    if (pos != null) {
                       setState(() {
                         _latController.text = pos.latitude.toStringAsFixed(6);
                         _lngController.text = pos.longitude.toStringAsFixed(6);
                       });
-                    } else if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Location unavailable on this device.'),
+                      return;
+                    }
+
+                    // Say why, not just that it failed. A denied permission and
+                    // a phone with GPS switched off need different actions, and
+                    // "Location unavailable" told the user neither.
+                    final messenger = ScaffoldMessenger.of(context);
+                    final message =
+                        provider.error ?? 'Could not get a location fix.';
+
+                    if (provider.needsSystemSettings) {
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text(message),
+                          duration: const Duration(seconds: 8),
+                          action: SnackBarAction(
+                            label: 'Settings',
+                            onPressed: () => _openAppSettings(context),
+                          ),
                         ),
                       );
+                      return;
                     }
+
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(message),
+                        duration: const Duration(seconds: 5),
+                      ),
+                    );
                   },
                 ),
               ),
@@ -461,4 +518,17 @@ class _LocationFormDialogState extends State<_LocationFormDialog> {
       ],
     );
   }
+}
+
+/// Opens this app's page in system Settings.
+///
+/// Reached when the only way forward is a permission the app cannot request
+/// again itself, either because the user chose "don't ask again" or because the
+/// phone's location toggle is off. `Geolocator.openAppSettings` is the
+/// geolocator-provided route, so it is used rather than a hand-rolled intent.
+Future<void> _openAppSettings(BuildContext context) async {
+  await Geolocator.openAppSettings();
+  if (!context.mounted) return;
+  // The user is on their way to the toggle; nothing to do here until they come
+  // back, and they can pull the list down to retry.
 }

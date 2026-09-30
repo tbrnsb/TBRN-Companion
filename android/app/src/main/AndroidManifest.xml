@@ -1,6 +1,25 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      Location permissions.
+
+      These were missing entirely, which is why "Current location" always
+      reported unavailable and Android showed no location entry for the app in
+      system Settings. geolocator cannot request a permission the manifest
+      never declares, so it failed before it ever asked.
+
+      FINE/COARSE are what let the app read a position at all. BACKGROUND is
+      what lets an arrival geofence fire while the app is closed, which is the
+      entire point of the saved-place alerts. Android 11+ grants it separately
+      as "Allow all the time" and the user can revoke it at any time.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
-        android:label="flutter_application_1"
+        android:label="Daily Companion"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

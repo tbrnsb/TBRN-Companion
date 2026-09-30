@@ -1,7 +1,38 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/models/index.dart';
 import 'package:flutter_application_1/services/storage_service.dart';
 import 'package:geolocator/geolocator.dart';
+
+/// Why a position is or is not available.
+///
+/// The provider used to keep a single `_error` string, and the UI rendered one
+/// generic "Location unavailable on this device" for all of it. That hides the
+/// only thing the user can act on: a denied permission needs a different action
+/// from a phone whose GPS is switched off.
+enum LocationStatus {
+  /// Never asked, or not asked again this session.
+  unknown,
+
+  /// A read is in flight.
+  locating,
+
+  /// A fix is held.
+  ready,
+
+  /// The OS-level location toggle is off. Only Settings can fix this.
+  serviceDisabled,
+
+  /// The user said no. Asking again in-app is allowed once.
+  permissionDenied,
+
+  /// The user said no, and chose "don't ask again". Only Settings can fix it.
+  permissionDeniedForever,
+
+  /// Permission is fine and GPS is on, but no fix arrived (indoors, cold GPS).
+  noFix,
+}
 
 class LocationProvider extends ChangeNotifier {
   final StorageService _storageService = StorageService();
@@ -10,6 +41,7 @@ class LocationProvider extends ChangeNotifier {
   Position? _currentPosition;
   bool _isLoading = false;
   String? _error;
+  LocationStatus _status = LocationStatus.unknown;
   String? _currentLocationId; // ID of location user is currently in
 
   List<Location> get locations => _locations;
@@ -37,6 +69,16 @@ class LocationProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   String? get currentLocationId => _currentLocationId;
+
+  /// Why a position is or is not available. The UI keys its message and its
+  /// recovery action off this rather than off [error].
+  LocationStatus get status => _status;
+
+  /// True when the only fix is in system Settings, so the app must not offer a
+  /// retry that cannot work.
+  bool get needsSystemSettings =>
+      _status == LocationStatus.permissionDeniedForever ||
+      _status == LocationStatus.serviceDisabled;
 
   String? getGeofenceAlertForJourney(Journey? activeJourney) {
     if (activeJourney == null) return null;
@@ -104,37 +146,65 @@ class LocationProvider extends ChangeNotifier {
     if (kIsWeb) {
       _currentPosition = null;
       _currentLocationId = null;
+      _status = LocationStatus.serviceDisabled;
       notifyListeners();
       return;
     }
 
+    _status = LocationStatus.locating;
+    _error = null;
+    notifyListeners();
+
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        _error = 'Location services are disabled';
+        _error = 'Location services are turned off on this phone.';
+        _status = LocationStatus.serviceDisabled;
         notifyListeners();
         return;
       }
 
-      LocationPermission permission = await Geolocator.checkPermission();
+      var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          _error = 'Location permission denied';
-          notifyListeners();
-          return;
-        }
       }
 
+      if (permission == LocationPermission.deniedForever) {
+        _error =
+            'Location permission was permanently denied. Enable it in '
+            'Settings → Apps → Daily Companion → Permissions.';
+        _status = LocationStatus.permissionDeniedForever;
+        notifyListeners();
+        return;
+      }
+
+      if (permission == LocationPermission.denied) {
+        _error = 'Location permission was denied.';
+        _status = LocationStatus.permissionDenied;
+        notifyListeners();
+        return;
+      }
+
+      // A high-accuracy read can take a while on a cold GPS indoors, so give
+      // it a bounded wait and report a distinct "no fix" rather than an opaque
+      // failure. `high` accuracy is wanted for geofence arrival checks.
       _currentPosition = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 20),
       );
 
-      // Check which location user is in
+      _status = LocationStatus.ready;
       _updateCurrentLocation();
+      notifyListeners();
+    } on TimeoutException {
+      // No fix in time. This is a real, common case and deserves its own
+      // message: moving near a window usually resolves it.
+      _error = 'Could not get a GPS fix in time. Try again somewhere clearer.';
+      _status = LocationStatus.noFix;
       notifyListeners();
     } catch (e) {
       _error = 'Failed to get location: $e';
+      _status = LocationStatus.noFix;
       notifyListeners();
     }
   }
