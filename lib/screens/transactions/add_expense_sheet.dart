@@ -10,7 +10,9 @@ import 'package:flutter_application_1/providers/settings_provider.dart';
 import 'package:flutter_application_1/providers/transaction_provider.dart';
 import 'package:flutter_application_1/services/location_insight_service.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/utils/iterable_ext.dart';
+
+import 'other_category_screen.dart';
+
 import 'package:flutter_application_1/utils/format.dart';
 
 class AddExpenseSheet extends StatefulWidget {
@@ -178,14 +180,18 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
                     _customCategoryName = customName;
                   });
                 },
+                // "Other" is a door, not a value. It opens a screen that asks
+                // what kind of other, because the answer is either a named type
+                // or a name the user invents — and neither fits in a dropdown
+                // wedged under the chips.
+                onOther: () => _pickOtherCategory(transactions),
               ),
-              if (_category == ExpenseCategory.other) ...[
+              if (_category == ExpenseCategory.other &&
+                  _customCategoryName != null) ...[
                 const SizedBox(height: AppSpacing.xs),
-                _CustomCategoryRow(
-                  selected: _customCategoryName,
-                  suggestions: transactions.categorySuggestions,
-                  onSelected: (name) =>
-                      setState(() => _customCategoryName = name),
+                _SelectedCategoryRow(
+                  label: _customCategoryName!,
+                  onEdit: () => _pickOtherCategory(transactions),
                 ),
               ],
               const SizedBox(height: AppSpacing.md),
@@ -415,6 +421,39 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
     Navigator.pop(context);
   }
 
+  /// Opens the "Other" screen and folds the answer back into the form.
+  Future<void> _pickOtherCategory(TransactionProvider transactions) async {
+    final choice = await OtherCategoryScreen.show(
+      context,
+      currentCustomName: _customCategoryName,
+      savedCustomNames: transactions.recentCustomCategories,
+      suggestedNames: transactions.categorySuggestions,
+    );
+    if (choice == null || !mounted) return;
+
+    // Persist a newly invented name so it is offered next time. The screen only
+    // collects the choice; saving it belongs here, where the form that needs it
+    // already lives.
+    final customName = choice.customName;
+    if (customName != null) {
+      await transactions.addCustomCategory(customName);
+      if (!mounted) return;
+    }
+
+    setState(() {
+      if (choice.category == ExpenseCategory.other) {
+        // Still "other", but now with a real name attached.
+        _category = ExpenseCategory.other;
+        _customCategoryName = customName;
+      } else {
+        // They picked a named type after all, so the expense is that category
+        // and the custom name is no longer relevant.
+        _category = choice.category;
+        _customCategoryName = null;
+      }
+    });
+  }
+
   Future<Position?> _tryCapturePosition() async {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -487,7 +526,19 @@ class _CategoryPicker extends StatelessWidget {
     required this.popular,
     required this.customCategories,
     required this.onSelected,
+    required this.onOther,
   });
+
+  /// Opens the "Other" screen. "Other" is not a value you can select and move
+  /// on from; it is a question about what kind.
+  final VoidCallback onOther;
+
+  /// True once the user has given the Other bucket a real name, so the bare
+  /// "Other" row stops being a door and becomes an ordinary selected category.
+  bool get selectedCustomNamed =>
+      selected == ExpenseCategory.other &&
+      customName != null &&
+      customName!.isNotEmpty;
 
   final ExpenseCategory selected;
   final String? customName;
@@ -527,11 +578,11 @@ class _CategoryPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final recentMetas = recent.where(_isExpenseMeta).take(3).toList();
+    final recentMetas = recent.where(_isExpenseMeta).take(4).toList();
     final popularMetas = popular
         .where((m) => _isExpenseMeta(m))
         .where((m) => !recentMetas.any((r) => r.id == m.id))
-        .take(3)
+        .take(4)
         .toList();
     final allMetas =
         ExpenseCategory.values.map((c) => CategoryRegistry.metaFor(c)).toList()
@@ -547,15 +598,23 @@ class _CategoryPicker extends StatelessWidget {
             spacing: AppSpacing.xs,
             runSpacing: AppSpacing.xs,
             children: metas.map((meta) {
+              final isTheOtherBucket =
+                  meta.id == 'other' && !selectedCustomNamed;
               return _CategoryTile(
                 meta: meta,
                 selected: _isSelected(meta),
-                onTap: () => onSelected(
-                  _categoryFor(meta) ?? ExpenseCategory.other,
-                  meta.id.startsWith('custom:')
-                      ? meta.id.substring('custom:'.length)
-                      : null,
-                ),
+                // The bare "Other" entry opens the screen. A saved custom name
+                // is a value in its own right and selects directly, the same as
+                // any other row.
+                onTap: isTheOtherBucket
+                    ? onOther
+                    : () => onSelected(
+                        _categoryFor(meta) ?? ExpenseCategory.other,
+                        meta.id.startsWith('custom:')
+                            ? meta.id.substring('custom:'.length)
+                            : null,
+                      ),
+                showsChevron: isTheOtherBucket,
               );
             }).toList(),
           ),
@@ -591,11 +650,16 @@ class _CategoryTile extends StatelessWidget {
     required this.meta,
     required this.selected,
     required this.onTap,
+    this.showsChevron = false,
   });
 
   final CategoryMeta meta;
   final bool selected;
   final VoidCallback onTap;
+
+  /// Marks a row that navigates somewhere rather than selecting a value, so it
+  /// does not look like the other tiles.
+  final bool showsChevron;
 
   @override
   Widget build(BuildContext context) {
@@ -638,6 +702,16 @@ class _CategoryTile extends StatelessWidget {
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 ),
               ),
+              // Signals that this row goes somewhere rather than picking a
+              // value in place.
+              if (showsChevron) ...[
+                const SizedBox(width: AppSpacing.xxs),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ],
             ],
           ),
         ),
@@ -646,73 +720,37 @@ class _CategoryTile extends StatelessWidget {
   }
 }
 
-class _CustomCategoryRow extends StatelessWidget {
-  const _CustomCategoryRow({
-    required this.selected,
-    required this.suggestions,
-    required this.onSelected,
-  });
+/// Shows the name the user gave the Other bucket, with a way back into the
+/// screen that collects it.
+class _SelectedCategoryRow extends StatelessWidget {
+  const _SelectedCategoryRow({required this.label, required this.onEdit});
 
-  final String? selected;
-  final List<String> suggestions;
-  final ValueChanged<String> onSelected;
+  final String label;
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: DropdownButtonFormField<String>(
-            initialValue: selected ?? suggestions.firstOrNull,
-            decoration: const InputDecoration(
-              labelText: 'Custom category name',
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return AppSurface(
+      tier: AppSurfaceTier.flat,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.payments_rounded, size: 18, color: colorScheme.primary),
+          const SizedBox(width: AppSpacing.xs),
+          Expanded(
+            child: Text(
+              'Filed under "$label"',
+              style: Theme.of(context).textTheme.bodySmall,
             ),
-            items: suggestions
-                .map((name) => DropdownMenuItem(value: name, child: Text(name)))
-                .toList(),
-            onChanged: (value) {
-              if (value != null) onSelected(value);
-            },
           ),
-        ),
-        IconButton(
-          tooltip: 'Add custom category',
-          icon: const Icon(Icons.add_circle_outline_rounded),
-          onPressed: () async {
-            final controller = TextEditingController();
-            final result = await showDialog<String>(
-              context: context,
-              builder: (dialogContext) => AlertDialog(
-                title: const Text('Add custom category'),
-                content: TextField(
-                  controller: controller,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    hintText: 'e.g. Coffee, Tickets, Groceries',
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(dialogContext),
-                    child: const Text('Cancel'),
-                  ),
-                  FilledButton(
-                    onPressed: () =>
-                        Navigator.pop(dialogContext, controller.text.trim()),
-                    child: const Text('Save'),
-                  ),
-                ],
-              ),
-            );
-            if (result != null && result.isNotEmpty && context.mounted) {
-              await context.read<TransactionProvider>().addCustomCategory(
-                result,
-              );
-              onSelected(result);
-            }
-          },
-        ),
-      ],
+          TextButton(onPressed: onEdit, child: const Text('Change')),
+        ],
+      ),
     );
   }
 }

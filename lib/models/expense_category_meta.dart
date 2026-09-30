@@ -1,6 +1,25 @@
 import 'package:flutter/material.dart';
 
-enum ExpenseCategory { food, travel, gear, entertainment, utilities, other }
+/// Expense categories.
+///
+/// MIGRATION SAFETY: a transaction stores its category by *name*
+/// (`category.toString().split('.').last`), never by index, so adding a value
+/// here cannot change what any existing record means. Records naming a
+/// category this build no longer knows still load as `other` via the
+/// `firstWhere(orElse:)` in [Expense.fromJson]. Values must only ever be
+/// appended or renamed together with a migration; reordering them is harmless
+/// because nothing reads an index.
+enum ExpenseCategory {
+  food,
+  travel,
+  gear,
+  entertainment,
+  housing,
+  shopping,
+  health,
+  utilities,
+  other,
+}
 
 enum IncomeCategory { salary, freelance, investment, bonus, gift, other }
 
@@ -39,6 +58,13 @@ class CategoryRegistry {
   CategoryRegistry._();
 
   static const List<CategoryMeta> _expenseMetas = [
+    // Nine categories, ordered by how often they are expected to be used, with
+    // `other` last because it is the one that leads somewhere else.
+    //
+    // Colours have to stay distinguishable from each other: the breakdown donut
+    // puts slices of these side by side and two similar browns next to each
+    // other are unreadable. design_system_test.dart asserts a minimum
+    // separation between every pair.
     CategoryMeta(
       id: 'food',
       name: 'Food',
@@ -54,32 +80,53 @@ class CategoryRegistry {
       popularity: 1,
     ),
     CategoryMeta(
-      id: 'gear',
-      name: 'Gear',
-      icon: Icons.backpack_rounded,
-      color: Color(0xFF5C7A52),
-      popularity: 4,
-    ),
-    CategoryMeta(
       id: 'entertainment',
       name: 'Entertainment',
       icon: Icons.movie_rounded,
       color: Color(0xFF7A5C8E),
+      popularity: 2,
+    ),
+    CategoryMeta(
+      id: 'gear',
+      name: 'Gear',
+      icon: Icons.backpack_rounded,
+      color: Color(0xFF5C7A52),
       popularity: 3,
+    ),
+    CategoryMeta(
+      id: 'housing',
+      name: 'Housing',
+      icon: Icons.home_rounded,
+      color: Color(0xFF7A8256),
+      popularity: 4,
+    ),
+    CategoryMeta(
+      id: 'shopping',
+      name: 'Shopping',
+      icon: Icons.shopping_bag_rounded,
+      color: Color(0xFFA6637A),
+      popularity: 5,
+    ),
+    CategoryMeta(
+      id: 'health',
+      name: 'Health',
+      icon: Icons.favorite_rounded,
+      color: Color(0xFFC2703F),
+      popularity: 6,
     ),
     CategoryMeta(
       id: 'utilities',
       name: 'Utilities',
       icon: Icons.bolt_rounded,
       color: Color(0xFF6E7F80),
-      popularity: 5,
+      popularity: 7,
     ),
     CategoryMeta(
       id: 'other',
       name: 'Other',
       icon: Icons.payments_rounded,
       color: Color(0xFFA8907D),
-      popularity: 6,
+      popularity: 8,
     ),
   ];
 
