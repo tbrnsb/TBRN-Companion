@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
+import 'package:flutter_application_1/models/place_link.dart';
 import 'package:flutter_application_1/providers/location_provider.dart';
 import 'package:flutter_application_1/widgets/widgets.dart';
+import 'package:flutter_application_1/screens/locations/add_location_screen.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 
 class LocationsScreen extends StatelessWidget {
@@ -61,21 +61,7 @@ class LocationsScreen extends StatelessWidget {
   }
 
   static void _showLocationDialog(BuildContext context, Location? location) {
-    showDialog(
-      context: context,
-      builder: (_) => _LocationFormDialog(location: location),
-    );
-  }
-
-  /// Open the place form prefilled (e.g. from a frequent-location hint).
-  static void showLocationFormPrefilled(
-    BuildContext context,
-    Location prefill,
-  ) {
-    showDialog(
-      context: context,
-      builder: (_) => _LocationFormDialog(prefill: prefill),
-    );
+    AddLocationScreen.show(context, location: location);
   }
 
   static void _confirmDelete(
@@ -213,12 +199,11 @@ class _LocationTile extends StatelessWidget {
         ListTile(
           leading: CircleAvatar(
             backgroundColor: colorScheme.primaryContainer,
-            child: Text(
-              (location.name.isNotEmpty ? location.name[0] : 'L').toUpperCase(),
-              style: TextStyle(
-                color: colorScheme.onPrimaryContainer,
-                fontWeight: FontWeight.w600,
-              ),
+            // A place saved before icons existed has no icon; resolve falls
+            // back to a pin, so the row never renders blank.
+            child: Icon(
+              PlaceIcons.resolve(location.icon),
+              color: colorScheme.onPrimaryContainer,
             ),
           ),
           title: Text(location.name),
@@ -259,276 +244,4 @@ class _LocationTile extends StatelessWidget {
       ],
     );
   }
-}
-
-class _LocationFormDialog extends StatefulWidget {
-  const _LocationFormDialog({this.location, this.prefill});
-
-  final Location? location;
-
-  /// Overrides fields when saving from e.g. a frequent-location suggestion.
-  final Location? prefill;
-
-  @override
-  State<_LocationFormDialog> createState() => _LocationFormDialogState();
-}
-
-class _LocationFormDialogState extends State<_LocationFormDialog> {
-  final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _nameController;
-  late final TextEditingController _descriptionController;
-  late final TextEditingController _latController;
-  late final TextEditingController _lngController;
-  late final TextEditingController _radiusController;
-  String? _journeyId;
-
-  @override
-  void initState() {
-    super.initState();
-    final location = widget.location ?? widget.prefill;
-    _journeyId = widget.location?.journeyId ?? widget.prefill?.journeyId;
-    _nameController = TextEditingController(text: location?.name ?? '');
-    _descriptionController = TextEditingController(
-      text: location?.description ?? '',
-    );
-    _latController = TextEditingController(
-      text: location == null ? '' : location.latitude.toString(),
-    );
-    _lngController = TextEditingController(
-      text: location == null ? '' : location.longitude.toString(),
-    );
-    _radiusController = TextEditingController(
-      text: location == null ? '100' : location.radiusMeters.toString(),
-    );
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _descriptionController.dispose();
-    _latController.dispose();
-    _lngController.dispose();
-    _radiusController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final label = widget.location == null ? 'Add location' : 'Edit location';
-
-    return AlertDialog(
-      title: Text(label),
-      content: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Name'),
-                validator: (value) =>
-                    value == null || value.trim().isEmpty ? 'Required' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _descriptionController,
-                decoration: const InputDecoration(labelText: 'Description'),
-                minLines: 2,
-                maxLines: 3,
-              ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  icon: const Icon(Icons.my_location_rounded, size: 18),
-                  label: const Text('Use current location'),
-                  onPressed: () async {
-                    final provider = context.read<LocationProvider>();
-                    await provider.updateCurrentPosition();
-                    final pos = provider.currentPosition;
-                    if (!context.mounted) return;
-                    if (pos != null) {
-                      setState(() {
-                        _latController.text = pos.latitude.toStringAsFixed(6);
-                        _lngController.text = pos.longitude.toStringAsFixed(6);
-                      });
-                      return;
-                    }
-
-                    // Say why, not just that it failed. A denied permission and
-                    // a phone with GPS switched off need different actions, and
-                    // "Location unavailable" told the user neither.
-                    final messenger = ScaffoldMessenger.of(context);
-                    final message =
-                        provider.error ?? 'Could not get a location fix.';
-
-                    if (provider.needsSystemSettings) {
-                      messenger.showSnackBar(
-                        SnackBar(
-                          content: Text(message),
-                          duration: const Duration(seconds: 8),
-                          action: SnackBarAction(
-                            label: 'Settings',
-                            onPressed: () => _openAppSettings(context),
-                          ),
-                        ),
-                      );
-                      return;
-                    }
-
-                    messenger.showSnackBar(
-                      SnackBar(
-                        content: Text(message),
-                        duration: const Duration(seconds: 5),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _latController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: const InputDecoration(labelText: 'Latitude'),
-                      validator: (value) {
-                        final parsed = double.tryParse(value ?? '');
-                        if (parsed == null) return 'Valid number required';
-                        return null;
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _lngController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: const InputDecoration(labelText: 'Longitude'),
-                      validator: (value) {
-                        final parsed = double.tryParse(value ?? '');
-                        if (parsed == null) return 'Valid number required';
-                        return null;
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _radiusController,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Checkpoint radius (meters)',
-                  helperText:
-                      'Expenses taken within this distance can be linked here.',
-                ),
-                validator: (value) {
-                  final parsed = double.tryParse(value ?? '');
-                  if (parsed == null || parsed <= 0) return 'Must be > 0';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              Builder(
-                builder: (context) {
-                  final journeys = context.watch<JourneyProvider>().journeys;
-                  if (journeys.isEmpty) return const SizedBox.shrink();
-                  return DropdownButtonFormField<String?>(
-                    initialValue: _journeyId,
-                    decoration: const InputDecoration(
-                      labelText: 'Journey (optional)',
-                    ),
-                    items: [
-                      const DropdownMenuItem<String?>(
-                        value: null,
-                        child: Text('No journey'),
-                      ),
-                      ...journeys.map(
-                        (j) => DropdownMenuItem<String?>(
-                          value: j.id,
-                          child: Text(j.title),
-                        ),
-                      ),
-                    ],
-                    onChanged: (v) => setState(() => _journeyId = v),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            if (!_formKey.currentState!.validate()) return;
-
-            final provider = context.read<LocationProvider>();
-            final location = Location(
-              id: widget.location?.id,
-              name: _nameController.text.trim(),
-              description: _descriptionController.text.trim(),
-              latitude: double.parse(_latController.text),
-              longitude: double.parse(_lngController.text),
-              radiusMeters: double.parse(_radiusController.text),
-            );
-
-            if (widget.location == null) {
-              provider.addLocation(
-                Location(
-                  id: widget.prefill?.id,
-                  name: location.name,
-                  description: location.description,
-                  latitude: location.latitude,
-                  longitude: location.longitude,
-                  radiusMeters: location.radiusMeters,
-                  journeyId: _journeyId,
-                ),
-              );
-            } else {
-              provider.updateLocation(
-                widget.location!.copyWith(
-                  name: location.name,
-                  description: location.description,
-                  latitude: location.latitude,
-                  longitude: location.longitude,
-                  radiusMeters: location.radiusMeters,
-                  journeyId: _journeyId,
-                  clearJourney: _journeyId == null,
-                ),
-              );
-            }
-
-            Navigator.pop(context);
-          },
-          child: Text(widget.location == null ? 'Add' : 'Save'),
-        ),
-      ],
-    );
-  }
-}
-
-/// Opens this app's page in system Settings.
-///
-/// Reached when the only way forward is a permission the app cannot request
-/// again itself, either because the user chose "don't ask again" or because the
-/// phone's location toggle is off. `Geolocator.openAppSettings` is the
-/// geolocator-provided route, so it is used rather than a hand-rolled intent.
-Future<void> _openAppSettings(BuildContext context) async {
-  await Geolocator.openAppSettings();
-  if (!context.mounted) return;
-  // The user is on their way to the toggle; nothing to do here until they come
-  // back, and they can pull the list down to retry.
 }
