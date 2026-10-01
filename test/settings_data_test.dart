@@ -181,7 +181,7 @@ void main() {
         ),
       );
 
-      final csv = await provider.exportCurrentMonthCsv();
+      final csv = provider.exportCurrentMonthCsv();
       final file = await CsvExport.writeCsv(csv, DateTime.now());
       addTearDown(() => file.parent.deleteSync(recursive: true));
 
@@ -211,7 +211,7 @@ void main() {
         ),
       );
 
-      final csv = await provider.exportCurrentMonthCsv();
+      final csv = provider.exportCurrentMonthCsv();
       final file = await CsvExport.writeCsv(csv, DateTime.now());
       addTearDown(() => file.parent.deleteSync(recursive: true));
 
@@ -222,7 +222,7 @@ void main() {
       final provider = TransactionProvider();
       await provider.initialize();
 
-      final csv = await provider.exportCurrentMonthCsv();
+      final csv = provider.exportCurrentMonthCsv();
       final file = await CsvExport.writeCsv(csv, DateTime.now());
       addTearDown(() => file.parent.deleteSync(recursive: true));
 
@@ -242,7 +242,7 @@ void main() {
         ),
       );
 
-      final csv = await provider.exportCurrentMonthCsv();
+      final csv = provider.exportCurrentMonthCsv();
       final file = await CsvExport.writeCsv(csv, DateTime.now());
       addTearDown(() => file.parent.deleteSync(recursive: true));
 

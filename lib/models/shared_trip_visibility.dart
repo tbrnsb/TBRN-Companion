@@ -69,3 +69,16 @@ List<T> myLedgerOf<T extends Transaction>(
       )
       .toList(growable: false);
 }
+
+/// [isMyLedgerEntry] as a tear-off, for `Iterable.where`.
+///
+/// `where` takes a `bool Function(T)`, and the shared-trip rule needs a second
+/// argument, so every `where` call would otherwise have to close over the
+/// resolver inline. Six call sites that spell the rule out separately is six
+/// places to get it subtly different.
+bool Function(T) isMyLedgerEntryFor<T extends Transaction>(
+  String? Function(String journeyId) localParticipantIdFor,
+) {
+  return (t) =>
+      isMyLedgerEntry(t, localParticipantIdFor: localParticipantIdFor);
+}
