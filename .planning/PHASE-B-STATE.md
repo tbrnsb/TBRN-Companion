@@ -164,3 +164,19 @@ all, so none can double up.
 
 `test/spend_screen_test.dart` gained `tapAddAffordance`, which taps the FAB if
 present else the EmptyState's button.
+
+### Item 4 — jump-to-day no-ops — MERGED `6725875`
+Branch `fix/jump-day-noops`. **680 → 692 tests (+12)**, gate green.
+
+`DayPick` — THREE explicit outcomes (`dismissed`, `wholeMonth`, `day`) instead
+of a nullable DateTime. Only `wholeMonth` clears the filter.
+`setSelectedDay` returns `DaySelectionOutcome`; every refusal becomes a snack bar.
+
+**CRASH FOUND BY THE TESTS:** the picker's `lastDate` is capped at today, so a
+selected day past today made `initialDate` LATER than `lastDate` and the sheet
+ASSERTED on open. Fixed at the provider (a future day is refused, with
+`DayInTheFuture`) and `initialDate` is clamped regardless.
+
+Confirmed by test, not assumption: changing month clears a stale day filter, in
+the provider AND through the UI's month arrows; the pager keeps its height
+across a day toggle.
