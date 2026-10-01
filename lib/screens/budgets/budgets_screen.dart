@@ -26,7 +26,23 @@ class BudgetsScreen extends StatefulWidget {
 }
 
 class _BudgetsScreenState extends State<BudgetsScreen> {
+  /// The primary control. A limit belongs to a period, so the period decides
+  /// which limit you are looking at and which spending it is measured against;
+  /// it is not a filter over a list of every category at once.
   BudgetPeriod _period = BudgetPeriod.month;
+
+  /// The secondary control, and the ONLY category control on this screen.
+  ///
+  /// One budget is judged at a time because a limit is a question about one
+  /// category — "am I near my food limit" — and nine rows of bars answering nine
+  /// questions at once makes the one that matters impossible to find. The earlier
+  /// version listed every category with a bar and no way to tell which was the
+  /// subject, which is a dashboard, not a budget.
+  ExpenseCategory _category = ExpenseCategory.food;
+
+  /// Whether the trip budgets are open. Closed by default: they are secondary,
+  /// and a list of trips above the fold pushes the primary reading off it.
+  bool _tripsOpen = false;
 
   /// Which budgets have already raised a notification.
   ///
@@ -60,45 +76,99 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
       body: ListView(
         padding: AppSpacing.screenPadding,
         children: [
-          Text('Period', style: theme.textTheme.titleSmall),
-          const SizedBox(height: AppSpacing.xs),
-          Wrap(
-            spacing: AppSpacing.xs,
-            children: [
+          // THE PRIMARY CONTROL. Full width, above the fold, with the range it
+          // resolves to underneath so "This week" is never a label the user has
+          // to interpret. The range comes from [BudgetPeriodX.window] and is not
+          // recomputed here: a second window implementation is a second answer
+          // to "which days is this".
+          SegmentedButton<BudgetPeriod>(
+            key: const ValueKey('budget-period-control'),
+            segments: [
               for (final period in BudgetPeriod.values)
-                ChoiceChip(
-                  key: ValueKey('budget-period-${period.name}'),
+                ButtonSegment<BudgetPeriod>(
+                  value: period,
                   label: Text(period.shortLabel),
-                  selected: _period == period,
-                  onSelected: (_) => setState(() => _period = period),
                 ),
             ],
+            selected: {_period},
+            onSelectionChanged: (selection) {
+              // Change the period, not the category: the category was the
+              // subject and the period is the lens. Keeping the selection means
+              // switching month to week re-reads the SAME food budget, which is
+              // the comparison a user makes.
+              setState(() => _period = selection.first);
+            },
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(
-            '${_rangeLabel(window.start, window.end, _period)} · '
+            _rangeLabel(window.start, window.end, _period),
+            key: const ValueKey('budget-range-label'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+
+          // THE ONE SECONDARY SELECTOR. A dropdown, not chips AND not a list of
+          // every category: two category controls is one too many, and a chip
+          // row for ~18 categories wraps to three lines and buries the reading.
+          DropdownButtonFormField<ExpenseCategory>(
+            key: const ValueKey('budget-category-select'),
+            initialValue: _category,
+            decoration: InputDecoration(
+              labelText: 'Category',
+              prefixIcon: Icon(
+                CategoryRegistry.metaFor(_category).icon,
+                size: 18,
+              ),
+            ),
+            items: [
+              for (final category in budgetableCategories())
+                DropdownMenuItem<ExpenseCategory>(
+                  value: category,
+                  child: Text(CategoryRegistry.metaFor(category).name),
+                ),
+            ],
+            onChanged: (category) {
+              if (category == null) return;
+              setState(() => _category = category);
+            },
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          _CategoryBudget(
+            index: index,
+            period: _period,
+            category: _category,
+            currencySymbol: currency,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          // The total stays, because it is the context for the one reading above
+          // it: a food limit of 2000 means little without knowing the month total.
+          Text(
             '${AppFormat.money(index.total, symbol: currency)} spent in total',
+            key: const ValueKey('budget-total-line'),
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: AppSpacing.lg),
-          const SectionHeader('By category'),
-          const SizedBox(height: AppSpacing.xs),
-          _CategoryBudgets(
-            index: index,
-            period: _period,
-            currencySymbol: currency,
+
+          // Trips stay REACHABLE and period-aware, but secondary: behind a
+          // disclosure, because a trip's costs are the trip's and they never sum
+          // into a category reading.
+          _TripsDisclosure(
+            open: _tripsOpen,
+            onToggle: () => setState(() => _tripsOpen = !_tripsOpen),
           ),
-          const SizedBox(height: AppSpacing.lg),
-          const SectionHeader('By trip'),
-          const SizedBox(height: AppSpacing.xs),
-          _JourneyBudgets(
-            index: index,
-            period: _period,
-            journeyLabels: journeyLabels,
-            currencySymbol: currency,
-          ),
+          if (_tripsOpen) ...[
+            const SizedBox(height: AppSpacing.sm),
+            _JourneyBudgets(
+              index: index,
+              period: _period,
+              journeyLabels: journeyLabels,
+              currencySymbol: currency,
+            ),
+          ],
         ],
       ),
     );
@@ -115,47 +185,99 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
   }
 }
 
-/// App-level limits, one per expense category.
-class _CategoryBudgets extends StatelessWidget {
-  const _CategoryBudgets({
+/// One app-level category budget: the subject of the screen.
+///
+/// A single reading rather than a list of every category, and it takes the
+/// PERIOD's own limit for that category, so switching week/month/year re-reads
+/// the same subject through a different lens instead of silently showing another
+/// category's number.
+class _CategoryBudget extends StatelessWidget {
+  const _CategoryBudget({
     required this.index,
     required this.period,
+    required this.category,
     required this.currencySymbol,
   });
 
   final BudgetSpendIndex index;
   final BudgetPeriod period;
+  final ExpenseCategory category;
   final String currencySymbol;
 
   @override
   Widget build(BuildContext context) {
     final budgets = context.watch<BudgetProvider>();
-    final categories = budgetableCategories();
+    final meta = CategoryRegistry.metaFor(category);
+    final key = BudgetKey.forCategory(category.name, period).raw;
 
-    return Column(
-      children: [
-        for (final category in categories)
-          Builder(
-            // A Builder per row so each row's limit can be its own Consumer
-            // and editing one limit does not rebuild the other nine.
-            builder: (context) {
-              final meta = CategoryRegistry.metaFor(category);
-              return _BudgetRow(
-                storageKey: 'cat:${category.name}',
-                icon: meta.icon,
-                colour: meta.color,
-                title: meta.name,
-                limit: budgets.limitFor(label: category.name),
-                hasLimit: budgets.hasLimit(label: category.name),
-                spent: index.forCategory(category),
-                period: period,
-                currencySymbol: currencySymbol,
-                onChanged: (amount) =>
-                    budgets.setLimit(label: category.name, amount: amount),
-              );
-            },
+    return _BudgetRow(
+      storageKey: key,
+      icon: meta.icon,
+      colour: meta.color,
+      title: meta.name,
+      limit: budgets.limitFor(label: category.name, period: period),
+      hasLimit: budgets.hasLimit(label: category.name, period: period),
+      spent: index.forCategory(category),
+      period: period,
+      currencySymbol: currencySymbol,
+      onChanged: (amount) async {
+        await budgets.setLimit(
+          label: category.name,
+          amount: amount,
+          period: period,
+        );
+      },
+    );
+  }
+}
+
+/// Trips, collapsed.
+///
+/// A disclosure rather than a section, so the primary reading stays above the
+/// fold. It carries the count so a collapsed section is not indistinguishable
+/// from an empty one.
+class _TripsDisclosure extends StatelessWidget {
+  const _TripsDisclosure({required this.open, required this.onToggle});
+
+  final bool open;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final journeys = context.watch<JourneyProvider>();
+    final theme = Theme.of(context);
+    final count = journeys.journeys.length;
+
+    return AppSurface(
+      tier: AppSurfaceTier.flat,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xxs,
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.luggage_rounded,
+            size: 18,
+            color: theme.colorScheme.onSurfaceVariant,
           ),
-      ],
+          const SizedBox(width: AppSpacing.xs),
+          Expanded(
+            child: Text(
+              count == 0 ? 'Trip budgets' : 'Trip budgets ($count)',
+              style: theme.textTheme.titleSmall,
+            ),
+          ),
+          IconButton(
+            key: const ValueKey('budget-trips-toggle'),
+            tooltip: open ? 'Hide trip budgets' : 'Show trip budgets',
+            onPressed: onToggle,
+            icon: Icon(
+              open ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -196,12 +318,20 @@ class _JourneyBudgets extends StatelessWidget {
       children: [
         for (final journey in journeys.journeys)
           _BudgetRow(
-            storageKey: 'trip:${journey.id}',
+            storageKey: BudgetKey.forJourney(journey.id, period).raw,
             icon: Icons.luggage_rounded,
             colour: Theme.of(context).colorScheme.primary,
             title: journey.title,
-            limit: budgets.limitFor(scope: journey.id, label: journey.id),
-            hasLimit: budgets.hasLimit(scope: journey.id, label: journey.id),
+            limit: budgets.limitFor(
+              scope: journey.id,
+              label: journey.id,
+              period: period,
+            ),
+            hasLimit: budgets.hasLimit(
+              scope: journey.id,
+              label: journey.id,
+              period: period,
+            ),
             spent: index.forJourney(journey.id),
             period: period,
             currencySymbol: currencySymbol,
@@ -210,6 +340,7 @@ class _JourneyBudgets extends StatelessWidget {
                 scope: journey.id,
                 label: journey.id,
                 amount: amount,
+                period: period,
               );
               await budgets.notifyCrossed(
                 index: index,
