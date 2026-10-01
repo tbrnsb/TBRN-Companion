@@ -270,6 +270,28 @@ class TransactionProvider extends ChangeNotifier {
         .toList(growable: false);
   }
 
+  /// Transactions in [year]/[month], read WITHOUT changing what the ledger shows.
+  ///
+  /// A calendar needs to know which days in *its* month have anything on them,
+  /// and it must not do that by calling [loadTransactionsForMonth] — that moves
+  /// the ledger to that month and drops the selected day, so merely LOOKING at
+  /// August from a calendar opened on the Transactions tab would yank the screen
+  /// out from under the user.
+  ///
+  /// The shared-trip rule is applied here for the same reason it is applied to
+  /// [myLedger]: a dot on a day is a claim about the user's own spending, and
+  /// somebody else's trip expense is not theirs.
+  Future<List<Transaction>> peekTransactionsForMonth(
+    int year,
+    int month,
+  ) async {
+    final raw = await _storageService.getTransactionsForMonth(year, month);
+    return raw
+        .where((t) => !t.isDeleted)
+        .where(isMyLedgerEntryFor(_localParticipantFor))
+        .toList(growable: false);
+  }
+
   /// The transactions the screen should show: the selected day if there is one,
   /// otherwise the whole of [myLedger].
   ///

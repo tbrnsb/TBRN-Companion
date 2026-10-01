@@ -16,6 +16,10 @@ import 'visual_smoke_test.dart' show initTestStorage;
 
 final _someDay = DateTime(2024, 3, 12);
 
+/// A day inside the month the ledger has loaded, so "empty" and "not looked at"
+/// are different states and can be told apart.
+final _someDayInThisMonth = DateTime.now();
+
 Future<void> settleUi(WidgetTester tester) async {
   for (var i = 0; i < 12; i++) {
     await tester.pump(const Duration(milliseconds: 100));
@@ -172,6 +176,39 @@ void main() {
       final transactions = TransactionProvider();
       final settings = SettingsProvider();
       await tester.runAsync(() => settings.load());
+      // Initialised, so `currentMonth` is the month on screen and [_someDayInThisMonth]
+      // really is loaded-and-empty rather than simply never looked at.
+      await tester.runAsync(() => transactions.initialize());
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<JourneyProvider>.value(value: journeys),
+            ChangeNotifierProvider<TransactionProvider>.value(
+              value: transactions,
+            ),
+            ChangeNotifierProvider<SettingsProvider>.value(value: settings),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: Scaffold(body: DayActivitySheet(day: _someDayInThisMonth)),
+          ),
+        ),
+      );
+      await settleUi(tester);
+
+      // A blank sheet is indistinguishable from a broken one.
+      expect(find.text('Nothing recorded on this day.'), findsOneWidget);
+    });
+
+    testWidgets('a day whose month was never loaded admits it', (tester) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+
+      final journeys = JourneyProvider();
+      final transactions = TransactionProvider();
+      final settings = SettingsProvider();
+      await tester.runAsync(() => settings.load());
+      await tester.runAsync(() => transactions.initialize());
 
       await tester.pumpWidget(
         MultiProvider(
@@ -190,8 +227,14 @@ void main() {
       );
       await settleUi(tester);
 
-      // A blank sheet is indistinguishable from a broken one.
-      expect(find.text('Nothing recorded on this day.'), findsOneWidget);
+      // [_someDay] is in 2024 and the ledger holds this month, so the app has not
+      // looked. Claiming "nothing recorded" there is a confident lie that reads
+      // exactly like the truth — and it is what this sheet used to say.
+      expect(find.text('Nothing recorded on this day.'), findsNothing);
+      expect(
+        find.textContaining('Open the month in Transactions'),
+        findsOneWidget,
+      );
     });
   });
 
