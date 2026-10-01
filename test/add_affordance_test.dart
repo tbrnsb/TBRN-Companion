@@ -189,20 +189,32 @@ void main() {
       await tester.pumpWidget(_app(const TransactionsScreen(), provider));
       await settleUi(tester);
 
-      await tester.enterText(
-        find.byKey(const ValueKey('transaction-search-field')),
-        'zzzznothing',
-      );
+      // Search moved to its own screen, reached from the app bar. The LIST's job
+      // here is unchanged: when a search is active it shows the results and says
+      // so, and it grows no add affordance of its own.
+      provider.search = const TransactionSearchQuery(text: 'zzzznothing');
       await settleUi(tester);
 
-      expect(find.text('Nothing matches'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('active-search-banner')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('showing search results'), findsOneWidget);
       // The month still has a row, so the FAB is present and is the only add
-      // affordance. The search empty state deliberately carries none.
+      // affordance. The banner deliberately carries no add button either — it is
+      // a statement about what is on screen, not an offer to change it.
       expect(find.byType(FloatingActionButton), findsOneWidget);
       expect(
         find.descendant(
-          of: find.byType(EmptyState),
+          of: find.byKey(const ValueKey('active-search-banner')),
           matching: find.byType(FilledButton),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('active-search-banner')),
+          matching: find.byType(FloatingActionButton),
         ),
         findsNothing,
       );

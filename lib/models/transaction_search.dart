@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:intl/intl.dart';
 
 import 'expense_category_meta.dart';
 import 'transaction.dart';
@@ -63,8 +64,7 @@ class TransactionSearchQuery {
   /// for.
   bool matches(Transaction transaction) {
     final needle = text.trim().toLowerCase();
-    if (needle.isNotEmpty &&
-        !transaction.description.toLowerCase().contains(needle)) {
+    if (needle.isNotEmpty && !_matchesText(transaction, needle)) {
       return false;
     }
     if (minAmount != null && transaction.amount < minAmount!) return false;
@@ -78,6 +78,48 @@ class TransactionSearchQuery {
     }
     return true;
   }
+
+  /// The free-text search, over every field the result row SHOWS.
+  ///
+  /// It used to check [Transaction.description] and nothing else, so typing a
+  /// category name returned nothing while the list underneath plainly displayed
+  /// that category on every matching row. The search was not broken, it was
+  /// searching less than it was showing — and the user's evidence that it was
+  /// broken was the row directly below the field.
+  ///
+  /// Fields searched are exactly the ones a result row displays: the
+  /// description, the category AS LABELLED, the amount, and the date. Anything
+  /// not displayed is not searched, because a hit the user cannot see is a
+  /// result they cannot explain.
+  bool _matchesText(Transaction transaction, String needle) {
+    // The CATEGORY AS LABELLED, not the enum name. `effectiveCategoryName` is
+    // what the row shows, and it differs from `category.name` for a custom
+    // category and for a raw stored id, so searching the enum would miss the
+    // exact word the user read off the screen.
+    if (transaction.effectiveCategoryName.toLowerCase().contains(needle)) {
+      return true;
+    }
+    if (transaction.description.toLowerCase().contains(needle)) return true;
+    // An amount, so "450" finds the row showing Rs 450. Matched against the
+    // digits of the amount rather than the formatted string, so it does not
+    // depend on the currency symbol or on thousands separators.
+    if (_digitsOnly(transaction.amount.toString()).contains(needle)) {
+      if (needle.isNotEmpty && _isAllDigits(needle)) return true;
+    }
+    // The date as it is shown, and as digits, so both "4 oct" and "10/04"
+    // reach the row.
+    final formatted = DateFormat.yMMMd().format(transaction.date).toLowerCase();
+    if (formatted.contains(needle)) return true;
+    final iso = DateFormat('yyyy-MM-dd').format(transaction.date);
+    if (iso.contains(needle)) return true;
+    return false;
+  }
+
+  /// Digits only, so a formatted amount and a typed number compare alike.
+  static String _digitsOnly(String value) =>
+      value.replaceAll(RegExp(r'[^0-9]'), '');
+
+  static bool _isAllDigits(String value) => RegExp(r'^[0-9]+$').hasMatch(value);
 
   TransactionSearchQuery copyWith({
     String? text,

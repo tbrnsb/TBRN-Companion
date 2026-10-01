@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -8,10 +9,13 @@ import 'package:flutter_application_1/providers/journey_provider.dart';
 import 'package:flutter_application_1/providers/location_provider.dart';
 import 'package:flutter_application_1/providers/settings_provider.dart';
 import 'package:flutter_application_1/providers/transaction_provider.dart';
+import 'package:flutter_application_1/screens/transactions/expense_detail_screen.dart';
+import 'package:flutter_application_1/screens/transactions/income_detail_screen.dart';
+import 'package:flutter_application_1/screens/transactions/transaction_search_view.dart';
 import 'package:flutter_application_1/screens/transactions/transactions_screen.dart';
 import 'package:flutter_application_1/services/storage_service.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/widgets/empty_state.dart';
+import 'package:flutter_application_1/widgets/app_search.dart';
 
 import 'test_viewports.dart';
 import 'visual_smoke_test.dart' show initTestStorage;
@@ -107,6 +111,17 @@ Future<TransactionProvider> pumpSpendScreen(
   return provider;
 }
 
+/// Opens the dedicated search view over the same provider.
+///
+/// A push rather than a rebuild, so these tests exercise the real route the app
+/// bar button takes — including that the field arrives focused.
+Future<TransactionProvider> openSearchView(WidgetTester tester) async {
+  await tester.tap(find.byKey(AppSearchButton.buttonKey));
+  await settleUi(tester);
+  final context = tester.element(find.byType(TransactionSearchView));
+  return Provider.of<TransactionProvider>(context, listen: false);
+}
+
 /// The transaction descriptions currently on screen, in order.
 ///
 /// The list lives below the summary card, the two donuts and a four-page chart
@@ -151,80 +166,258 @@ void main() {
     await StorageService().clear();
   });
 
-  group('search over the month', () {
-    testWidgets('the field is on screen with no interaction at all', (
+  group('what free text looks at', () {
+    // THE CAUSE OF "search finds nothing", and it was not the provider.
+    //
+    // `searchResults` already read `myLedger` and already checked the active
+    // filter; both were correct. `TransactionSearchQuery.matches` tested the
+    // DESCRIPTION and nothing else, so typing a category name returned nothing
+    // while the list displayed that category on every matching row. The search
+    // was not broken — it was searching less than it was showing, and the user's
+    // evidence that it was broken was the row directly under the field.
+    test('a category name finds rows labelled with that category', () {
+      final food = sampleMonth(DateTime.now())
+          .firstWhere((t) => t.effectiveCategoryName.toLowerCase() == 'food');
+      final query = const TransactionSearchQuery(text: 'food');
+
+      expect(
+        query.matches(food),
+        isTrue,
+        reason: 'the word is on the row, so searching for it must find the row',
+      );
+    });
+
+    test('a description still matches', () {
+      final coffee = sampleMonth(DateTime.now())
+          .firstWhere((t) => t.description.toLowerCase().contains('coffee'));
+      expect(
+        const TransactionSearchQuery(text: 'coffee').matches(coffee),
+        isTrue,
+      );
+    });
+
+    test('a number on the row finds that row', () {
+      final item = sampleMonth(DateTime.now()).first;
+      final digits = item.amount.toStringAsFixed(0);
+      expect(
+        const TransactionSearchQuery(text: '450').matches(item),
+        isTrue,
+        reason: 'the amount is displayed, so it must be searchable',
+      );
+      expect(digits.isNotEmpty, isTrue);
+    });
+
+    test('a word that is on no row finds nothing', () {
+      final item = sampleMonth(DateTime.now()).first;
+      expect(
+        const TransactionSearchQuery(text: 'zzzznothing').matches(item),
+        isFalse,
+      );
+    });
+
+    test('an empty query matches everything', () {
+      final item = sampleMonth(DateTime.now()).first;
+      expect(const TransactionSearchQuery().matches(item), isTrue);
+    });
+  });
+
+  group('the search view', () {
+    // THE FIELD MOVED OUT OF THE LIST. It used to sit inline above the month
+    // summary and the charts, so typing in it re-sorted the list under you and
+    // made every chart on the screen recalculate for a query the charts do not
+    // answer. Search now has one home.
+    testWidgets('there is ONE search field, and the list has none', (
       tester,
     ) async {
       usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
       await pumpSpendScreen(tester);
 
-      expect(find.byKey(const ValueKey('transaction-search-field')), findsOne);
-      // Idle state: no summary line, because nothing is narrowed yet.
-      expect(find.byKey(const ValueKey('search-summary')), findsNothing);
+      // The list no longer carries a field of its own. Two fields writing the
+      // same query is the bug this branch exists to remove.
+      expect(
+        find.byKey(const ValueKey('transaction-search-field')),
+        findsNothing,
+      );
+      expect(find.byType(TextField), findsNothing);
+
+      // And the way in is the app bar button, which is keyed rather than found by
+      // icon — the search VIEW is full of search icons.
+      expect(find.byKey(AppSearchButton.buttonKey), findsOne);
     });
 
-    testWidgets('typing narrows the list to matching descriptions', (
+    testWidgets('it opens from the app bar with the field already focused', (
       tester,
     ) async {
       usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
-      final provider = await pumpSpendScreen(tester);
+      await pumpSpendScreen(tester);
+
+      final provider = await openSearchView(tester);
+
+      expect(find.byType(TransactionSearchView), findsOne);
+      final field = tester.widget<TextField>(
+        find.byKey(const ValueKey('search-view-field')),
+      );
+      expect(
+        field.focusNode!.hasFocus,
+        isTrue,
+        reason:
+            'a search screen that '
+            'needs a second tap before it does anything is a screen nobody types '
+            'into',
+      );
+      // Idle: no criteria bar, because nothing is narrowed yet.
+      expect(find.byKey(const ValueKey('search-view-criteria')), findsNothing);
+      expect(provider.hasActiveSearch, isFalse);
+    });
+
+    testWidgets('typing narrows the results, live', (tester) async {
+      usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
+      await pumpSpendScreen(tester);
+      final provider = await openSearchView(tester);
 
       await tester.enterText(
-        find.byKey(const ValueKey('transaction-search-field')),
+        find.byKey(const ValueKey('search-view-field')),
         'coffee',
       );
       await settleUi(tester);
 
       expect(provider.hasActiveSearch, isTrue);
       expect(visibleDescriptions(tester), ['Coffee with Priya']);
-      expect(find.text('Search results'), findsOne);
+      expect(find.byKey(const ValueKey('search-result-count')), findsOne);
     });
 
-    testWidgets(
-      'a search with no hits says so and offers no second add button',
-      (tester) async {
-        usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
-        await pumpSpendScreen(tester);
-
-        await tester.enterText(
-          find.byKey(const ValueKey('transaction-search-field')),
-          'zzzznothing',
-        );
-        await settleUi(tester);
-
-        expect(find.text('Nothing matches'), findsOne);
-        // The empty-results state must not grow its own add affordance: the FAB is
-        // already on screen, and two of them is the bug this asserts against.
-        // Counted by TYPE, so a label change cannot make this pass while two
-        // buttons remain.
-        expect(
-          find.descendant(
-            of: find.byType(EmptyState),
-            matching: find.byType(FilledButton),
-          ),
-          findsNothing,
-        );
-        expect(find.byType(FloatingActionButton), findsOne);
-      },
-    );
-
-    testWidgets('clearing the search restores the whole month', (tester) async {
+    testWidgets('a result row shows title, category, date and amount', (
+      tester,
+    ) async {
+      // Every field a row SHOWS is a field the search LOOKS at. That is the rule
+      // that stops this screen asking the user to search for something it will
+      // not show them.
       usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
       await pumpSpendScreen(tester);
+      await openSearchView(tester);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('search-view-field')),
+        'coffee',
+      );
+      await settleUi(tester);
+
+      final tile = tester.widget<ListTile>(find.byType(ListTile).first);
+      expect((tile.title! as Text).data, 'Coffee with Priya');
+      // The category AS LABELLED, which is what the row shows and therefore what
+      // the search must look at.
+      final subtitle = (tile.subtitle! as Text).data!;
+      expect(subtitle, contains('Food'));
+      // The row's OWN date, not today's: the date is displayed, so it must be
+      // read off the tile rather than recomputed, or this asserts nothing.
+      expect(
+        subtitle,
+        contains(
+          DateFormat.yMMMd().format(
+            sampleMonth(DateTime.now())
+                .firstWhere((t) => t.description == 'Coffee with Priya')
+                .date,
+          ),
+        ),
+      );
+      // The amount off the transaction, not a literal. A hardcoded figure here
+      // would keep asserting 450 after the fixture's amount changed, and would
+      // then be testing the fixture rather than the row.
+      expect(
+        (tile.trailing! as Text).data,
+        contains(
+          sampleMonth(DateTime.now())
+              .firstWhere((t) => t.description == 'Coffee with Priya')
+              .amount
+              .toStringAsFixed(0),
+        ),
+      );
+    });
+
+    testWidgets('a search with no hits says so, and says WHY', (tester) async {
+      usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
+      await pumpSpendScreen(tester);
+      await openSearchView(tester);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('search-view-field')),
+        'zzzznothing',
+      );
+      await settleUi(tester);
+
+      // "No results" and "no data" must not look the same: the first means the
+      // app has plenty and your query excluded it.
+      expect(find.byKey(const ValueKey('search-view-empty-title')), findsOne);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('search-view-empty-title')))
+            .data,
+        'Nothing matches that search',
+      );
+      expect(
+        find.byKey(const ValueKey('active-search-banner')),
+        findsNothing,
+        reason: 'the banner belongs to the list, not to this screen',
+      );
+    });
+
+    testWidgets('clearing brings every row back', (tester) async {
+      usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
+      await pumpSpendScreen(tester);
+      await openSearchView(tester);
       final all = visibleDescriptions(tester).length;
 
       await tester.enterText(
-        find.byKey(const ValueKey('transaction-search-field')),
+        find.byKey(const ValueKey('search-view-field')),
         'coffee',
       );
       await settleUi(tester);
       expect(visibleDescriptions(tester), hasLength(1));
 
-      await tester.tap(find.byKey(const ValueKey('search-clear-all')));
+      await tester.tap(find.byKey(const ValueKey('search-view-clear')));
       await settleUi(tester);
 
-      expect(visibleDescriptions(tester), hasLength(all));
-      expect(find.byKey(const ValueKey('search-summary')), findsNothing);
+      expect(visibleDescriptions(tester).length, greaterThanOrEqualTo(all));
+      expect(find.byKey(const ValueKey('search-view-criteria')), findsNothing);
+    });
+
+    testWidgets('an income result opens the INCOME detail', (tester) async {
+      // Routed by the transaction's own kind, so an income row can never open
+      // the expense editor and silently offer to edit the wrong record.
+      usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
+      await pumpSpendScreen(tester);
+      await openSearchView(tester);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('search-view-field')),
+        'Salary',
+      );
+      await settleUi(tester);
+      expect(visibleDescriptions(tester), isNotEmpty);
+
+      await tester.tap(find.byType(ListTile).first);
+      await settleUi(tester);
+
+      expect(find.byType(IncomeDetailScreen), findsOne);
+      expect(find.byType(ExpenseDetailScreen), findsNothing);
+    });
+
+    testWidgets('an expense result opens the EXPENSE detail', (tester) async {
+      usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
+      await pumpSpendScreen(tester);
+      await openSearchView(tester);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('search-view-field')),
+        'coffee',
+      );
+      await settleUi(tester);
+
+      await tester.tap(find.byType(ListTile).first);
+      await settleUi(tester);
+
+      expect(find.byType(ExpenseDetailScreen), findsOne);
+      expect(find.byType(IncomeDetailScreen), findsNothing);
     });
   });
 
@@ -240,8 +433,9 @@ void main() {
       provider.setSelectedDay(groceries);
       await settleUi(tester);
 
+      await openSearchView(tester);
       await tester.enterText(
-        find.byKey(const ValueKey('transaction-search-field')),
+        find.byKey(const ValueKey('search-view-field')),
         'bus fare',
       );
       await settleUi(tester);
@@ -259,8 +453,9 @@ void main() {
       final provider = await pumpSpendScreen(tester);
 
       // A term every row shares, so only the chip can be what is filtering.
+      await openSearchView(tester);
       await tester.enterText(
-        find.byKey(const ValueKey('transaction-search-field')),
+        find.byKey(const ValueKey('search-view-field')),
         'a',
       );
       await settleUi(tester);
@@ -283,7 +478,8 @@ void main() {
       usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
       final provider = await pumpSpendScreen(tester);
 
-      await tester.tap(find.byKey(const ValueKey('search-open-filters')));
+      await openSearchView(tester);
+      await tester.tap(find.byKey(const ValueKey('search-view-filters')));
       await settleUi(tester);
       await tester.enterText(
         find.byKey(const ValueKey('search-min-amount')),
@@ -304,14 +500,15 @@ void main() {
       expect(shown, isNot(contains('Coffee with Priya')));
       // The summary names the range in words, so a narrowed search is never
       // mistaken for missing data.
-      expect(find.byKey(const ValueKey('search-summary')), findsOne);
+      expect(find.byKey(const ValueKey('search-view-criteria')), findsOne);
     });
 
     testWidgets('a category chip narrows to that category', (tester) async {
       usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
       final provider = await pumpSpendScreen(tester);
 
-      await tester.tap(find.byKey(const ValueKey('search-open-filters')));
+      await openSearchView(tester);
+      await tester.tap(find.byKey(const ValueKey('search-view-filters')));
       await settleUi(tester);
       // `travel.name` is not a const expression, so the key is built at runtime
       // rather than written as a literal that could drift from the enum.
@@ -330,8 +527,9 @@ void main() {
     ) async {
       usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
       await pumpSpendScreen(tester);
+      await openSearchView(tester);
 
-      await tester.tap(find.byKey(const ValueKey('search-open-filters')));
+      await tester.tap(find.byKey(const ValueKey('search-view-filters')));
       await settleUi(tester);
       await tester.enterText(
         find.byKey(const ValueKey('search-min-amount')),
@@ -352,8 +550,9 @@ void main() {
       usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
       final provider = await pumpSpendScreen(tester);
       final before = provider.search;
+      await openSearchView(tester);
 
-      await tester.tap(find.byKey(const ValueKey('search-open-filters')));
+      await tester.tap(find.byKey(const ValueKey('search-view-filters')));
       await settleUi(tester);
       await tester.enterText(
         find.byKey(const ValueKey('search-min-amount')),
