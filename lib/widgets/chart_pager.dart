@@ -39,7 +39,17 @@ class ChartPager extends StatefulWidget {
   /// Tall enough for the tallest chart plus its title, key and caption.
   final double height;
 
-  static const double _defaultHeight = 268;
+  /// Raised from 268 when the heatmap was changed to fill the card's width.
+  ///
+  /// The heatmap's cells are now square and grow with the measure, so a
+  /// five-column month at 360dp needs about 420 pixels of grid plus its title,
+  /// caption and scale. 268 clipped it by 361.
+  ///
+  /// This is a STOPGAP and deliberately blunt: one height for four pages, sized
+  /// for the tallest. The right fix is a height PER PAGE measured from what each
+  /// chart actually wants, which is item 6. Recorded here so nobody reads 520 as
+  /// a considered number.
+  static const double _defaultHeight = 640;
 
   @override
   State<ChartPager> createState() => _ChartPagerState();
