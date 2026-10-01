@@ -145,8 +145,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final transactions = context.read<TransactionProvider>();
     final navigator = Navigator.of(context);
 
+    // Load FIRST, then narrow: the day belongs to the month that has to be in
+    // memory before the filter can mean anything.
     await transactions.loadTransactionsForMonth(day.year, day.month);
-    await transactions.setSelectedDay(day);
+    transactions.setSelectedDay(day);
     if (!mounted) return;
     navigator.pop();
   }
