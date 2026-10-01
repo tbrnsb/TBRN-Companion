@@ -17,7 +17,7 @@ class LocationsScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Location Bookmarks'),
         elevation: 0,
-        actions: const [AppGearButton()],
+        actions: const [AppCalendarButton(), AppGearButton()],
       ),
       body: Consumer<LocationProvider>(
         builder: (context, provider, _) {
