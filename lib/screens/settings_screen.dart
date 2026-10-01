@@ -7,6 +7,7 @@ import 'package:flutter_application_1/providers/location_provider.dart';
 import 'package:flutter_application_1/providers/settings_provider.dart';
 import 'package:flutter_application_1/providers/transaction_provider.dart';
 import 'package:flutter_application_1/services/csv_export.dart';
+import 'package:flutter_application_1/screens/transactions/csv_import_sheet.dart';
 import 'package:flutter_application_1/screens/trash_screen.dart';
 import 'package:flutter_application_1/services/storage_service.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
@@ -358,6 +359,32 @@ class _DataSectionState extends State<_DataSection> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _importCsv() async {
+    // The picker is a platform channel, so it is reached through the sheet's own
+    // static helper and this method only reports what came back. `mounted` is
+    // checked after every await because a picker can take arbitrarily long and
+    // the user may have left the screen while it was open.
+    final imported = await CsvImportSheet.pickAndImport(context);
+    if (!mounted) return;
+    if (imported == null) return;
+    if (imported == 0) return;
+
+    // Every cached provider is re-read: an import can add records in months the
+    // user is not browsing, so a screen still quoting the old numbers would be
+    // wrong in a way nothing else would correct.
+    await widget.onReload();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          imported == 1
+              ? 'Imported 1 transaction.'
+              : 'Imported $imported transactions.',
+        ),
+      ),
+    );
+  }
+
   /// What to tell the user, whether the export worked, had nothing to do, or
   /// failed. A share sheet is a platform channel, so the failure has to become
   /// a sentence rather than an unhandled error.
@@ -419,12 +446,26 @@ class _DataSectionState extends State<_DataSection> {
                 ),
               ],
               const SizedBox(height: AppSpacing.sm),
+              // Export and import sit together and in that order, because they are
+              // the same format in opposite directions. Separating them across the
+              // screen would invite somebody to change one and not the other, and
+              // the round trip is the thing that has to keep working.
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: _busy ? null : _exportCsv,
                   icon: const Icon(Icons.ios_share_rounded),
                   label: const Text('Export this month as CSV'),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  key: const ValueKey('settings-import-csv'),
+                  onPressed: _busy ? null : _importCsv,
+                  icon: const Icon(Icons.upload_file_rounded),
+                  label: const Text('Import transactions from CSV'),
                 ),
               ),
               const SizedBox(height: AppSpacing.sm),

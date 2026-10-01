@@ -42,7 +42,7 @@ class CsvExport {
     DateTime? month,
   }) async {
     final target = month ?? provider.currentMonth ?? DateTime.now();
-    final csv = await provider.exportCurrentMonthCsv();
+    final csv = provider.exportCurrentMonthCsv();
 
     // Header only means no transactions were recorded this month.
     final dataRows = csv
