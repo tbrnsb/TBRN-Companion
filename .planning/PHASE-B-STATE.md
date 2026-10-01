@@ -13,7 +13,7 @@ PHASE B ITEM STATUS
 [x] 3.  Duplicate add buttons      fix/duplicate-add-buttons       MERGED a645bf9
 [x] 4.  Jump-to-day no-ops         fix/jump-day-noops             MERGED 6725875
 [x] 5.  Heatmap month shape        fix/heatmap-month-shape        MERGED 9db50a7
-[ ] N1. Heatmap cell size + shape  fix/heatmap-cell-size
+[x] N1. Heatmap cell size + shape  fix/heatmap-cell-size       MERGED 2be8247
 [ ] N2. Budget period limits       fix/budget-period-limits
 [ ] N3. Month navigation           fix/month-navigation
 [ ] N4. Search youtube view        fix/search-youtube-view
@@ -227,3 +227,81 @@ spending is NOT marked in `daysWithTransactions`.
 square grid is tall and 268 clipped it by 361px. ONE height for four pages sized
 for the tallest, so the Daily/Balance/Weekly pages now carry large dead space.
 Item 6 must replace the fixed height with a per-page one.
+
+### N1 — heatmap cell size and shape — MERGED `2be8247`
+Branch `fix/heatmap-cell-size`, tagged `snapshot-fix/heatmap-cell-size`,
+archive `2026-10-01-before-heatmap-cell-size`, pushed. **692 → 702 tests (+10)**,
+gate green (analyze, format, 702 tests, debug APK).
+
+**ITEM 5 WAS THE TRANSPOSE, NOT A SHAPE BUG.** It drew five week-COLUMNS by
+seven weekday-ROWS — days running down the screen and weeks running across it.
+That is the transpose of a calendar, which is why the grid read as "a random
+throwing of pixels" and not as a month. The row count was right; the AXES were
+swapped.
+
+Measured at 412x915, on the transposed grid:
+
+| what | item 5 | N1 |
+|---|---|---|
+| grid shape | 5 columns x 7 rows | **7 columns x 4–6 rows** |
+| cell size | ~45px (Expanded + AspectRatio) | **11px** (`SpendingHeatmapShim.cell`) |
+| row height | ~7 x 45 + gaps | **15px** |
+| grid height | ~315px | **under 100px** |
+| day-to-day step | vertical | **66.8px horizontal** |
+| row span | n/a | **412px, full card** |
+
+The month decides the shape, not the window:
+`rowsForMonth = ceil((leadingDead + daysInMonth) / 7)`, clamped 4..6.
+
+**A SIX-WEEK MONTH WAS LOSING A DAY.** November 2026 opens on a SUNDAY, and
+`weekday` is 7 — so leading dead is SIX, not zero, and 6 + 30 = 36 cells needs
+six rows. Reading a Sunday as "no leading space" turns a six-week month into
+five and drops a visible day. May 2027 (5 leading + 31) is the same trap.
+`six-week months draw every day of the month` asserts day 31 is painted.
+
+**THE EMPTY AND DEAD TOKENS WERE SURFACE COLOURS.** `heatmapEmpty` was
+`surfaceContainer` and `heatmapDead` was `surfaceContainerLowest` — the two
+lowest-contrast steps in the ladder, built to sit behind content almost
+invisibly. A day with no spending was nearly the colour of the card it sat on,
+so the grid had no visible rectangle at all. Both are now INK, mixed toward the
+palette's own `onSurface` and searched until the MEASURED contrast against the
+card clears its floor. Not 3:1 and not 4.5:1: these are grid structure, and
+either of those bars makes a month-shaped block of grey compete with the
+spending it frames.
+
+| spec | empty | dead |
+|---|---|---|
+| TBRN light | 1.61:1 | 1.20:1 |
+| TBRN dark | 1.60:1 | 1.20:1 |
+| Catppuccin light | 1.61:1 | 1.20:1 |
+| Catppuccin dark | 1.60:1 | 1.20:1 |
+| Solitude dark | 1.60:1 | 1.20:1 |
+| Gruvbox dark | 1.60:1 | 1.20:1 |
+
+`structureFloor` 1.6 for empty, `deadFloor` 1.2 for dead — dead is fainter, so
+the month's outline reads, but neither is invisible and the two are never the
+same colour. Dead has its OWN floor because a single floor resolved them to
+1.6051:1 and 1.6061:1 on TBRN light: indistinguishable, which is the original
+bug arriving through the front door.
+
+Both tokens are asserted twice — once as maths across all six specs, once read
+back out of the RENDERED widget tree — because a token that is right but never
+painted is still invisible.
+
+**spaceBetween IS NON-NEGOTIABLE.** Content-sized rows DISCARD the leftover
+width and the grid hugged the left, which is item 5's real fix. Expanded also
+decides the width, so item 5 resolved the hug by making the cells huge. Fixed
+cells plus `spaceBetween` keeps both: seven 11px cells, even gutters, full
+card. `cellFor` has no width term at all.
+
+`_shade` and `primary` at alpha 0.22 do not come back. Tooltips, the highlight
+border, `rampLength(scheme)` and the zero-max rule are unchanged.
+
+**TWO OF THESE TESTS WERE WRONG ABOUT THE GRID BEFORE THEY WERE WRONG ABOUT THE
+CODE.** Both measured "day 1 to day 7" as a row; in a month with leading dead
+space that spans two rows. The row is now DERIVED from `leadingDead`, and both
+tests assert the leading count first so a future wrong month fails as a wrong
+month rather than as a mystery spacing failure.
+
+The pager is still 640. N1 makes the heatmap small again; item 6 replaces the
+fixed height with per-page measured heights.
