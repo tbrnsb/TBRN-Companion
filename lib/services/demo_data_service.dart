@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:uuid/uuid.dart';
 
 import 'package:flutter_application_1/models/index.dart';
@@ -180,29 +182,42 @@ class DemoDataService {
 
   /// Demo spend for the current month.
   ///
-  /// Dates are clamped to the month rather than computed as
-  /// `DateTime(y, m, now.day - n)`, which normalises into the previous month
-  /// on the first few days and hides the records.
+  /// Spread across the month by POSITION rather than by subtracting days from
+  /// today. `DateTime(y, m, now.day - n)` is the version this replaces, and it
+  /// collapses everything onto day 1 for the first few days of a month: every
+  /// offset clamps to 1, so seven records land on the same date, the heatmap's
+  /// per-day maximum is set by one of them and every other day reads as nothing
+  /// happened. A month that looks like that has not been lived in.
+  ///
+  /// Two rules, and they are different rules:
+  ///
+  /// - Position decides the day: record *i* of *n* lands on roughly
+  ///   `monthLength * (i + 1) / n`, so the set covers the month evenly however
+  ///   long it is.
+  /// - Today caps it: a record cannot be dated in the future, because a month
+  ///   with spending on days that have not happened is not a month that has been
+  ///   lived in either.
+  ///
+  /// The second rule is why this is still bunched on the 1st of a month, and that
+  /// is honest: there is exactly one day to put seven records on. From the 2nd
+  /// onward the spread widens by itself.
   static List<Transaction> _spend(DateTime now) {
-    int day(int daysAgo) => (now.day - daysAgo).clamp(1, now.day);
-    DateTime at(int daysAgo) => DateTime(now.year, now.month, day(daysAgo));
-
     // Built through a function so each record gets its own demo id at
     // construction time. copyWith cannot set an id.
-    Transaction income(double amount, String category, String what, int ago) =>
+    Transaction income(double amount, String category, String what, int slot) =>
         Income(
           id: newId(),
           amount: amount,
           category: category,
           description: '$label $what',
-          date: at(ago),
+          date: _spreadDay(now, slot),
         );
 
     Transaction expense(
       double amount,
       ExpenseCategory category,
       String what,
-      int ago, {
+      int slot, {
       String? customName,
     }) => Expense(
       id: newId(),
@@ -210,24 +225,41 @@ class DemoDataService {
       category: category,
       description: '$label $what',
       customCategoryName: customName,
-      date: at(ago),
+      date: _spreadDay(now, slot),
     );
 
     return [
       income(5000, 'salary', 'Monthly salary', 0),
-      expense(150.00, ExpenseCategory.food, 'Grocery shopping', 1),
-      expense(75.50, ExpenseCategory.travel, 'Gas for the weekend trip', 3),
-      income(150.00, 'freelance', 'Freelance project', 4),
-      expense(45.00, ExpenseCategory.entertainment, 'Movie tickets', 5),
-      expense(120.00, ExpenseCategory.utilities, 'Electric bill', 10),
+      expense(184.60, ExpenseCategory.food, 'Grocery shopping', 1),
+      expense(75.50, ExpenseCategory.travel, 'Gas for the weekend trip', 2),
+      income(150.00, 'freelance', 'Freelance project', 3),
+      expense(45.00, ExpenseCategory.entertainment, 'Movie tickets', 4),
+      expense(1200.00, ExpenseCategory.housing, 'Rent, most of it', 5),
+      expense(120.00, ExpenseCategory.utilities, 'Electric bill', 6),
       expense(
-        60.00,
+        63.25,
         ExpenseCategory.other,
         'Coffee with the guide',
-        12,
+        7,
         customName: '$label Coffee',
       ),
+      expense(18.40, ExpenseCategory.food, 'Tea and a bun', 8),
+      expense(2420.00, ExpenseCategory.gear, 'A replacement sole', 9),
     ];
+  }
+
+  /// The day for slot [slot] of the current month's set.
+  ///
+  /// [slot] counts from 0. The day is a POSITION in the month, capped at today.
+  static DateTime _spreadDay(DateTime now, int slot) {
+    final monthLength = DateTime(now.year, now.month + 1, 0).day;
+    // Ten slots, so the day is monthLength * (slot + 1) / 10 rounded down and
+    // never less than 1.
+    final target = ((slot + 1) * monthLength / 10).floor().clamp(
+      1,
+      monthLength,
+    );
+    return DateTime(now.year, now.month, math.min(target, now.day));
   }
 
   /// Spend in the two months before this one.
