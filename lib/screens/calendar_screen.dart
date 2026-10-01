@@ -117,7 +117,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
       // `endTime` is null while a journey is still running, so today stands in
       // for it: an ongoing trip IS something happening on this day.
       for (final stamp in [j.startTime, j.endTime ?? DateTime.now()]) {
-        journey.add(DateTime(stamp.year, stamp.month, stamp.day));
+        final day = DateTime(stamp.year, stamp.month, stamp.day);
+        // Scoped to the month on the grid. An unscoped list put "August 18"
+        // under an October calendar, which is not information — it is a
+        // different month answering a question nobody asked.
+        if (day.year == year && day.month == monthNumber) journey.add(day);
       }
     }
 
@@ -341,14 +345,37 @@ class _DayCell extends StatelessWidget {
                 : null,
           ),
           alignment: Alignment.center,
-          child: Text(
-            '${date.day}',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: hasSpending ? scheme.onPrimary : scheme.onSurface,
-              fontWeight: hasSpending || isToday
-                  ? FontWeight.w600
-                  : FontWeight.w400,
-            ),
+          child: Stack(
+            children: [
+              Center(
+                child: Text(
+                  '${date.day}',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: hasSpending ? scheme.onPrimary : scheme.onSurface,
+                    fontWeight: hasSpending || isToday
+                        ? FontWeight.w600
+                        : FontWeight.w400,
+                  ),
+                ),
+              ),
+              // The dot sits bottom-right so it never collides with the number,
+              // and exists only when the fill has already claimed the cell. A day
+              // with BOTH would otherwise show the spending and silently drop
+              // the journey, which makes the key a small lie.
+              if (hasJourney && hasSpending)
+                Positioned(
+                  right: 3,
+                  bottom: 3,
+                  child: Container(
+                    width: 5,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: scheme.tertiary,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       ),
