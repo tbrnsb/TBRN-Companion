@@ -14,7 +14,7 @@ PHASE B ITEM STATUS
 [x] 4.  Jump-to-day no-ops         fix/jump-day-noops             MERGED 6725875
 [x] 5.  Heatmap month shape        fix/heatmap-month-shape        MERGED 9db50a7
 [x] N1. Heatmap cell size + shape  fix/heatmap-cell-size       MERGED 2be8247
-[ ] N2. Budget period limits       fix/budget-period-limits
+[x] N2. Budget period limits       fix/budget-period-limits    MERGED 404a507
 [ ] N3. Month navigation           fix/month-navigation
 [ ] N4. Search youtube view        fix/search-youtube-view
 [ ] 6.  Chart pager blank page     fix/chart-pager-blank-page
@@ -305,3 +305,66 @@ month rather than as a mystery spacing failure.
 
 The pager is still 640. N1 makes the heatmap small again; item 6 replaces the
 fixed height with per-page measured heights.
+
+### N2 — budget period limits — MERGED `404a507`
+Branch `fix/budget-period-limits`, tagged `snapshot-fix/budget-period-limits`,
+archive `2026-10-01-before-budget-period-limits`, pushed. **702 → 715 tests (+13)**,
+gate green (analyze, format, 715 tests, debug APK).
+
+**THE STORAGE KEY DID NOT SAY WHICH PERIOD A LIMIT WAS FOR.** It read
+`budget_limit_cat:food` and held ONE number, so setting a weekly food limit
+replaced the monthly one and only whichever was written last was ever readable.
+A weekly and a monthly food budget are different numbers answering different
+questions, and the store was treating them as one slot.
+
+Keys are now `cat:<name>:<period>` and `trip:<id>:<period>`, parsed in one place
+(`BudgetKey`) so a key written here and read there cannot disagree. A period-less
+key parses as LEGACY and reports month, because month was the only period that
+ever existed here. A segment that is not a period is REJECTED rather than guessed
+at: a corrupt key reported as a real budget is worse than a key ignored.
+
+**THE MIGRATION, ONCE.** `load()` rewrites a period-less limit onto `:month` and
+REMOVES the old key, so the migration cannot run twice and cannot leave a shadow
+copy that a later write would resurrect. Categories and trips both migrate —
+leaving trip limits on the old key would orphan every trip limit the user had set.
+An unparseable key is left ALONE, because it might belong to a version this build
+cannot read, and deleting it would destroy a limit for no gain.
+
+Two consequences that were separate bugs and are now one:
+
+- `statusesFor` and `notifyCrossed` read ONLY the budgets for the index's period.
+  With a weekly and a monthly limit on Food both present, reading every budget
+  against one period's spending judged each against the wrong figure.
+- `BudgetStatus.storageKey` includes the period. It de-duplicates notifications,
+  and with a period-less key this week's crossing was suppressed as a duplicate
+  of this month's: the user was told about it once, ever.
+
+**THE SCREEN ASKED NINE QUESTIONS AT ONCE.** It listed every category with its own
+bar and no subject — a dashboard, where the one category that matters is
+impossible to find. Now:
+
+| | before | after |
+|---|---|---|
+| period control | a small chip row, labelled "Period" | **full-width SegmentedButton, above the fold** |
+| range | on the same line as the total | **its own line, from `BudgetPeriodX.window`** |
+| category | every category, each with a bar | **ONE dropdown** |
+| subject | none | **one reading** |
+| total | in the range line | **its own line, as context** |
+| trips | a full section above the fold | **counted disclosure, below the fold** |
+
+TWO category controls would be one too many, so there is a dropdown and NO chip
+row — asserted directly, because the two are easy to reintroduce by accident.
+Switching period KEEPS the category: the category is the subject and the period
+is the lens, and re-reading the same food budget through week and month is the
+comparison a user actually makes. The window is never recomputed on the screen.
+
+Trips remain period-aware and reachable: tapping the disclosure opens them, and a
+collapsed section carries its count so it is not indistinguishable from an empty
+one.
+
+**Two of the new tests were wrong before they were right.** The migration
+fixtures wrote `4500` and expected `4500` back, which would also have passed
+against a provider that ignored hundredths entirely — stored values are in
+hundredths, so 4500 rupees is `450000`. And the old "every category has a row"
+assertion had no way to express WHICH category was the subject, which is the
+entire point of the change.
