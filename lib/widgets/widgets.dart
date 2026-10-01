@@ -10,5 +10,4 @@ export 'section_header.dart';
 export 'spend_breakdown_card.dart';
 export 'spend_trend_cards.dart';
 export 'spending_heatmap.dart';
-export 'transaction_search_bar.dart';
 export 'trip_outstanding_card.dart';
