@@ -15,6 +15,7 @@ import 'package:flutter_application_1/screens/transactions/transactions_screen.d
 import 'package:flutter_application_1/services/storage_service.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:flutter_application_1/widgets/chart_pager.dart';
+import 'package:flutter_application_1/widgets/empty_state.dart';
 import 'package:flutter_application_1/widgets/spend_breakdown_card.dart';
 import 'package:flutter_application_1/widgets/spend_trend_cards.dart';
 import 'package:flutter_application_1/widgets/spending_heatmap.dart';
@@ -103,6 +104,27 @@ Income _income(double amount, String category, String description) {
     description: description,
     date: DateTime.now(),
   );
+}
+
+/// Taps the screen's ONE add affordance, whichever is showing.
+///
+/// The FAB is hidden while the list is empty and the EmptyState carries the
+/// action instead -- one affordance per screen, decided once. A test that only
+/// knew about the FAB would fail on an empty list for the right reason and look
+/// like a bug.
+Future<void> tapAddAffordance(WidgetTester tester) async {
+  final fab = find.byType(FloatingActionButton);
+  if (fab.evaluate().isNotEmpty) {
+    await tester.tap(fab);
+  } else {
+    await tester.tap(
+      find.descendant(
+        of: find.byType(EmptyState),
+        matching: find.byType(FilledButton),
+      ),
+    );
+  }
+  await settleUi(tester);
 }
 
 void main() {
@@ -200,6 +222,7 @@ void main() {
     testWidgets('no chart is shown when nothing is recorded', (tester) async {
       usePhoneLayout(tester, TestViewports.phonePortrait);
 
+      // EMPTY, on purpose: the point of this test is that nothing is recorded.
       final provider = await seedProvider(tester, const []);
 
       await tester.pumpWidget(
@@ -341,7 +364,7 @@ void main() {
       );
       await settleUi(tester);
 
-      await tester.tap(find.widgetWithText(FloatingActionButton, 'Add'));
+      await tapAddAffordance(tester);
       await settleUi(tester);
 
       expect(inChooser('Add transaction'), findsOneWidget);
@@ -367,7 +390,7 @@ void main() {
         );
         await settleUi(tester);
 
-        await tester.tap(find.widgetWithText(FloatingActionButton, 'Add'));
+        await tapAddAffordance(tester);
         await settleUi(tester);
         await tester.tap(inChooser('Income'));
         await settleUi(tester);
@@ -387,7 +410,12 @@ void main() {
       (tester) async {
         usePhoneLayout(tester, TestViewports.phonePortrait);
 
-        final provider = await seedProvider(tester, const []);
+        // One row, because the FAB is hidden while the month is empty -- one add
+        // affordance per screen, decided once and applied to every tab. These
+        // tests are about what the FAB DOES, so they need it to exist.
+        final provider = await seedProvider(tester, [
+          _expense(100, ExpenseCategory.food, 'An existing expense'),
+        ]);
 
         await tester.pumpWidget(
           _spendApp(
@@ -397,7 +425,7 @@ void main() {
         );
         await settleUi(tester);
 
-        await tester.tap(find.widgetWithText(FloatingActionButton, 'Add'));
+        await tapAddAffordance(tester);
         await settleUi(tester);
         await tester.tap(inChooser('Expense'));
         await settleUi(tester);
@@ -427,7 +455,7 @@ void main() {
       );
       await settleUi(tester);
 
-      await tester.tap(find.widgetWithText(FloatingActionButton, 'Add'));
+      await tapAddAffordance(tester);
       await settleUi(tester);
       await tester.tap(inChooser('Income'));
       await settleUi(tester);
@@ -466,7 +494,7 @@ void main() {
       );
       await settleUi(tester);
 
-      await tester.tap(find.widgetWithText(FloatingActionButton, 'Add'));
+      await tapAddAffordance(tester);
       await settleUi(tester);
       await tester.tap(inChooser('Income'));
       await settleUi(tester);

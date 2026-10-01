@@ -11,7 +11,7 @@ import 'app_theme.dart';
 /// recognisable. But it is drawn on a page, on a flat list row and on a raised
 /// card, in EITHER brightness, and now in five palettes. Stage 0b made 28 fixed
 /// hexes clear 3:1 on TBRN's two pages; they do not clear it on Gruvbox's raised
-/// card (Travel 2.20, Snacks 1.86) or on Kanagawa's, and there is no set of 28
+/// card (Travel 2.20, Snacks 1.86) or on Gruvbox's, and there is no set of 28
 /// fixed hexes that clears 3:1 on six different mid-tone surfaces while keeping
 /// every hue recognisable. So the hex stays the identity and the drawn colour is
 /// RESOLVED.
@@ -62,7 +62,7 @@ class AppCategoryColour {
     // ONE offset for the ENTIRE set, including the members that already passed.
     //
     // That is the whole design, and the alternative does not work. Shifting only
-    // the failing members moves them ONTO the passing ones: on Kanagawa's flat
+    // the failing members moves them ONTO the passing ones: on Gruvbox's flat
     // row that landed travel and entertainment on `other`, which is a donut of
     // three identical browns. Moving the whole palette by the same amount shifts
     // every pairwise distance by nothing at all, so the palette's separation is
