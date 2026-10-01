@@ -20,6 +20,14 @@ Expense _expense(
   );
 }
 
+/// The month these fixtures live in: LAST month, relative to the clock.
+///
+/// Every date in this file used to be a hardcoded March 2024. That is outside the
+/// app's own two-year navigation window now, so `previousMonth` correctly refused
+/// to move and a test about day-selection semantics was failing because of a
+/// navigation bound. Fixed dates in tests rot; this one cannot.
+late DateTime anchor;
+
 void main() {
   setUpAll(() async {
     await initTestStorage();
@@ -27,21 +35,35 @@ void main() {
 
   setUp(() async {
     await StorageService().clear();
+    final now = DateTime.now();
+    anchor = DateTime(now.year, now.month - 1);
   });
 
   /// Loads a month with two transactions on different days.
   Future<TransactionProvider> providerWithTwoDays() async {
     final provider = TransactionProvider();
-    await provider.loadTransactionsForMonth(2024, 3);
+    await provider.loadTransactionsForMonth(anchor.year, anchor.month);
 
     await provider.addTransaction(
-      _expense(100, ExpenseCategory.food, date: DateTime(2024, 3, 4)),
+      _expense(
+        100,
+        ExpenseCategory.food,
+        date: DateTime(anchor.year, anchor.month, 4),
+      ),
     );
     await provider.addTransaction(
-      _expense(250, ExpenseCategory.travel, date: DateTime(2024, 3, 9)),
+      _expense(
+        250,
+        ExpenseCategory.travel,
+        date: DateTime(anchor.year, anchor.month, 9),
+      ),
     );
     await provider.addTransaction(
-      _expense(60, ExpenseCategory.food, date: DateTime(2024, 3, 4)),
+      _expense(
+        60,
+        ExpenseCategory.food,
+        date: DateTime(anchor.year, anchor.month, 4),
+      ),
     );
     return provider;
   }
@@ -58,7 +80,7 @@ void main() {
     test('selecting a day narrows the list and the totals together', () async {
       final provider = await providerWithTwoDays();
 
-      provider.setSelectedDay(DateTime(2024, 3, 4));
+      provider.setSelectedDay(DateTime(anchor.year, anchor.month, 4));
 
       expect(provider.isShowingSingleDay, isTrue);
       expect(provider.filteredTransactions, hasLength(2));
@@ -71,7 +93,7 @@ void main() {
     test('the breakdown charts follow the selected day', () async {
       final provider = await providerWithTwoDays();
 
-      provider.setSelectedDay(DateTime(2024, 3, 9));
+      provider.setSelectedDay(DateTime(anchor.year, anchor.month, 9));
 
       final slices = provider.getSpendingBreakdownSlices();
       expect(slices, hasLength(1));
@@ -82,17 +104,21 @@ void main() {
     test('the average is the day\'s spend, not a day divided by 30', () async {
       final provider = await providerWithTwoDays();
 
-      // Whole March: 410 over 31 days.
-      expect(provider.getAverageDailySpending(), closeTo(410 / 31, 0.0001));
+      // Whole month: 410 over however many days it has.
+      final daysInAnchor = DateTime(anchor.year, anchor.month + 1, 0).day;
+      expect(
+        provider.getAverageDailySpending(),
+        closeTo(410 / daysInAnchor, 0.0001),
+      );
 
-      provider.setSelectedDay(DateTime(2024, 3, 4));
+      provider.setSelectedDay(DateTime(anchor.year, anchor.month, 4));
       // Dividing one day's spend by the length of the month would be nonsense.
       expect(provider.getAverageDailySpending(), 160);
     });
 
     test('clearing returns the whole month', () async {
       final provider = await providerWithTwoDays();
-      provider.setSelectedDay(DateTime(2024, 3, 4));
+      provider.setSelectedDay(DateTime(anchor.year, anchor.month, 4));
 
       provider.setSelectedDay(null);
 
@@ -103,14 +129,14 @@ void main() {
 
     test('changing month drops the day selection', () async {
       final provider = await providerWithTwoDays();
-      provider.setSelectedDay(DateTime(2024, 3, 4));
+      provider.setSelectedDay(DateTime(anchor.year, anchor.month, 4));
       expect(provider.isShowingSingleDay, isTrue);
 
-      // A day belongs to a month. Carrying the selection into April would
-      // leave the view narrowed to a day that is not loaded, and empty.
+      // A day belongs to a month. Carrying the selection into the month before
+      // would leave the view narrowed to a day that is not loaded, and empty.
       await provider.previousMonth();
 
-      expect(provider.currentMonth, DateTime(2024, 2));
+      expect(provider.currentMonth, DateTime(anchor.year, anchor.month - 1));
       expect(
         provider.isShowingSingleDay,
         isFalse,
@@ -121,7 +147,7 @@ void main() {
     test('a day outside the loaded month is ignored', () async {
       final provider = await providerWithTwoDays();
 
-      provider.setSelectedDay(DateTime(2024, 7, 19));
+      provider.setSelectedDay(DateTime(anchor.year, anchor.month + 6, 19));
 
       // Silently accepting it would empty the screen with no explanation.
       expect(provider.isShowingSingleDay, isFalse);
@@ -131,7 +157,7 @@ void main() {
     test('a day with nothing on it is a legitimately empty view', () async {
       final provider = await providerWithTwoDays();
 
-      provider.setSelectedDay(DateTime(2024, 3, 20));
+      provider.setSelectedDay(DateTime(anchor.year, anchor.month, 20));
 
       expect(provider.isShowingSingleDay, isTrue);
       expect(provider.filteredTransactions, isEmpty);
@@ -140,20 +166,24 @@ void main() {
 
     test('the type filter still applies within a selected day', () async {
       final provider = TransactionProvider();
-      await provider.loadTransactionsForMonth(2024, 3);
+      await provider.loadTransactionsForMonth(anchor.year, anchor.month);
       await provider.addTransaction(
-        _expense(100, ExpenseCategory.food, date: DateTime(2024, 3, 4)),
+        _expense(
+          100,
+          ExpenseCategory.food,
+          date: DateTime(anchor.year, anchor.month, 4),
+        ),
       );
       await provider.addTransaction(
         Income(
           amount: 900,
           category: 'salary',
           description: 'Payday',
-          date: DateTime(2024, 3, 4),
+          date: DateTime(anchor.year, anchor.month, 4),
         ),
       );
 
-      provider.setSelectedDay(DateTime(2024, 3, 4));
+      provider.setSelectedDay(DateTime(anchor.year, anchor.month, 4));
       expect(provider.filteredTransactions, hasLength(2));
 
       provider.filter = TransactionFilter.income;
@@ -177,7 +207,7 @@ void main() {
         expect(provider.totalExpenses, 410);
         expect(provider.totalIncome, 0);
 
-        provider.setSelectedDay(DateTime(2024, 3, 4));
+        provider.setSelectedDay(DateTime(anchor.year, anchor.month, 4));
         expect(provider.totalExpenses, 160);
       },
     );
@@ -187,8 +217,14 @@ void main() {
 
       // Three transactions but only two distinct days.
       expect(provider.daysWithTransactions, hasLength(2));
-      expect(provider.daysWithTransactions, contains(DateTime(2024, 3, 4)));
-      expect(provider.daysWithTransactions, contains(DateTime(2024, 3, 9)));
+      expect(
+        provider.daysWithTransactions,
+        contains(DateTime(anchor.year, anchor.month, 4)),
+      );
+      expect(
+        provider.daysWithTransactions,
+        contains(DateTime(anchor.year, anchor.month, 9)),
+      );
     });
 
     test('selecting the same day twice notifies once', () async {
@@ -196,11 +232,11 @@ void main() {
       var notifications = 0;
       provider.addListener(() => notifications++);
 
-      provider.setSelectedDay(DateTime(2024, 3, 4));
+      provider.setSelectedDay(DateTime(anchor.year, anchor.month, 4));
       expect(notifications, 1);
 
       // A redundant selection must not rebuild the screen for nothing.
-      provider.setSelectedDay(DateTime(2024, 3, 4));
+      provider.setSelectedDay(DateTime(anchor.year, anchor.month, 4));
       expect(notifications, 1);
     });
   });
@@ -208,19 +244,27 @@ void main() {
   group('daily totals for the charts', () {
     test('one entry per day that has something, oldest first', () async {
       final provider = TransactionProvider();
-      await provider.loadTransactionsForMonth(2024, 3);
+      await provider.loadTransactionsForMonth(anchor.year, anchor.month);
       await provider.addTransaction(
-        _expense(100, ExpenseCategory.food, date: DateTime(2024, 3, 9)),
+        _expense(
+          100,
+          ExpenseCategory.food,
+          date: DateTime(anchor.year, anchor.month, 9),
+        ),
       );
       await provider.addTransaction(
-        _expense(50, ExpenseCategory.food, date: DateTime(2024, 3, 4)),
+        _expense(
+          50,
+          ExpenseCategory.food,
+          date: DateTime(anchor.year, anchor.month, 4),
+        ),
       );
       await provider.addTransaction(
         Income(
           amount: 900,
           category: 'salary',
           description: 'Payday',
-          date: DateTime(2024, 3, 4),
+          date: DateTime(anchor.year, anchor.month, 4),
         ),
       );
 
@@ -230,10 +274,10 @@ void main() {
       // A chart padded out with empty days is what the journeys 7-day chart
       // was, and it was deleted for carrying no information.
       expect(totals, hasLength(2));
-      expect(totals.first.day, DateTime(2024, 3, 4));
+      expect(totals.first.day, DateTime(anchor.year, anchor.month, 4));
       expect(totals.first.income, 900);
       expect(totals.first.expenses, 50);
-      expect(totals.last.day, DateTime(2024, 3, 9));
+      expect(totals.last.day, DateTime(anchor.year, anchor.month, 9));
       expect(totals.last.expenses, 100);
       expect(totals.last.income, 0);
     });
@@ -241,7 +285,7 @@ void main() {
     test('daily totals follow a selected day', () async {
       final provider = await providerWithTwoDays();
 
-      provider.setSelectedDay(DateTime(2024, 3, 4));
+      provider.setSelectedDay(DateTime(anchor.year, anchor.month, 4));
 
       final totals = provider.dailyTotals;
       expect(totals, hasLength(1));
@@ -250,7 +294,7 @@ void main() {
 
     test('a month with nothing recorded yields no chart data', () async {
       final provider = TransactionProvider();
-      await provider.loadTransactionsForMonth(2024, 1);
+      await provider.loadTransactionsForMonth(anchor.year, anchor.month - 2);
       expect(provider.dailyTotals, isEmpty);
     });
   });
@@ -258,19 +302,27 @@ void main() {
   group('date ranges', () {
     test('a one-day range includes that day', () async {
       final provider = TransactionProvider();
-      await provider.loadTransactionsForMonth(2024, 3);
+      await provider.loadTransactionsForMonth(anchor.year, anchor.month);
       await provider.addTransaction(
-        _expense(100, ExpenseCategory.food, date: DateTime(2024, 3, 12, 9)),
+        _expense(
+          100,
+          ExpenseCategory.food,
+          date: DateTime(anchor.year, anchor.month, 12, 9),
+        ),
       );
       await provider.addTransaction(
-        _expense(50, ExpenseCategory.food, date: DateTime(2024, 3, 13, 9)),
+        _expense(
+          50,
+          ExpenseCategory.food,
+          date: DateTime(anchor.year, anchor.month, 13, 9),
+        ),
       );
 
       // The boundary used to be compared with isAfter, which is strict, so a
       // one-day range silently returned nothing.
       final onThe12th = provider.getTransactionsInDateRange(
-        DateTime(2024, 3, 12),
-        DateTime(2024, 3, 12),
+        DateTime(anchor.year, anchor.month, 12),
+        DateTime(anchor.year, anchor.month, 12),
       );
       expect(onThe12th, hasLength(1));
       expect(onThe12th.single.amount, 100);
@@ -278,20 +330,32 @@ void main() {
 
     test('a range includes both boundary days', () async {
       final provider = TransactionProvider();
-      await provider.loadTransactionsForMonth(2024, 3);
+      await provider.loadTransactionsForMonth(anchor.year, anchor.month);
       await provider.addTransaction(
-        _expense(100, ExpenseCategory.food, date: DateTime(2024, 3, 12, 9)),
+        _expense(
+          100,
+          ExpenseCategory.food,
+          date: DateTime(anchor.year, anchor.month, 12, 9),
+        ),
       );
       await provider.addTransaction(
-        _expense(50, ExpenseCategory.food, date: DateTime(2024, 3, 14, 9)),
+        _expense(
+          50,
+          ExpenseCategory.food,
+          date: DateTime(anchor.year, anchor.month, 14, 9),
+        ),
       );
       await provider.addTransaction(
-        _expense(25, ExpenseCategory.food, date: DateTime(2024, 3, 15, 9)),
+        _expense(
+          25,
+          ExpenseCategory.food,
+          date: DateTime(anchor.year, anchor.month, 15, 9),
+        ),
       );
 
       final range = provider.getTransactionsInDateRange(
-        DateTime(2024, 3, 12),
-        DateTime(2024, 3, 14),
+        DateTime(anchor.year, anchor.month, 12),
+        DateTime(anchor.year, anchor.month, 14),
       );
       expect(range.map((t) => t.amount), [100, 50]);
     });

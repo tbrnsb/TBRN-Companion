@@ -3,6 +3,7 @@ import 'package:flutter_application_1/models/index.dart';
 import 'package:flutter_application_1/services/csv_document.dart';
 import 'package:flutter_application_1/services/demo_data_service.dart';
 import 'package:flutter_application_1/services/storage_service.dart';
+import 'package:flutter_application_1/utils/date_window.dart';
 
 enum TransactionFilter { all, expenses, income }
 
@@ -1165,19 +1166,50 @@ class TransactionProvider extends ChangeNotifier {
         .toList();
   }
 
+  /// The earliest month the view can reach, as the first of that month.
+  ///
+  /// The SAME floor the date pickers use ([AppDateWindow.monthFloor]), not a
+  /// second copy of the arithmetic. A chevron that pages back past it lands on a
+  /// month the user then cannot record anything in, which is a dead end rather
+  /// than a boundary.
+  DateTime get earliestMonth => AppDateWindow.monthFloor(DateTime.now());
+
+  /// The latest month the view can reach: the current one.
+  ///
+  /// This is the CHANGE that fixes September 2046. `nextMonth` used to be
+  /// unbounded, so holding the chevron walked the calendar forward without end
+  /// and the header would eventually read a year nobody is budgeting for. The
+  /// month formatting was never wrong; the navigation had no wall.
+  DateTime get latestMonth => AppDateWindow.monthCeiling(DateTime.now());
+
+  /// Whether there is a month before the one on screen.
+  bool get canGoToPreviousMonth {
+    final month = _currentMonth;
+    if (month == null) return false;
+    return DateTime(month.year, month.month).isAfter(earliestMonth);
+  }
+
+  /// Whether there is a month after the one on screen.
+  bool get canGoToNextMonth {
+    final month = _currentMonth;
+    if (month == null) return false;
+    return DateTime(month.year, month.month).isBefore(latestMonth);
+  }
+
   Future<void> previousMonth() async {
-    if (_currentMonth == null) return;
-    final previousMonth = DateTime(
-      _currentMonth!.year,
-      _currentMonth!.month - 1,
-    );
-    await loadTransactionsForMonth(previousMonth.year, previousMonth.month);
+    final month = _currentMonth;
+    if (month == null) return;
+    if (!canGoToPreviousMonth) return;
+    final previous = DateTime(month.year, month.month - 1);
+    await loadTransactionsForMonth(previous.year, previous.month);
   }
 
   Future<void> nextMonth() async {
-    if (_currentMonth == null) return;
-    final nextMonth = DateTime(_currentMonth!.year, _currentMonth!.month + 1);
-    await loadTransactionsForMonth(nextMonth.year, nextMonth.month);
+    final month = _currentMonth;
+    if (month == null) return;
+    if (!canGoToNextMonth) return;
+    final next = DateTime(month.year, month.month + 1);
+    await loadTransactionsForMonth(next.year, next.month);
   }
 
   Future<void> goToCurrentMonth() async {

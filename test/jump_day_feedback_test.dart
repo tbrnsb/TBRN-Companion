@@ -247,8 +247,15 @@ void main() {
       await settleUi(tester);
       expect(provider.selectedDay, isNotNull);
 
-      // Next month, tapped the way a user does.
-      await tester.tap(find.byIcon(Icons.chevron_right_rounded).first);
+      // Back one month, then forward again, tapped the way a user does.
+      //
+      // NOT "next month": the screen opens on the current month and the forward
+      // chevron is disabled there, because the ceiling is now the current month.
+      // Tapping forward from now is a no-op BY DESIGN, so this test has to move
+      // within the window to test what it means to move.
+      await tester.tap(find.byKey(const ValueKey('month-previous')));
+      await settleUi(tester);
+      await tester.tap(find.byKey(const ValueKey('month-next')));
       await settleUi(tester);
       await settleUi(tester);
 
@@ -262,9 +269,13 @@ void main() {
     });
 
     test('and it is dropped in the provider, not only in the screen', () async {
+      // Anchored on the clock rather than a literal 2026, which is inside the
+      // two-year window today and will not be in a year's time.
+      final now = DateTime.now();
+      final month = DateTime(now.year, now.month - 1);
       final provider = TransactionProvider();
-      await provider.loadTransactionsForMonth(2026, 5);
-      provider.setSelectedDay(DateTime(2026, 5, 4));
+      await provider.loadTransactionsForMonth(month.year, month.month);
+      provider.setSelectedDay(DateTime(month.year, month.month, 4));
       expect(provider.selectedDay, isNotNull);
 
       await provider.nextMonth();
