@@ -16,7 +16,7 @@ PHASE B ITEM STATUS
 [x] N1. Heatmap cell size + shape  fix/heatmap-cell-size       MERGED 2be8247
 [x] N2. Budget period limits       fix/budget-period-limits    MERGED 404a507
 [x] N3. Month navigation           fix/month-navigation        MERGED 7f6fc7f
-[ ] N4. Search youtube view        fix/search-youtube-view
+[x] N4. Search youtube view        fix/search-youtube-view     MERGED c69e4b3
 [ ] 6.  Chart pager blank page     fix/chart-pager-blank-page
 [ ] 7.  Chart design system        fix/chart-design-system
 [ ] 8.  Date picker bounds         fix/date-picker-bounds
@@ -425,3 +425,65 @@ already rotted.
 Item 8 takes its picker bounds from `AppDateWindow` rather than writing new
 arithmetic. Note the ceiling difference it must preserve: trips may start up to
 a year in the FUTURE (`tripLast`), records may not (`recordLast` is today).
+
+### N4 — the dedicated search view — MERGED `c69e4b3`
+Branch `fix/search-youtube-view`, tagged `snapshot-fix/search-youtube-view`,
+archive `2026-10-01-before-search-youtube-view`, pushed. **726 → 735 tests (+9)**,
+gate green (analyze, format, 735 tests, debug APK).
+
+**WHY SEARCH FOUND NOTHING: THE MATCHER, NOT THE PROVIDER.** Both provider-side
+suspects were ruled out before anything was changed — `searchResults` already
+read `myLedger`, and it already applied `_filterAllows`. Both correct.
+
+`TransactionSearchQuery.matches` tested `transaction.description` and NOTHING
+ELSE. So typing a category name returned nothing while the list displayed that
+category on every matching row. The search was not broken — it was searching less
+than it was showing, and the user's evidence that it was broken was the row
+directly underneath the field.
+
+**PROVEN, NOT ASSUMED.** Against the old description-only matcher the new repro
+test reports `Expected: true / Actual: false`, with the reason "the word is on the
+row, so searching for it must find the row". With the fix it passes. The old code
+was restored from a copy afterwards; the tree was never left modified.
+
+Free text now looks at **every field a result row displays**: description, the
+category AS LABELLED, the amount's digits, and the date both formatted and ISO.
+`effectiveCategoryName` and not the enum `name`, because that is the word on the
+screen and it differs for a custom category and for a raw stored id. The rule is
+one-directional and deliberate: **anything not displayed is not searched**, because
+a hit the user cannot see is a result they cannot explain.
+
+| | before | after |
+|---|---|---|
+| where search lives | inline in the list, above the charts | **its own route** |
+| way in | a field you had to notice | **keyed app bar button** |
+| field on open | n/a | **focused, as the app bar title** |
+| fields searched | description only | **description, category label, amount digits, date** |
+| fields in the list | one field, one query | **none** |
+| filters reachable | from the list | **from the search screen** |
+| income result opened | expense editor possible | **routed by kind, both ways asserted** |
+| no hits | "Nothing matches" | **"Nothing matches that search"** vs "No transactions yet"** |
+
+The inline field is GONE rather than kept alongside the new screen. Two fields
+writing one query — type in one, watch the other change — is the bug this branch
+exists to remove. The list keeps a banner while a search is active, because a
+narrowed view that does not say so is indistinguishable from a month that shrank;
+the banner states the count and offers the search screen and a clear, and grows
+no second field and no add affordance.
+
+`AppSearchButton` follows `AppGearButton` exactly, including the explicit key: the
+search VIEW is full of search icons, so `find.byIcon` would match its own
+contents. The field is the app bar TITLE and arrives focused — a search screen
+that needs a second tap before it does anything is one nobody types into.
+
+The amount and category filters stay reachable FROM the search screen, because a
+screen whose only control is text cannot answer "what did I spend on food over
+500". The criteria bar names categories by their labels so nothing asks the user
+to translate an id. The payer is resolved to a NAME or to nothing: a row showing a
+raw uuid is worse than a row showing no payer.
+
+**ITEM 9 OWNS THE FINAL ACTION ORDER.** The transactions app bar is currently
+`{search}{settings}`. The target is `{search}{calendar}{settings}` for transactions
+and `{calendar}{settings}` elsewhere. The calendar does not exist until item 9,
+and inserting a button that opens nothing would be worse than leaving it out, so
+the order is asserted there — once there is a calendar to assert it against.
