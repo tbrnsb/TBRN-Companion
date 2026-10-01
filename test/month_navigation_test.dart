@@ -237,11 +237,20 @@ void main() {
     });
   });
 
-  group('the day picker is not a month picker', () {
-    testWidgets('it is still reachable, from any month', (tester) async {
+  group('the day picker reaches the whole window', () {
+    // REVERSAL, deliberately. This group used to assert the opposite: that the
+    // picker was scoped to the month on screen so it could not double as a
+    // second route to changing the month. That was a tidy rule and it made the
+    // thing unusable — "jump to the 12th", with the 12th in another month, had
+    // no answer, and the build before this drew chevrons in the sheet that did
+    // nothing at all. The picker now spans [AppDateWindow] and its own header
+    // pages months.
+    testWidgets('it is reachable from any month, and spans the window', (
+      tester,
+    ) async {
       // Paging back must not take the day picker away with it: choosing a day in
       // an old month is a normal thing to do, and the affordance has to survive
-      // the new bounds.
+      // the bounds.
       usePhoneLayout(tester, TestViewports.phonePortrait);
       await pumpTransactions(tester);
 
@@ -250,33 +259,37 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('month-previous')));
       await settleUi(tester);
 
-      // The month header is the affordance, by design, and paging back has not
-      // taken it away.
+      // The month header is the affordance, and paging back has not taken it
+      // away.
       await tester.tap(find.byIcon(Icons.calendar_today_rounded).first);
       await settleUi(tester);
       expect(find.text('Jump to a day'), findsOne);
 
-      // It offers days of THAT month. Two months back from now, the last day on
-      // offer is the last day of THAT month — so the picker is month-scoped and
-      // cannot be a second route to changing the month.
-      final browsed =
-          AppDateWindow.monthFloor(
-            DateTime.now(),
-          ).isBefore(DateTime(DateTime.now().year, DateTime.now().month - 2, 1))
-          ? DateTime(DateTime.now().year, DateTime.now().month - 2, 1)
-          : DateTime(DateTime.now().year, DateTime.now().month, 1);
-      final lastDayOfBrowsed = DateTime(browsed.year, browsed.month + 1, 0).day;
+      final picker = tester.widget<CalendarDatePicker>(
+        find.byKey(const ValueKey('day-picker-calendar')),
+      );
+
+      // Relationships rather than equality against a separately captured `now`:
+      // testWidgets runs on a faked clock, so the assertion would end up about
+      // the clock instead of about the picker.
       expect(
-        find.text('$lastDayOfBrowsed'),
-        findsWidgets,
+        picker.firstDate,
+        AppDateWindow.monthFloor(picker.lastDate),
+        reason: 'the range starts exactly on the shared floor',
+      );
+      expect(
+        picker.firstDate.isBefore(
+          DateTime(picker.lastDate.year, picker.lastDate.month, 1),
+        ),
+        isTrue,
         reason:
-            'the picker must offer day $lastDayOfBrowsed of the month on '
-            'screen',
+            'a range inside one month cannot reach a day in another, which is '
+            'the bug this reversed',
       );
 
       // Selecting a day narrows the view, and THEN the sheet offers a way back to
-      // the whole month. Both are day controls: nothing here changes the month.
-      await tester.tap(find.text('$lastDayOfBrowsed').first);
+      // the whole month. Both are day controls.
+      await tester.tap(find.text('15').first);
       await settleUi(tester);
       expect(
         find.byKey(const ValueKey('day-picker-whole-month')),
