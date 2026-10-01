@@ -11,7 +11,6 @@ import 'package:flutter_application_1/screens/budgets/budgets_screen.dart';
 import 'package:flutter_application_1/screens/transactions/add_transaction_sheet.dart';
 import 'package:flutter_application_1/screens/transactions/expense_detail_screen.dart';
 import 'package:flutter_application_1/screens/transactions/income_detail_screen.dart';
-import 'package:flutter_application_1/screens/transactions/transaction_search_sheet.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:flutter_application_1/utils/format.dart';
 import 'package:flutter_application_1/widgets/widgets.dart';
@@ -24,7 +23,11 @@ class TransactionsScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Transactions'),
-        actions: const [AppGearButton()],
+        // Search, then settings. Item 9 inserts the calendar between them, and
+        // the order is asserted there — once the calendar exists. Until then the
+        // gap would be a dead button, and a control that opens nothing is worse
+        // than a control that is not there.
+        actions: const [AppSearchButton(), AppGearButton()],
       ),
       body: Consumer<TransactionProvider>(
         builder: (context, provider, _) {
@@ -116,20 +119,17 @@ class TransactionsScreen extends StatelessWidget {
                 // here and the full screen behind the link.
                 _BudgetsLink(),
                 const SizedBox(height: AppSpacing.sm),
-                TransactionSearchBar(
-                  query: provider.search,
-                  onQueryChanged: (query) => provider.search = query,
-                  onOpenFilters: () => _openSearchFilters(context, provider),
-                ),
-                // Only while something is narrowed: an idle "0 matches · Clear"
-                // line above an unfiltered month is noise.
+                // ONE search UI. The inline field and its summary used to live
+                // here, and the dedicated view was added on top of them, which
+                // meant two fields writing the same query: type in one, watch
+                // the other change. Search now has one home, reached from the
+                // app bar, and this list shows a month.
+                //
+                // Still an app-level affordance rather than nothing: when a
+                // search is active the list IS the result set, and a user who
+                // narrowed something needs to see that they have.
                 if (isSearching)
-                  ActiveSearchSummary(
-                    query: provider.search,
-                    resultCount: transactions.length,
-                    currencySymbol: currencySymbol,
-                    onClear: provider.clearSearch,
-                  ),
+                  _ActiveSearchBanner(currencySymbol: currencySymbol),
 
                 // Anything still owed on a shared trip. Renders nothing when
                 // there is none, which is the case on most days.
@@ -311,20 +311,6 @@ class TransactionsScreen extends StatelessWidget {
         amount: entry.value,
       );
     }).toList();
-  }
-
-  /// Opens the amount/category filter sheet and applies what comes back.
-  ///
-  /// A cancel resolves to null and is left alone. It is not treated as "clear
-  /// the filters" — that is the classic dismissed-sheet bug, where the two
-  /// intents share one value and the sheet closing quietly changes the view.
-  Future<void> _openSearchFilters(
-    BuildContext context,
-    TransactionProvider provider,
-  ) async {
-    final updated = await TransactionSearchSheet.show(context, provider.search);
-    if (updated == null) return;
-    provider.search = updated;
   }
 
   /// Opens the day picker for the month on screen.
@@ -523,6 +509,65 @@ class TransactionsScreen extends StatelessWidget {
 /// means rebuilding a [BudgetStatus] per limit here — a second place the
 /// near-limit and overspend thresholds live, free to drift from the budgets
 /// screen's copy. The count belongs where the limits are, one tap away.
+/// "2 matches · Search" on the list, while a search is active.
+///
+/// The list is showing the result set when this is on screen, and a narrowed
+/// view that does not say so is indistinguishable from a month that shrank. It
+/// says how many, and it offers the way back — but it does not offer a SECOND
+/// field to type into, because the search screen owns that.
+class _ActiveSearchBanner extends StatelessWidget {
+  const _ActiveSearchBanner({required this.currencySymbol});
+
+  final String currencySymbol;
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<TransactionProvider>();
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Container(
+      key: const ValueKey('active-search-banner'),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xxs,
+      ),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHigh,
+        borderRadius: AppRadii.smallRadius,
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.search_rounded, size: 16, color: scheme.onSurfaceVariant),
+          const SizedBox(width: AppSpacing.xs),
+          Expanded(
+            child: Text(
+              '${provider.searchResults.length} match'
+              '${provider.searchResults.length == 1 ? '' : 'es'} — showing '
+              'search results',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          TextButton(
+            key: const ValueKey('search-open-view'),
+            onPressed: () => AppSearchButton.open(context),
+            child: const Text('Search'),
+          ),
+          TextButton(
+            key: const ValueKey('search-clear-all'),
+            onPressed: provider.clearSearch,
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _BudgetsLink extends StatelessWidget {
   const _BudgetsLink();
 
