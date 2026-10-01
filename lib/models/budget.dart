@@ -90,6 +90,10 @@ class BudgetStatus {
   final double spent;
   final BudgetPeriod period;
 
+  /// True when this reading is a journey-level budget rather than an app-level
+  /// category one.
+  bool get isJourneyLevel => scope != null;
+
   bool get hasLimit => limit != null && limit! > 0;
 
   /// Clamped to 1.0 so a progress bar cannot ask for more than its own track.
