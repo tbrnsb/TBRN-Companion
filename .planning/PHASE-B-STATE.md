@@ -15,7 +15,7 @@ PHASE B ITEM STATUS
 [x] 5.  Heatmap month shape        fix/heatmap-month-shape        MERGED 9db50a7
 [x] N1. Heatmap cell size + shape  fix/heatmap-cell-size       MERGED 2be8247
 [x] N2. Budget period limits       fix/budget-period-limits    MERGED 404a507
-[ ] N3. Month navigation           fix/month-navigation
+[x] N3. Month navigation           fix/month-navigation        MERGED 7f6fc7f
 [ ] N4. Search youtube view        fix/search-youtube-view
 [ ] 6.  Chart pager blank page     fix/chart-pager-blank-page
 [ ] 7.  Chart design system        fix/chart-design-system
@@ -368,3 +368,60 @@ against a provider that ignored hundredths entirely — stored values are in
 hundredths, so 4500 rupees is `450000`. And the old "every category has a row"
 assertion had no way to express WHICH category was the subject, which is the
 entire point of the change.
+
+### N3 — month navigation — MERGED `7f6fc7f`
+Branch `fix/month-navigation`, tagged `snapshot-fix/month-navigation`,
+archive `2026-10-01-before-month-navigation`, pushed. **715 → 726 tests (+11)**,
+gate green (analyze, format, 726 tests, debug APK).
+
+**SEPTEMBER 2046: AN UNBOUNDED CHEVRON, NOT A FORMATTING BUG AND NOT FUTURE
+DEMO DATA.** Both alternatives were ruled out before anything was changed:
+
+| hypothesis | verdict | how |
+|---|---|---|
+| the label formats wrong | **no** | `DateFormat.yMMMM()` formats any month correctly; the existing label was never the problem |
+| the demo data runs into the future | **no** | item 2 already caps seeded months at today, so no future rows exist to display |
+| month arithmetic is wrong | **no** | `DateTime(y, m ± 1)` is correct across a year boundary |
+| **`nextMonth` has no ceiling** | **YES** | the only remaining explanation, and it accounts for it exactly |
+
+Holding the forward chevron walked the calendar forward without end, through
+months with nothing in them. A month with no transactions renders a total of
+zero, so an empty future month is INDISTINGUISHABLE from a month you spent
+nothing in — the walk looked like working navigation, which is why it survived
+this long.
+
+**ONE HOME FOR THE BOUNDS.** `AppDateWindow` (new, `lib/utils/date_window.dart`)
+holds `yearsBack = 2`, the month floor and ceiling, and the trip and record
+bounds item 8 will need. The three pickers were each doing their own arithmetic,
+and a chevron that pages back past the earliest month a picker accepts lands the
+user somewhere they cannot record anything — a dead end, not a boundary. Sharing
+the floor is what makes navigation and recording agree.
+
+Ceiling is the CURRENT MONTH, floor is two years back. Nothing reads the clock at
+import time; every method takes `now`, so a test's answer does not change at
+midnight.
+
+**THE CHEVRONS ARE DISABLED, NOT HIDDEN.** A chevron that is present and does
+nothing is a tap that produces no change, indistinguishable from a tap that did
+not register. A hidden one leaves a gap that reads as a layout mistake. The
+disabled tooltip names the boundary — "Latest month", "Earliest month" — and the
+month header got its own key, because asserting on a formatted string built the
+same way the widget builds it only proves that intl works.
+
+The day picker is untouched and still reachable from every month including the
+oldest: choosing a day in last March is ordinary. It stays month-scoped, asserted
+by checking the last day it offers is the last day of the month on screen — it is
+not a second route to changing the month.
+
+**TWO TEST FILES HAD ROTTED AGAINST THE NEW BOUND.** `day_filter_test` built
+everything in a hardcoded March 2024, which is now outside the two-year window,
+so `previousMonth` correctly refused to move and a test about day-selection
+semantics was failing because of a navigation bound. Every date in it is now
+derived from the clock. `jump_day_feedback_test` paged FORWARD from the current
+month, which is now a no-op by design; it moves back and forward within the
+window instead. A fixed date in a test is a test that rots, and these had
+already rotted.
+
+Item 8 takes its picker bounds from `AppDateWindow` rather than writing new
+arithmetic. Note the ceiling difference it must preserve: trips may start up to
+a year in the FUTURE (`tripLast`), records may not (`recordLast` is today).
