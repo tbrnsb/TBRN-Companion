@@ -16,6 +16,20 @@ import 'package:flutter_application_1/theme/app_theme.dart';
 import 'test_viewports.dart';
 import 'visual_smoke_test.dart' show initTestStorage;
 
+/// The money figure out of the category row's caption, parsed back to a number.
+///
+/// Read from the CAPTION rather than from the provider: the caption is what the
+/// user sees, and a test that read the model instead would pass while the screen
+/// showed the wrong figure. [period] names the row explicitly, so this can never
+/// quietly read the previous period's reading after the control switched.
+double _foodTotal(WidgetTester tester, BudgetPeriod period) {
+  final caption = tester.widget<Text>(
+    find.byKey(ValueKey('budget-caption-cat:food:${period.name}')),
+  );
+  final match = RegExp(r'([\d,]+(?:\.\d+)?)').firstMatch(caption.data!);
+  return double.parse(match!.group(1)!.replaceAll(',', ''));
+}
+
 Future<void> settleUi(WidgetTester tester) async {
   for (var i = 0; i < 10; i++) {
     await tester.pump(const Duration(milliseconds: 100));
@@ -48,6 +62,233 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     await StorageService().clear();
+  });
+
+  group('period-aware storage keys', () {
+    // THE KEY IS THE PERIOD. It used to be `cat:food`, so a monthly food limit
+    // and a weekly one shared one slot: setting the weekly number replaced the
+    // monthly one, and only whichever was written last was ever readable.
+    test('a limit for one period does not disturb another', () async {
+      final budgets = BudgetProvider();
+      await budgets.setLimit(
+        label: 'food',
+        amount: 2000,
+        period: BudgetPeriod.month,
+      );
+      await budgets.setLimit(
+        label: 'food',
+        amount: 500,
+        period: BudgetPeriod.week,
+      );
+
+      expect(budgets.limitFor(label: 'food', period: BudgetPeriod.month), 2000);
+      expect(budgets.limitFor(label: 'food', period: BudgetPeriod.week), 500);
+      expect(
+        budgets.limitFor(label: 'food', period: BudgetPeriod.year),
+        isNull,
+      );
+
+      // And they SURVIVE a reload, so this is not just in-memory bookkeeping.
+      final reloaded = BudgetProvider();
+      await reloaded.load();
+      expect(
+        reloaded.limitFor(label: 'food', period: BudgetPeriod.month),
+        2000,
+      );
+      expect(reloaded.limitFor(label: 'food', period: BudgetPeriod.week), 500);
+      expect(reloaded.budgets.length, 2);
+    });
+
+    test('a trip limit is period-aware too', () async {
+      final budgets = BudgetProvider();
+      await budgets.setLimit(
+        scope: 'trip-1',
+        label: 'trip-1',
+        amount: 8000,
+        period: BudgetPeriod.month,
+      );
+      await budgets.setLimit(
+        scope: 'trip-1',
+        label: 'trip-1',
+        amount: 2000,
+        period: BudgetPeriod.year,
+      );
+
+      expect(
+        budgets.limitFor(
+          scope: 'trip-1',
+          label: 'trip-1',
+          period: BudgetPeriod.month,
+        ),
+        8000,
+      );
+      expect(
+        budgets.limitFor(
+          scope: 'trip-1',
+          label: 'trip-1',
+          period: BudgetPeriod.year,
+        ),
+        2000,
+      );
+    });
+
+    test('a key reads back with its period attached', () {
+      expect(BudgetKey.parse('cat:food:week')!.period, BudgetPeriod.week);
+      expect(BudgetKey.parse('cat:food:week')!.isLegacy, isFalse);
+      expect(BudgetKey.parse('cat:food:week')!.label, 'food');
+      expect(BudgetKey.parse('cat:food:week')!.isJourneyLevel, isFalse);
+
+      final trip = BudgetKey.parse('trip:8f14e45f:year')!;
+      expect(trip.scope, '8f14e45f');
+      expect(trip.period, BudgetPeriod.year);
+      expect(trip.isJourneyLevel, isTrue);
+
+      // A segment that is not a period is REJECTED rather than guessed at: a
+      // corrupt key reported as a real budget is worse than a key ignored.
+      expect(BudgetKey.parse('cat:food:fortnight'), isNull);
+      expect(BudgetKey.parse('nonsense'), isNull);
+    });
+
+    test(
+      'only the budgets for a period are read against that spending',
+      () async {
+        // A monthly limit and a weekly one both exist, so reading every budget
+        // against one period's spending would judge each against the wrong figure.
+        final provider = BudgetProvider();
+        await provider.setLimit(
+          label: 'food',
+          amount: 500,
+          period: BudgetPeriod.week,
+        );
+        await provider.setLimit(
+          label: 'food',
+          amount: 2000,
+          period: BudgetPeriod.month,
+        );
+        final index = BudgetSpendIndex(
+          period: BudgetPeriod.week,
+          anchorMonth: DateTime(2026, 10),
+          total: 900,
+          byCategory: {'food': 900},
+          byJourney: const {},
+        );
+        final statuses = provider.statusesFor(index, journeyLabels: const {});
+        expect(statuses.length, 1);
+        expect(statuses.single.period, BudgetPeriod.week);
+        expect(statuses.single.label, 'Food');
+      },
+    );
+
+    test('a notification key is period-aware, so a crossing speaks twice', () {
+      // With a period-less key, this week's crossing was suppressed as a
+      // duplicate of this month's and the user was told about it once, ever.
+      const month = BudgetStatus(
+        label: 'Food',
+        limit: 100,
+        spent: 120,
+        period: BudgetPeriod.month,
+      );
+      const week = BudgetStatus(
+        label: 'Food',
+        limit: 100,
+        spent: 120,
+        period: BudgetPeriod.week,
+      );
+      expect(month.storageKey, isNot(week.storageKey));
+      expect(month.storageKey, 'cat:Food:month');
+      expect(week.storageKey, 'cat:Food:week');
+    });
+  });
+
+  group('the period-less key migration', () {
+    // Limits were stored as `budget_limit_cat:food`. They belong to MONTH,
+    // because month was the only period that ever existed. The old key is
+    // REMOVED so the migration cannot run twice and cannot leave a shadow copy
+    // that a later write would resurrect.
+    test(
+      'a period-less limit lands on month and the old key is gone',
+      () async {
+        // Stored in hundredths, so 4500 rupees is 450000. The first version of
+        // this test wrote 4500 and expected 4500 back, which would also have
+        // passed against a provider that ignored units entirely.
+        SharedPreferences.setMockInitialValues({
+          'budget_limit_cat:food': 450000,
+        });
+        final prefs = await SharedPreferences.getInstance();
+
+        final budgets = BudgetProvider();
+        await budgets.load();
+
+        expect(budgets.migrationsApplied, 1);
+        expect(
+          budgets.limitFor(label: 'food', period: BudgetPeriod.month),
+          4500,
+        );
+        expect(prefs.containsKey('budget_limit_cat:food'), isFalse);
+        expect(prefs.getInt('budget_limit_cat:food:month'), 450000);
+
+        // The migrated value survives a second load, and the migration does NOT
+        // run again — the key it would migrate no longer exists.
+        final again = BudgetProvider();
+        await again.load();
+        expect(again.migrationsApplied, 0);
+        expect(again.limitFor(label: 'food', period: BudgetPeriod.month), 4500);
+      },
+    );
+
+    test('a period-less trip limit migrates to month too', () async {
+      // Not only categories: leaving trip limits on the old key would orphan
+      // every limit the user had set for a trip.
+      SharedPreferences.setMockInitialValues({
+        'budget_limit_trip:abc123': 900000,
+      });
+      final prefs = await SharedPreferences.getInstance();
+
+      final budgets = BudgetProvider();
+      await budgets.load();
+
+      expect(budgets.migrationsApplied, 1);
+      expect(
+        budgets.limitFor(
+          scope: 'abc123',
+          label: 'abc123',
+          period: BudgetPeriod.month,
+        ),
+        9000,
+      );
+      expect(prefs.containsKey('budget_limit_trip:abc123'), isFalse);
+      expect(prefs.getInt('budget_limit_trip:abc123:month'), 900000);
+    });
+
+    test('period-aware and legacy limits coexist after a migration', () async {
+      SharedPreferences.setMockInitialValues({
+        'budget_limit_cat:food': 450000,
+        'budget_limit_cat:food:week': 50000,
+      });
+
+      final budgets = BudgetProvider();
+      await budgets.load();
+
+      expect(budgets.migrationsApplied, 1);
+      expect(budgets.limitFor(label: 'food', period: BudgetPeriod.month), 4500);
+      expect(budgets.limitFor(label: 'food', period: BudgetPeriod.week), 500);
+      expect(budgets.budgets.length, 2);
+    });
+
+    test('an unparseable key is left alone rather than deleted', () async {
+      // It might belong to a future version. Removing it would destroy a limit
+      // this build has no way to interpret.
+      SharedPreferences.setMockInitialValues({
+        'budget_limit_cat:food:fortnight': 70000,
+      });
+      final prefs = await SharedPreferences.getInstance();
+
+      final budgets = BudgetProvider();
+      await budgets.load();
+
+      expect(budgets.migrationsApplied, 0);
+      expect(prefs.containsKey('budget_limit_cat:food:fortnight'), isTrue);
+    });
   });
 
   group('period windows', () {
@@ -424,22 +665,72 @@ void main() {
       return provider;
     }
 
-    testWidgets('every category has a row and an unset one says so', (
+    testWidgets('ONE category is the subject, and an unset one says so', (
+      tester,
+    ) async {
+      // A limit is a question about ONE category. The screen used to list every
+      // category with its own bar, which is a dashboard: nine readings and no way
+      // to tell which was the subject. Food is the default subject.
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      await pump(tester);
+
+      expect(find.byKey(ValueKey('budget-percent-cat:food:month')), findsOne);
+      // And only that one. If a second category's row is ever rendered, this is
+      // the assertion that catches it.
+      for (final category in budgetableCategories()) {
+        if (category == ExpenseCategory.food) continue;
+        expect(
+          find.byKey(ValueKey('budget-percent-cat:${category.name}:month')),
+          findsNothing,
+          reason: '${category.name} is not the subject, so it has no row',
+        );
+      }
+      // An unset limit says so rather than showing a percentage of nothing.
+      expect(find.textContaining('no limit set'), findsOne);
+    });
+
+    testWidgets('there is exactly ONE category control, not two', (
+      tester,
+    ) async {
+      // The control set is a decision, and two category controls means the user
+      // can change the category two ways and be unsure which one took.
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      await pump(tester);
+
+      expect(find.byKey(const ValueKey('budget-category-select')), findsOne);
+      // No chip row of categories anywhere: the dropdown is the selector.
+      for (final category in budgetableCategories()) {
+        expect(
+          find.byKey(ValueKey('budget-category-chip-${category.name}')),
+          findsNothing,
+        );
+      }
+    });
+
+    testWidgets('the period control is the hero, and names its range', (
       tester,
     ) async {
       usePhoneLayout(tester, TestViewports.phonePortrait);
       await pump(tester);
 
-      for (final category in budgetableCategories()) {
-        expect(
-          find.byKey(ValueKey('budget-percent-cat:${category.name}')),
-          findsOne,
-        );
-      }
-      expect(
-        find.byKey(const ValueKey('budget-percent-cat:food')),
-        findsWidgets,
+      // Above the fold, so it decides what everything below means.
+      expect(find.byKey(const ValueKey('budget-period-control')), findsOne);
+      final control = tester.getTopLeft(
+        find.byKey(const ValueKey('budget-period-control')),
       );
+      final subject = tester.getTopLeft(
+        find.byKey(ValueKey('budget-percent-cat:food:month')),
+      );
+      expect(
+        control.dy,
+        lessThan(subject.dy),
+        reason: 'the period decides what the reading below it means',
+      );
+
+      // The range is named, so "This week" is never a label to interpret.
+      final range = find.byKey(const ValueKey('budget-range-label'));
+      expect(range, findsOne);
+      expect(find.textContaining('spent in total'), findsOne);
     });
 
     testWidgets('a set limit turns the row into a percentage and a bar', (
@@ -459,9 +750,9 @@ void main() {
         items: [_expense(250, ExpenseCategory.food, date: now)],
       );
 
-      expect(find.byKey(const ValueKey('budget-bar-cat:food')), findsOne);
+      expect(find.byKey(const ValueKey('budget-bar-cat:food:month')), findsOne);
       expect(
-        find.byKey(const ValueKey('budget-percent-cat:food')),
+        find.byKey(const ValueKey('budget-percent-cat:food:month')),
         findsWidgets,
       );
       // 250 of 1000.
@@ -477,25 +768,94 @@ void main() {
 
       // An empty track would imply a budget of zero, which is not the same
       // thing as no budget.
-      expect(find.byKey(const ValueKey('budget-bar-cat:food')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('budget-bar-cat:food:month')),
+        findsNothing,
+      );
       expect(find.text('No limit', skipOffstage: false), findsWidgets);
     });
 
-    testWidgets('the period chips change the window the figures come from', (
+    testWidgets('the period control changes the window the figures come from', (
       tester,
     ) async {
       usePhoneLayout(tester, TestViewports.phonePortrait);
+      final now = DateTime.now();
       await pump(
         tester,
-        items: [_expense(400, ExpenseCategory.food, date: DateTime.now())],
+        items: [
+          _expense(400, ExpenseCategory.food, date: now),
+          // Last month: inside the year window, outside this month's.
+          _expense(
+            700,
+            ExpenseCategory.food,
+            date: DateTime(now.year, now.month - 1, 15),
+          ),
+        ],
       );
 
-      expect(find.textContaining('spent in total'), findsOne);
-      await tester.tap(find.byKey(const ValueKey('budget-period-year')));
+      final monthTotal = _foodTotal(tester, BudgetPeriod.month);
+      await tester.tap(find.text('Year'));
       await settleUi(tester);
-      // The year window still contains today, so the total is unchanged — but
-      // the range line must now name a year rather than a month.
-      expect(find.textContaining('spent in total'), findsOne);
+
+      // The year window still contains today AND last month, so the reading must
+      // grow. A control that does not change the figure is not a control.
+      expect(
+        _foodTotal(tester, BudgetPeriod.year),
+        greaterThan(monthTotal),
+        reason: 'the year window covers last month, this month does not',
+      );
+      // And the range line now names a year, read through [BudgetPeriodX.window]
+      // rather than recomputed here.
+      expect(find.byKey(const ValueKey('budget-range-label')), findsOne);
+    });
+
+    testWidgets('switching period re-reads the SAME category through it', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      final now = DateTime.now();
+      await pump(
+        tester,
+        items: [
+          _expense(400, ExpenseCategory.food, date: now),
+          _expense(
+            700,
+            ExpenseCategory.food,
+            date: DateTime(now.year, now.month - 1, 15),
+          ),
+        ],
+      );
+
+      // Same subject, different lens: the row key changes with the period, and
+      // the category does not.
+      expect(find.byKey(ValueKey('budget-percent-cat:food:month')), findsOne);
+      await tester.tap(find.text('Week'));
+      await settleUi(tester);
+      expect(find.byKey(ValueKey('budget-percent-cat:food:week')), findsOne);
+      expect(
+        find.byKey(ValueKey('budget-percent-cat:food:month')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('trips are secondary but reachable', (tester) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      await pump(tester);
+
+      // Below the fold: the primary reading comes first.
+      final subject = tester.getTopLeft(
+        find.byKey(ValueKey('budget-percent-cat:food:month')),
+      );
+      final toggle = tester.getTopLeft(
+        find.byKey(const ValueKey('budget-trips-toggle')),
+      );
+      expect(toggle.dy, greaterThan(subject.dy));
+
+      // Reachable: tapping it opens the section rather than doing nothing.
+      expect(find.byKey(const ValueKey('budget-trips-toggle')), findsOne);
+      await tester.tap(find.byKey(const ValueKey('budget-trips-toggle')));
+      await settleUi(tester);
+      expect(find.textContaining('Trip budgets'), findsOne);
     });
 
     for (final viewport in [
