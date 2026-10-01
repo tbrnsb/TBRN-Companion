@@ -18,12 +18,22 @@ import 'package:flutter_application_1/utils/format.dart';
 /// in hundredths rather than as doubles so a typed `199.50` survives a
 /// round-trip.
 class BudgetProvider extends ChangeNotifier {
-  /// `budget_limit_<key>`, where key is `cat:<name>` or `trip:<id>`.
+  /// `budget_limit_<key>`, where key is `cat:<name>:<period>` or
+  /// `trip:<id>:<period>`.
+  ///
+  /// The period is part of the key because a limit is FOR a period: a monthly
+  /// food budget and a weekly one are different numbers answering different
+  /// questions. The key used to be period-less, so setting one replaced the other
+  /// and only whichever was written last was ever readable.
   ///
   /// One flat namespace rather than a serialised map under a single key: a
   /// single key would mean rewriting and re-serialising every budget to change
   /// one, and a corrupt value would lose all of them together.
   static const String _prefix = 'budget_limit_';
+
+  /// How many legacy period-less keys were rewritten onto month keys by the last
+  /// [load]. Read by the migration test; zero on every load after the first.
+  int migrationsApplied = 0;
 
   final Map<String, double> _limits = {};
 
@@ -39,21 +49,32 @@ class BudgetProvider extends ChangeNotifier {
   ///
   /// Null rather than 0 for "unset", because a zero limit would be permanently
   /// overspent and there is no reading of the input that means it.
-  double? limitFor({String? scope, required String label}) =>
-      _limits[_keyFor(scope, label)];
+  ///
+  /// [period] defaults to month because that is where a period-less key lands,
+  /// so a caller that has not been updated yet keeps reading the user's existing
+  /// monthly limits instead of silently reporting every budget as unset.
+  double? limitFor({
+    String? scope,
+    required String label,
+    BudgetPeriod period = BudgetPeriod.month,
+  }) => _limits[_keyFor(scope, label, period)];
 
-  bool hasLimit({String? scope, required String label}) =>
-      _limits.containsKey(_keyFor(scope, label));
+  bool hasLimit({
+    String? scope,
+    required String label,
+    BudgetPeriod period = BudgetPeriod.month,
+  }) => _limits.containsKey(_keyFor(scope, label, period));
 
   /// Sets or clears a limit. A null or non-positive amount clears it.
   Future<void> setLimit({
     String? scope,
     required String label,
     required double? amount,
+    BudgetPeriod period = BudgetPeriod.month,
   }) async {
-    final key = _keyFor(scope, label);
+    final key = _keyFor(scope, label, period);
     if (amount == null || amount <= 0) {
-      await clearLimit(scope: scope, label: label);
+      await clearLimit(scope: scope, label: label, period: period);
       return;
     }
     if (_limits[key] == amount) return;
@@ -63,8 +84,12 @@ class BudgetProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> clearLimit({String? scope, required String label}) async {
-    final key = _keyFor(scope, label);
+  Future<void> clearLimit({
+    String? scope,
+    required String label,
+    BudgetPeriod period = BudgetPeriod.month,
+  }) async {
+    final key = _keyFor(scope, label, period);
     if (!_limits.containsKey(key)) return;
     _limits.remove(key);
     final prefs = await SharedPreferences.getInstance();
@@ -75,12 +100,37 @@ class BudgetProvider extends ChangeNotifier {
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     final loaded = <String, double>{};
+    var migrated = 0;
+
     for (final key in prefs.getKeys()) {
       if (!key.startsWith(_prefix)) continue;
       final units = prefs.getInt(key);
       if (units == null || units <= 0) continue;
-      loaded[key.substring(_prefix.length)] = unitsToLimit(units);
+      final raw = key.substring(_prefix.length);
+      final parsed = BudgetKey.parse(raw);
+      // A key that does not parse is left ALONE rather than deleted. It might be
+      // a budget written by a future version; removing it would destroy a limit
+      // this build has no way to interpret.
+      if (parsed == null) {
+        loaded[raw] = unitsToLimit(units);
+        continue;
+      }
+      if (parsed.isLegacy) {
+        // The one-time migration: a period-less limit belongs to month, because
+        // month was the only period that ever existed here. The old key is
+        // REMOVED, so the migration cannot run twice and cannot leave a shadow
+        // copy that a later write would resurrect.
+        final target = parsed.migrated;
+        loaded[target.raw] = unitsToLimit(units);
+        await prefs.setInt('$_prefix${target.raw}', units);
+        await prefs.remove(key);
+        migrated++;
+        continue;
+      }
+      loaded[parsed.raw] = unitsToLimit(units);
     }
+
+    migrationsApplied = migrated;
     _limits
       ..clear()
       ..addAll(loaded);
@@ -99,7 +149,11 @@ class BudgetProvider extends ChangeNotifier {
   }) {
     final results = <BudgetStatus>[];
 
-    for (final budget in budgets) {
+    // Only budgets FOR this period. With period in the key, a monthly limit and
+    // a weekly one both exist at once, so reading every budget against one
+    // period's spending would judge each against the wrong figure — which is
+    // exactly the bug that made a period-less key a period-less budget.
+    for (final budget in budgets.where((b) => b.period == index.period)) {
       if (budget.isJourneyLevel) {
         final spent = index.forJourney(budget.scope!);
         results.add(
@@ -150,7 +204,7 @@ class BudgetProvider extends ChangeNotifier {
     required String currencySymbol,
     required Map<String, String> journeyLabels,
   }) async {
-    for (final budget in budgets) {
+    for (final budget in budgets.where((b) => b.period == index.period)) {
       final status = budget.isJourneyLevel
           ? BudgetStatus(
               scope: budget.scope,
@@ -190,17 +244,23 @@ class BudgetProvider extends ChangeNotifier {
     _notified.clear();
   }
 
-  static String _keyFor(String? scope, String label) =>
-      scope == null ? 'cat:$label' : 'trip:$scope';
+  static String _keyFor(String? scope, String label, BudgetPeriod period) =>
+      scope == null
+      ? BudgetKey.forCategory(label, period).raw
+      : BudgetKey.forJourney(scope, period).raw;
 
   Budget _budgetForKey(String key, double limit) {
-    if (key.startsWith('trip:')) {
-      return Budget(
-        scope: key.substring(5),
-        label: key.substring(5),
-        limit: limit,
-      );
+    final parsed = BudgetKey.parse(key);
+    // An unparseable key is still shown, as a category budget under whatever
+    // label is left. Dropping it would hide a limit the user can see in storage.
+    if (parsed == null) {
+      return Budget(label: key.replaceFirst('cat:', ''), limit: limit);
     }
-    return Budget(label: key.replaceFirst('cat:', ''), limit: limit);
+    return Budget(
+      scope: parsed.scope,
+      label: parsed.label,
+      limit: limit,
+      period: parsed.period,
+    );
   }
 }
