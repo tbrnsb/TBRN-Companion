@@ -105,6 +105,7 @@ class AppCategoryColour {
     return (lighter + 0.05) / (darker + 0.05);
   }
 
+  /// WCAG relative luminance.
   static double _luminance(Color c) => c.computeLuminance();
 }
 
