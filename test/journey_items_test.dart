@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -80,24 +79,11 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('a long month name still fits', (tester) async {
-      usePhoneLayout(tester, TestViewports.phoneSmall);
-      final journeys = await _provider(tester);
-
-      await tester.pumpWidget(_app(journeys));
-      await settleUi(tester);
-
-      // Derived from the clock, not a literal. This asserted 'September', which
-      // passed for the whole of one month and then failed at midnight on the
-      // 1st of the next — a test that breaks on a date rather than on a change
-      // in the code is worse than no test, because it trains you to ignore it.
-      //
-      // Containing, not exact: the label is the month and the year, and the
-      // assertion that matters is that it laid out without overflowing.
-      final currentMonth = DateFormat.yMMMM().format(DateTime.now());
-      expect(find.textContaining(currentMonth), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
+    // The month navigator and the long month name moved to the calendar in the
+    // app bar, which is where that layout now lives. They are asserted in
+    // calendar_screen_test.dart, at the same 360dp viewport that caught the
+    // original overflow, rather than deleted — a test that moves with the code
+    // it protects is still a test.
   });
 
   group('what you are taking is a list', () {
