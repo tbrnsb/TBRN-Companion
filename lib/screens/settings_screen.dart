@@ -7,6 +7,7 @@ import 'package:flutter_application_1/providers/location_provider.dart';
 import 'package:flutter_application_1/providers/settings_provider.dart';
 import 'package:flutter_application_1/providers/transaction_provider.dart';
 import 'package:flutter_application_1/services/csv_export.dart';
+import 'package:flutter_application_1/screens/trash_screen.dart';
 import 'package:flutter_application_1/services/storage_service.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 
@@ -121,6 +122,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: AppSpacing.lg),
 
+          // The trash entry is HIDDEN when empty, rather than present and leading
+          // to a screen with nothing on it. An entry that leads to an empty screen
+          // teaches people the screen is not worth opening, which is exactly
+          // when it starts being worth opening.
+          if ((_counts?.trashedTransactions ?? 0) > 0) ...[
+            _TrashSection(count: _counts!.trashedTransactions),
+            const SizedBox(height: AppSpacing.lg),
+          ],
+
           _DemoSection(onReload: _reloadEverything),
         ],
       ),
@@ -215,6 +225,42 @@ class _ThemeOption extends StatelessWidget {
 ///
 /// The counts are owned by the screen rather than here, so that adding or
 /// clearing demo data elsewhere on the screen refreshes them too.
+/// "Deleted (3)" — the way into the trash.
+///
+/// Only rendered when the trash holds something; see the call site.
+class _TrashSection extends StatelessWidget {
+  const _TrashSection({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsSection(
+      title: 'Deleted',
+      child: ListTile(
+        key: const ValueKey('settings-trash-entry'),
+        // No leading icon and no container: this is a row in a section, not a
+        // card, and the count is the thing worth reading.
+        contentPadding: EdgeInsets.zero,
+        title: Text(count == 1 ? '1 deleted record' : '$count deleted records'),
+        subtitle: const Text('Restore anything you deleted by mistake'),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: () async {
+          await Navigator.of(
+            context,
+          ).push(MaterialPageRoute<void>(builder: (_) => const TrashScreen()));
+          // Coming back, the trash may be empty now. The counts are the only
+          // thing that decides whether this entry exists, so they have to be
+          // re-read or a section that should have vanished stays on screen.
+          if (!context.mounted) return;
+          final state = context.findAncestorStateOfType<_SettingsScreenState>();
+          await state?._loadCounts();
+        },
+      ),
+    );
+  }
+}
+
 class _DataSection extends StatefulWidget {
   const _DataSection({required this.counts, required this.onReload});
 
