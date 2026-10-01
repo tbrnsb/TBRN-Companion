@@ -88,7 +88,9 @@ class TransactionProvider extends ChangeNotifier {
   /// income metadata. Going through [CategoryRegistry.metaForIncome] for
   /// everything gave every expense the "Other Income" icon and colour.
   List<CategoryMeta> get recentCategories {
-    final sorted = [..._transactions]..sort((a, b) => b.date.compareTo(a.date));
+    // [myLedger]: these chips answer "what do I spend on", so another
+    // participant's trip categories must not crowd out the user's own.
+    final sorted = [...myLedger]..sort((a, b) => b.date.compareTo(a.date));
     final seen = <String>{};
     final result = <CategoryMeta>[];
     for (final t in sorted) {
@@ -107,7 +109,7 @@ class TransactionProvider extends ChangeNotifier {
   List<CategoryMeta> get popularCategories {
     final counts = <String, int>{};
     final metas = <String, CategoryMeta>{};
-    for (final t in _transactions) {
+    for (final t in myLedger) {
       final meta = t.categoryMeta;
       counts[meta.id] = (counts[meta.id] ?? 0) + 1;
       metas[meta.id] = meta;
@@ -125,7 +127,7 @@ class TransactionProvider extends ChangeNotifier {
 
   Map<String, CategoryMeta> get categories {
     final map = <String, CategoryMeta>{};
-    for (final t in _transactions) {
+    for (final t in myLedger) {
       if (!map.containsKey(t.effectiveCategoryName)) {
         final isExpense = t.isExpense;
         CategoryMeta meta;
@@ -194,24 +196,15 @@ class TransactionProvider extends ChangeNotifier {
   /// browsing convenience; a search is a question about the month, and the user
   /// can always narrow further with the day picker.
   List<Transaction> get searchResults {
+    // Reads [myLedger] rather than re-applying the shared-trip rule to
+    // `_transactions`. Same reason as `_viewTransactions`: one definition of what
+    // counts, reached two ways instead of spelled out twice.
+    final ledger = myLedger;
     final query = _search;
     if (query.isEmpty) {
-      return _transactions
-          .where(
-            (t) =>
-                _filterAllows(t) &&
-                isMyLedgerEntry(t, localParticipantIdFor: _localParticipantFor),
-          )
-          .toList();
+      return ledger.where(_filterAllows).toList();
     }
-    return _transactions
-        .where(
-          (t) =>
-              _filterAllows(t) &&
-              isMyLedgerEntry(t, localParticipantIdFor: _localParticipantFor) &&
-              query.matches(t),
-        )
-        .toList();
+    return ledger.where((t) => _filterAllows(t) && query.matches(t)).toList();
   }
 
   bool _filterAllows(Transaction t) => switch (_filter) {
@@ -248,12 +241,45 @@ class TransactionProvider extends ChangeNotifier {
     }
   }
 
+  /// MY LEDGER for the loaded month: every transaction that counts as my
+  /// spending, with other participants' trip expenses removed.
+  ///
+  /// THIS IS THE FIX, and it is one accessor rather than a sweep, on purpose. A
+  /// screen-level filter is how you end up with six screens each remembering to
+  /// filter and one forgetting — and Stage 7 proved the alternative already
+  /// exists in two halves: `spendIndex` applied the shared-trip rule for budgets
+  /// while `_viewTransactions` returned `_transactions` raw, so for September the
+  /// summary card read 21070.50 while the budget beside it read 12670.50. Two
+  /// numbers for one month, on one screen.
+  ///
+  /// Deliberately a computed property rather than a cached list. A cache has to
+  /// be invalidated by every write — add, update, trash, restore, month change —
+  /// and the trashed rows have to be dropped from it by hand, which is exactly
+  /// the kind of thing that is correct on five of six paths. The filter is cheap
+  /// enough to run on read and cannot go stale.
+  ///
+  /// Note what is NOT here: the All/Expenses/Income chips. Those are the user's
+  /// own explicit choice about what kind of money to look at, they are applied by
+  /// [filteredTransactions], and mixing them in would make it impossible to ask
+  /// "what is in my month?" independently of "what am I currently looking at?".
+  List<Transaction> get myLedger {
+    final raw = _transactions.where((t) => !t.isDeleted);
+    return raw
+        .where(isMyLedgerEntryFor(_localParticipantFor))
+        .toList(growable: false);
+  }
+
   /// The transactions the screen should show: the selected day if there is one,
-  /// otherwise the whole loaded month.
+  /// otherwise the whole of [myLedger].
+  ///
+  /// Every total, every chart and every list on the screen reads through here, so
+  /// the shared-trip rule is applied once and a new screen is correct by
+  /// default.
   List<Transaction> get _viewTransactions {
     final day = _selectedDay;
-    if (day == null) return _transactions;
-    return _transactions
+    final ledger = myLedger;
+    if (day == null) return ledger;
+    return ledger
         .where(
           (t) =>
               t.date.year == day.year &&
@@ -300,7 +326,13 @@ class TransactionProvider extends ChangeNotifier {
   /// Every day in the loaded month that has at least one transaction, keyed by
   /// date. The day picker uses this to mark which days are worth tapping
   /// instead of offering 30 equally plausible empty cells.
-  Set<DateTime> get daysWithTransactions => _transactions
+  ///
+  /// Built from [myLedger], and that is a DECISION rather than a consequence. A
+  /// day whose only content is another participant's trip spending is not marked,
+  /// because tapping it would show an empty list: the screen filters, so there is
+  /// nothing there to see. Marking it would invite a tap that looks broken — the
+  /// exact complaint that made the day picker's marks useful in the first place.
+  Set<DateTime> get daysWithTransactions => myLedger
       .map((t) => DateTime(t.date.year, t.date.month, t.date.day))
       .toSet();
 
@@ -809,11 +841,16 @@ class TransactionProvider extends ChangeNotifier {
     }
   }
 
+  /// Expenses with coordinates, from [myLedger].
+  ///
+  /// Built with `whereType<Expense>` rather than a downcast on a
+  /// `List<Transaction>`: `myLedger` is correctly typed `List<Transaction>`, and
+  /// `as List<Expense>` on one of those fails at runtime rather than at compile
+  /// time. Routing this through `myLedger` is what exposed it — the map would
+  /// have thrown on every build the moment another participant's trip expense
+  /// was involved.
   List<Expense> get locatedExpenses =>
-      _transactions
-              .where((t) => t.isExpense && (t as Expense).hasCoordinates)
-              .toList()
-          as List<Expense>;
+      myLedger.whereType<Expense>().where((e) => e.hasCoordinates).toList();
 
   Future<List<Expense>> getAllLocatedExpenses() async {
     try {
@@ -830,7 +867,7 @@ class TransactionProvider extends ChangeNotifier {
   }
 
   List<Transaction> get recentTransactions {
-    final sorted = [..._transactions]..sort((a, b) => b.date.compareTo(a.date));
+    final sorted = [...myLedger]..sort((a, b) => b.date.compareTo(a.date));
     return sorted;
   }
 
@@ -901,9 +938,12 @@ class TransactionProvider extends ChangeNotifier {
   ///   expenses I paid, because that money left my account and the month total
   ///   directly above the budget counts it. It EXCLUDES expenses another
   ///   participant paid, which is not my spending anywhere in the app.
-  /// - [BudgetSpendIndex.byJourney] is the trip's own costs, whoever paid. A
-  ///   journey-level limit governs the whole trip, and a reimbursement is not
-  ///   spend: settlement writes no transaction, so there is nothing to exclude.
+  /// - [BudgetSpendIndex.byJourney] is the trip's costs **that are mine or
+  ///   unattributed**. The shared-trip rule applies to it too: "another
+  ///   participant's trip expense counts NOWHERE, ever" is the stated rule, and a
+  ///   budget is one of the places it counts. This comment previously said
+  ///   "whoever paid", which the code did not do — the rule is the one the user
+  ///   decided and the implementation is what they asked for.
   BudgetSpendIndex spendIndex({
     BudgetPeriod period = BudgetPeriod.month,
     DateTime? anchor,
@@ -931,8 +971,11 @@ class TransactionProvider extends ChangeNotifier {
     // an index is still produced rather than nothing. It will be incomplete for
     // a wide period, and that is documented on [_allTransactions].
     final source = canUseLoaded
-        ? _transactions
-        : (_allTransactions ?? _transactions);
+        ? myLedger
+        : myLedgerOf(
+            _allTransactions ?? _transactions,
+            localParticipantIdFor: _localParticipantFor,
+          );
 
     var total = 0.0;
     final byCategory = <String, double>{};
@@ -940,14 +983,12 @@ class TransactionProvider extends ChangeNotifier {
 
     for (final t in source) {
       if (!t.isExpense) continue;
-      // A trashed record is never spending. Checked HERE as well as at read time,
-      // and that redundancy is the point rather than belt-and-braces: the storage
-      // layer already filters these out, so this line cannot be reached today —
-      // but `source` is a CACHE, and a cache is only as correct as the writes
-      // that keep it so. If one write path ever forgets to drop a trashed row,
-      // this is what stops a deleted expense being counted against a yearly
-      // budget and every wide-period chart. A month-scoped test would never reach
-      // it, because the month query is filtered upstream.
+      // A trashed record is never spending. The storage layer already filters
+      // these out and `myLedger` filters them again, so this line cannot be
+      // reached today — but the wide branch walks a CACHE, and a cache is only as
+      // correct as the writes that maintain it. If one write path ever forgets to
+      // drop a trashed row, this is what stops a deleted expense being counted
+      // against a yearly budget. A month-scoped test would never reach it.
       if (t.isDeleted) continue;
       // The shared-trip rule, applied here and nowhere else. Another
       // participant's trip expense is excluded from BOTH pools: it is not my
@@ -999,7 +1040,7 @@ class TransactionProvider extends ChangeNotifier {
   /// Total income recorded under [category], which is an income category id
   /// such as `salary` (see `IncomeCategory`).
   double getIncomeByCategory(String category) {
-    return _transactions
+    return myLedger
         .whereType<Income>()
         .where((t) => t.category == category)
         .fold(0.0, (sum, t) => sum + t.amount);
@@ -1008,7 +1049,9 @@ class TransactionProvider extends ChangeNotifier {
   List<MapEntry<ExpenseCategory, double>> getSpendingBreakdown() {
     Map<ExpenseCategory, double> spending = {};
 
-    for (var t in _transactions.where((t) => t.isExpense)) {
+    // [myLedger], not [_transactions]: this is a CHART, and a donut slice sized by
+    // another participant's trip spending is a slice of my spending that is not.
+    for (var t in myLedger.where((t) => t.isExpense)) {
       final expense = t as Expense;
       spending[expense.category] = (spending[expense.category] ?? 0) + t.amount;
     }
@@ -1093,7 +1136,7 @@ class TransactionProvider extends ChangeNotifier {
     DateTime startDate,
     DateTime endDate,
   ) {
-    return _transactions
+    return myLedger
         .where(
           (t) =>
               !t.date.isBefore(startDate) &&
