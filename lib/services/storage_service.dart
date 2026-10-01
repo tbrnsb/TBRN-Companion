@@ -230,13 +230,57 @@ class StorageService {
     );
   }
 
+  /// Every LIVE transaction.
+  ///
+  /// Soft-deleted rows are excluded. Excluded HERE rather than at each caller, so
+  /// there is no read path that can forget: the month query, the location query,
+  /// the journey query and this one all filter, and a new query added later
+  /// filters too. Filtering in the UI instead would be the same class of bug
+  /// six screens deep.
   Future<List<Transaction>> getAllTransactions() async {
     List<Transaction> transactions = [];
     for (var entry in _transactionsBox.values) {
+      if (_isTrashed(entry)) continue;
       final transactionData = Map<String, dynamic>.from(entry);
       transactions.add(Transaction.fromJson(transactionData));
     }
     return transactions;
+  }
+
+  /// The trashed rows, newest deletion first.
+  ///
+  /// The one query that deliberately does NOT filter them out. A trash screen
+  /// that could not see its own contents would be useless, and this is the only
+  /// caller that is allowed to want them.
+  Future<List<Transaction>> getTrashedTransactions() async {
+    List<Transaction> transactions = [];
+    for (var entry in _transactionsBox.values) {
+      if (!_isTrashed(entry)) continue;
+      final transactionData = Map<String, dynamic>.from(entry);
+      transactions.add(Transaction.fromJson(transactionData));
+    }
+    // By when it was deleted, not by the date it happened: the newest deletion is
+    // the one a user wants to undo, and sorting by the transaction's own date
+    // would bury it under an expense from last month.
+    transactions.sort((a, b) {
+      final aAt = a.deletedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bAt = b.deletedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bAt.compareTo(aAt);
+    });
+    return transactions;
+  }
+
+  /// Whether a stored record carries a trash flag.
+  ///
+  /// Reads the RAW key rather than a decoded [Transaction], because decoding
+  /// every row to answer "is this trashed" would parse the whole box to then
+  /// discard most of it. Null and empty both mean live, which is what makes
+  /// every pre-trash record load unchanged.
+  static bool _isTrashed(Map<dynamic, dynamic> entry) {
+    final raw = entry['deletedAt'];
+    if (raw == null) return false;
+    if (raw is String) return raw.isNotEmpty;
+    return true;
   }
 
   Future<List<Transaction>> getTransactionsForMonth(int year, int month) async {
@@ -245,6 +289,7 @@ class StorageService {
         '${year.toString().padLeft(4, '0')}-${month.toString().padLeft(2, '0')}';
 
     for (var entry in _transactionsBox.values) {
+      if (_isTrashed(entry)) continue;
       final transactionData = Map<String, dynamic>.from(entry);
       final date = DateTime.parse(transactionData['date']);
       final dateMonthStr =
@@ -260,6 +305,7 @@ class StorageService {
   Future<List<Transaction>> getTransactionsByLocation(String locationId) async {
     List<Transaction> transactions = [];
     for (var entry in _transactionsBox.values) {
+      if (_isTrashed(entry)) continue;
       final transactionData = Map<String, dynamic>.from(entry);
       if (transactionData['locationId'] == locationId) {
         transactions.add(Transaction.fromJson(transactionData));
@@ -268,6 +314,19 @@ class StorageService {
     return transactions;
   }
 
+  /// EVERY expense on [journeyId], including trashed ones.
+  ///
+  /// Deliberately UNFILTERED, and this is the important asymmetry in the trash
+  /// feature. This is the settlement's data path: `equalShares`, the participant
+  /// totals, the unattributed total and the snapshot export all read through it.
+  /// Filtering trashed rows out of here would silently change settlement
+  /// arithmetic the moment anyone deleted a trip expense — and settlement is the
+  /// one figure that must not move for a reason the user never asked about. The
+  /// money really was spent on the trip; deleting it from a personal ledger is
+  /// not undoing it for the people splitting it.
+  ///
+  /// The trip's own UI list wants live rows only and uses
+  /// [getLiveTransactionsByJourney] for that.
   Future<List<Transaction>> getTransactionsByJourney(String journeyId) async {
     List<Transaction> transactions = [];
     for (var entry in _transactionsBox.values) {
@@ -278,6 +337,19 @@ class StorageService {
     }
     transactions.sort((a, b) => b.date.compareTo(a.date));
     return transactions;
+  }
+
+  /// Live expenses on [journeyId] — what the trip's expense list should show.
+  ///
+  /// The trashed-filtered twin of [getTransactionsByJourney]. Split into two
+  /// named methods rather than a `bool includeDeleted` flag, because a flag makes
+  /// "which one did this call site mean?" a question with no answer at the call
+  /// site, and that question has to be answered correctly eleven times.
+  Future<List<Transaction>> getLiveTransactionsByJourney(
+    String journeyId,
+  ) async {
+    final all = await getTransactionsByJourney(journeyId);
+    return all.where((t) => !t.isDeleted).toList();
   }
 
   Future<void> updateTransaction(Transaction transaction) async {
@@ -370,7 +442,13 @@ class StorageService {
       checklistItems: _checklistItemsBox.length,
       locations: _locationsBox.length,
       locationLogs: _locationLogsBox.length,
+      // The RAW box length, trashed rows included: "Remove all data" has to
+      // count everything it would actually delete, and a trashed record is
+      // still a record on disk. The live/trashed split is reported separately.
       transactions: _transactionsBox.length,
+      trashedTransactions: await getTrashedTransactions().then(
+        (list) => list.length,
+      ),
       journeys: _journeysBox.length,
       customCategories: _expenseCategoriesBox.length,
     );
@@ -385,6 +463,7 @@ class StorageCounts {
     required this.locations,
     required this.locationLogs,
     required this.transactions,
+    required this.trashedTransactions,
     required this.journeys,
     required this.customCategories,
   });
@@ -393,7 +472,15 @@ class StorageCounts {
   final int checklistItems;
   final int locations;
   final int locationLogs;
+
+  /// Every transaction row on disk, live and trashed.
   final int transactions;
+
+  /// The trashed subset of [transactions]. Drives the settings entry, which is
+  /// hidden when this is zero — an entry leading to an empty screen teaches
+  /// people the screen is not worth opening.
+  final int trashedTransactions;
+
   final int journeys;
   final int customCategories;
 

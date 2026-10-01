@@ -56,6 +56,22 @@ sealed class Transaction {
   final DateTime date;
   final DateTime createdAt;
 
+  /// When this record was moved to the trash, or null when it is live.
+  ///
+  /// SOFT DELETE. Lives on this base class rather than on [Expense] and [Income]
+  /// separately, and that is what keeps `Transaction` sealed to those two: a
+  /// third "deleted" subclass would have to be persisted and deserialised, and a
+  /// record that was an expense before it was deleted would come back as
+  /// something else. A flag on the base changes nothing about what the record
+  /// *is*, only whether the app is showing it.
+  ///
+  /// Null is the normal state, and it is null on every record written before
+  /// this field existed — so existing data loads unchanged with no migration.
+  final DateTime? deletedAt;
+
+  /// Whether this record is in the trash.
+  bool get isDeleted => deletedAt != null;
+
   Transaction({
     String? id,
     required this.amount,
@@ -65,12 +81,24 @@ sealed class Transaction {
     this.paymentMethod,
     DateTime? date,
     DateTime? createdAt,
+    this.deletedAt,
   }) : id = id ?? const Uuid().v4(),
        date = date ?? DateTime.now(),
        createdAt = createdAt ?? DateTime.now();
 
   bool get isExpense => type == TransactionType.expense;
   bool get isIncome => type == TransactionType.income;
+
+  /// This record, live or trashed at [when].
+  ///
+  /// One implementation for both directions, because the trash screen and the
+  /// restore button are two calls to the same thing and two hand-written
+  /// versions of it are how a restore ends up setting the flag instead of
+  /// clearing it.
+  Transaction withDeletedAt(DateTime? when) => switch (this) {
+    Expense e => e.copyWith(deletedAt: when, clearDeletedAt: when == null),
+    Income i => i.copyWith(deletedAt: when, clearDeletedAt: when == null),
+  };
 
   /// The human-readable category this transaction is filed under.
   ///
@@ -90,6 +118,9 @@ sealed class Transaction {
       'paymentMethod': paymentMethod?.name,
       'date': date.toIso8601String(),
       'createdAt': createdAt.toIso8601String(),
+      // Optional key. Absent on every record written before the field existed,
+      // which reads back as null — i.e. live — so no migration is needed.
+      'deletedAt': deletedAt?.toIso8601String(),
     };
   }
 
@@ -153,6 +184,7 @@ class Expense extends Transaction {
     this.paidByParticipantId,
     super.date,
     super.createdAt,
+    super.deletedAt,
   }) : super(type: TransactionType.expense);
 
   String getCategoryName() {
@@ -203,6 +235,7 @@ class Expense extends Transaction {
       paidByParticipantId: json['paidByParticipantId']?.toString(),
       date: DateTime.parse(json['date']),
       createdAt: _parseCreatedAt(json['createdAt']),
+      deletedAt: _parseDeletedAt(json['deletedAt']),
     );
   }
 
@@ -220,10 +253,12 @@ class Expense extends Transaction {
     String? paidByParticipantId,
     DateTime? date,
     DateTime? createdAt,
+    DateTime? deletedAt,
     bool clearLocation = false,
     bool clearCoordinates = false,
     bool clearJourney = false,
     bool clearPaidByParticipant = false,
+    bool clearDeletedAt = false,
   }) {
     return Expense(
       id: id,
@@ -244,6 +279,7 @@ class Expense extends Transaction {
           : (paidByParticipantId ?? this.paidByParticipantId),
       date: date ?? this.date,
       createdAt: createdAt ?? this.createdAt,
+      deletedAt: clearDeletedAt ? null : (deletedAt ?? this.deletedAt),
     );
   }
 }
@@ -260,6 +296,7 @@ class Income extends Transaction {
     super.paymentMethod,
     super.date,
     super.createdAt,
+    super.deletedAt,
   }) : super(type: TransactionType.income);
 
   CategoryMeta get categoryMeta => CategoryRegistry.metaForIncome(category);
@@ -281,6 +318,7 @@ class Income extends Transaction {
       paymentMethod: PaymentMethodX.fromName(json['paymentMethod'] as String?),
       date: DateTime.parse(json['date']),
       createdAt: _parseCreatedAt(json['createdAt']),
+      deletedAt: _parseDeletedAt(json['deletedAt']),
     );
   }
 
@@ -292,6 +330,8 @@ class Income extends Transaction {
     PaymentMethod? paymentMethod,
     DateTime? date,
     DateTime? createdAt,
+    DateTime? deletedAt,
+    bool clearDeletedAt = false,
   }) {
     return Income(
       id: id,
@@ -302,8 +342,20 @@ class Income extends Transaction {
       paymentMethod: paymentMethod ?? this.paymentMethod,
       date: date ?? this.date,
       createdAt: createdAt ?? this.createdAt,
+      deletedAt: clearDeletedAt ? null : (deletedAt ?? this.deletedAt),
     );
   }
+}
+
+/// `deletedAt` was absent from every record written before the trash existed.
+///
+/// Returns null in that case, which is exactly right: null means live, so those
+/// records load as ordinary transactions with no migration. An unparseable value
+/// also resolves to null rather than throwing — a corrupt date on a flag must
+/// never make a real user's spending fail to load.
+DateTime? _parseDeletedAt(Object? raw) {
+  if (raw is! String || raw.isEmpty) return null;
+  return DateTime.tryParse(raw);
 }
 
 /// `createdAt` was absent from records written before the field existed.
