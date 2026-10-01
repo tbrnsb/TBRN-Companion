@@ -238,3 +238,80 @@ int percentOf(double part, double whole) {
   if (whole <= 0) return 0;
   return math.min(100, (part / whole * 100).round());
 }
+
+/// Why a day selection did or did not take effect.
+///
+/// Exists so "nothing happened" is never the answer. Every refusal has to be
+/// turned into something the user can SEE -- a message, or a control that is
+/// visibly unavailable -- because a tap that produces no change is
+/// indistinguishable from a tap that did not register.
+sealed class DaySelectionOutcome {
+  const DaySelectionOutcome();
+
+  /// Whether the view actually changed.
+  bool get changed;
+
+  /// A sentence for the user, or null when nothing needs saying.
+  String? get message;
+}
+
+class DaySelected extends DaySelectionOutcome {
+  const DaySelected(this.day);
+  final DateTime day;
+  @override
+  bool get changed => true;
+  @override
+  String? get message => null;
+}
+
+class DaySelectionCleared extends DaySelectionOutcome {
+  const DaySelectionCleared();
+  @override
+  bool get changed => true;
+  @override
+  String? get message => null;
+}
+
+/// The day is already the one on screen. Explains itself rather than doing
+/// nothing.
+class DayAlreadySelected extends DaySelectionOutcome {
+  const DayAlreadySelected(this.day);
+  final DateTime day;
+  @override
+  bool get changed => false;
+  @override
+  String? get message => 'Already showing that day.';
+}
+
+/// The day belongs to a month that is not loaded. Names the month it IS in, so
+/// the user can act on the answer rather than guess.
+class DayOutsideLoadedMonth extends DaySelectionOutcome {
+  const DayOutsideLoadedMonth(this.loadedMonth);
+  final DateTime loadedMonth;
+  @override
+  bool get changed => false;
+  @override
+  String? get message => null;
+}
+
+/// The day has not happened yet. Refused, and explained.
+///
+/// Found by the item 4 tests: the picker's `lastDate` is capped at today, so a
+/// selection past today made `initialDate` later than `lastDate` and the sheet
+/// threw on open.
+class DayInTheFuture extends DaySelectionOutcome {
+  const DayInTheFuture();
+  @override
+  bool get changed => false;
+  @override
+  String? get message => 'That day has not happened yet.';
+}
+
+/// Clearing while nothing is selected.
+class DaySelectionAlreadyWholeMonth extends DaySelectionOutcome {
+  const DaySelectionAlreadyWholeMonth();
+  @override
+  bool get changed => false;
+  @override
+  String? get message => 'Already showing the whole month.';
+}

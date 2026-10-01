@@ -139,3 +139,43 @@ List<SearchCategoryOption> searchCategoryOptions() {
   ];
   return List.unmodifiable(options);
 }
+
+/// What the day picker means.
+///
+/// A SENTINEL, not null. `showModalBottomSheet` resolves to null both when the
+/// user taps "Whole month" and when the sheet is swiped away, and the two are
+/// not the same intention: one clears the day filter and one changes nothing at
+/// all. Treating a dismiss as "clear the filter" means selecting a day and then
+/// dismissing the sheet changes the view without being asked to, which is the
+/// wrong result on a very common gesture.
+enum DayPickResult {
+  /// The sheet was swiped away, or the back button pressed. CHANGE NOTHING.
+  dismissed,
+
+  /// "Whole month": drop the day filter.
+  wholeMonth,
+
+  /// A specific day was tapped.
+  day,
+}
+
+/// The picker's outcome, with the day when there is one.
+///
+/// Three states rather than a nullable date, because the information the caller
+/// needs is not "is there a date" but "what did the user MEAN".
+class DayPick {
+  const DayPick._(this.result, this.day);
+
+  const DayPick.dismissed() : this._(DayPickResult.dismissed, null);
+
+  const DayPick.wholeMonth() : this._(DayPickResult.wholeMonth, null);
+
+  const DayPick.day(DateTime value) : this._(DayPickResult.day, value);
+
+  final DayPickResult result;
+
+  /// Non-null only when [result] is [DayPickResult.day].
+  final DateTime? day;
+
+  bool get isDismissed => result == DayPickResult.dismissed;
+}
