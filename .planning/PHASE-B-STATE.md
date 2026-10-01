@@ -180,3 +180,46 @@ ASSERTED on open. Fixed at the provider (a future day is refused, with
 Confirmed by test, not assumption: changing month clears a stale day filter, in
 the provider AND through the UI's month arrows; the pager keeps its height
 across a day toggle.
+
+### Item 5 — heatmap month shape — MERGED `9db50a7`
+Branch `fix/heatmap-month-shape`, tag `snapshot-fix/heatmap-month-shape`.
+**692 tests**, gate green. Follow-up commit `44bfc72` on master.
+
+**PROCESS ERROR, self-reported:** item 5's commit went STRAIGHT ONTO master with no
+branch, no archive and no tag, because I was still on `fix/jump-day-noops` and
+checked out master without creating the branch first. Recovered by pointing the
+branch and tag at the merge-less commit. The code is right and gated; the
+bookkeeping was wrong.
+
+**Also: two files from ALREADY-MERGED items were left unstaged** —
+`app_chart_colors.dart` (T1's Kanagawa→Gruvbox comment rewrites) and
+`spend_screen_test.dart` (item 3's `tapAddAffordance`). Both were part of green
+gates. Committed as `44bfc72` rather than amending a published commit.
+
+**WHAT CHANGED**
+- `weeksIn` returned a fixed 5 under 520dp → a 6-week month lost a week of
+  VISIBLE DAYS. Now `columnsForMonth(y, m) = ceil((leadingDead + daysInMonth)/7)`,
+  clamped to 4..6. **6-week decision: draw 6, cells shrink. Never truncate.**
+- `crossAxisAlignment: start` + content-sized rows DISCARDED the leftover width.
+  Now `stretch` + `Expanded` cells, square via `AspectRatio`, so the grid fills
+  the card at both viewports.
+- Title now names the month and year, derived from the data.
+- Legend uses `rampLength` not a literal `/4`.
+
+**Stage 10 tokens used — NO second red:** `AppChartColors.spendRamp(scheme)`,
+`spendStep(scheme, i/(rampLength-1))`, `rampLength(scheme)`,
+`heatmapEmpty(scheme)`, `heatmapDead(scheme)`. `_shade()` and the
+`primary`-at-0.22 tint are GONE and must not come back.
+
+**Zero-max decision:** `spendStep` returns `heatmapEmpty` at intensity 0 and
+`intensity` is `0.0` when `busiest <= 0`, so there is no divide and no
+divide-by-zero. A month of only other people's trip spend (after item 1) has
+`busiest == 0` and renders every day as the EMPTY cell — never a divide.
+
+**Empty-day-picker decision (item 1):** a day holding only other people's trip
+spending is NOT marked in `daysWithTransactions`.
+
+**STOPGAP FLAGGED FOR ITEM 6:** pager height 268 → 640, because a width-filling
+square grid is tall and 268 clipped it by 361px. ONE height for four pages sized
+for the tallest, so the Daily/Balance/Weekly pages now carry large dead space.
+Item 6 must replace the fixed height with a per-page one.
