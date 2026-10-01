@@ -118,12 +118,10 @@ class SpendingHeatmap extends StatelessWidget {
             // per month: a 5-week month drawn in 6 columns leaves one empty
             // column, which is how every calendar handles it and reads as a
             // calendar rather than as a gap in the data.
-            // THE MONTH decides the shape. `weeksIn` used to return a fixed 5
-            // under 520dp, which silently truncated a 6-week month: a real day
-            // simply was not drawn. Rows are now derived from the month, so the
-            // grid is 4, 5 or 6 rows and is never missing anything.
-            final weeks = columnsForMonth(year, month);
-            final cell = cellFor(constraints.maxWidth, weeks);
+            // THE MONTH decides the shape, and the orientation is a calendar's:
+            // seven day-columns across, week-rows down.
+            final rows = rowsForMonth(year, month);
+            final cell = cellFor(constraints.maxWidth);
 
             return Column(
               // stretch, not start: with `start` each Row sized to its content
@@ -132,34 +130,40 @@ class SpendingHeatmap extends StatelessWidget {
               // now grow to fill the measure.
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (var weekday = 0; weekday < 7; weekday++)
+                for (var row = 0; row < rows; row++)
                   Padding(
-                    padding: EdgeInsets.only(bottom: weekday == 6 ? 0 : _gap),
+                    padding: EdgeInsets.only(
+                      bottom: row == rows - 1 ? 0 : _gap,
+                    ),
                     child: Row(
+                      // spaceBetween, NOT content-sized and NOT Expanded.
+                      //
+                      // Item 5 used Expanded, so the cells grew to fill the card
+                      // and became ~45px squares: the grid was 315px tall and
+                      // dominated the screen, which is what forced the pager up to
+                      // 640. Cells are FIXED at [SpendingHeatmapShim.cell], the
+                      // same constant the legend swatches use, so the two cannot
+                      // drift apart.
+                      //
+                      // spaceBetween is NON-NEGOTIABLE and is the original
+                      // left-hug fix: content-sized rows discarded the leftover
+                      // width and the grid hugged the left. With fixed cells and
+                      // spaceBetween the seven cells still SPAN the full card with
+                      // even gutters, and the cell size stays sane.
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        // Expanded DIRECTLY inside the Row. Wrapping it in the
-                        // Padding and expanding that gives the Padding
-                        // BoxParentData where FlexParentData is expected, and
-                        // Expanded throws.
-                        for (var week = 0; week < weeks; week++)
-                          Expanded(
-                            child: Padding(
-                              padding: EdgeInsets.only(
-                                right: week == weeks - 1 ? 0 : _gap,
-                              ),
-                              child: _Cell(
-                                size: cell,
-                                dayNumber: _dayAt(
-                                  weekday: weekday,
-                                  week: week,
-                                  firstWeekday: firstWeekday,
-                                  daysInMonth: daysInMonth,
-                                ),
-                                amount: spendByDay,
-                                busiest: busiest,
-                                isHighlighted: _isHighlighted(weekday, week),
-                              ),
+                        for (var column = 0; column < columnsPerRow; column++)
+                          _Cell(
+                            size: cell,
+                            dayNumber: _dayAt(
+                              row: row,
+                              column: column,
+                              firstWeekday: firstWeekday,
+                              daysInMonth: daysInMonth,
                             ),
+                            amount: spendByDay,
+                            busiest: busiest,
+                            isHighlighted: _isHighlighted(row, column),
                           ),
                       ],
                     ),
@@ -172,12 +176,12 @@ class SpendingHeatmap extends StatelessWidget {
     );
   }
 
-  bool _isHighlighted(int weekday, int week) {
+  bool _isHighlighted(int row, int column) {
     final target = highlightedDate;
     if (target == null) return false;
     final dayNumber = _dayAt(
-      weekday: weekday,
-      week: week,
+      row: row,
+      column: column,
       firstWeekday: _firstWeekdayOf(days),
       daysInMonth: _daysInMonthOf(days),
     );
@@ -191,13 +195,19 @@ class SpendingHeatmap extends StatelessWidget {
         '${AppFormat.money(total, symbol: currencySymbol)} total';
   }
 
+  /// The day-of-month at [row], [column], or 0 when the cell is DEAD.
+  ///
+  /// Seven day-COLUMNS across and week-ROWS down, so the index runs
+  /// `row * 7 + column`. Zero means "not part of this month" and paints
+  /// [AppChartColors.heatmapDead] -- the shape of the month is carried entirely
+  /// by which cells come back zero.
   static int _dayAt({
-    required int weekday,
-    required int week,
+    required int row,
+    required int column,
     required int firstWeekday,
     required int daysInMonth,
   }) {
-    final day = week * 7 + weekday - firstWeekday + 1;
+    final day = row * 7 + column - firstWeekday + 1;
     if (day < 1 || day > daysInMonth) return 0;
     return day;
   }
@@ -208,21 +218,14 @@ class SpendingHeatmap extends StatelessWidget {
   static int _daysInMonthOf(List<DayTotal> days) =>
       DateTime(days.first.date.year, days.first.date.month + 1, 0).day;
 
-  /// How many week-COLUMNS the grid draws for a month.
+  /// DEPRECATED. The grid is transposed: seven day-columns across and 4-6
+  /// week-rows down, so the shape comes from [rowsForMonth] and the column count
+  /// is the constant [columnsPerRow].
   ///
-  /// 7 rows are weekdays and the columns are WEEKS, so a month needs
-  /// `leadingDead + daysInMonth` cells and the column count is whatever that
-  /// rounds up to. Six-week months are real (November 2026, May 2027) and
-  /// drawing only five columns loses a week of visible days, which is the exact
-  /// class of bug that got Stage 5 through a green suite.
-  ///
-  /// The 6-week case is drawn at 6 and lets the cells shrink slightly. Cells are
-  /// now Expanded, so they take whatever width is left after the extra column --
-  /// there is no `maxCell` cap discarding the remainder any more.
-  ///
-  /// [width] is no longer consulted: the MONTH decides the shape, and a grid
-  /// whose shape changes with the window is a grid that lies.
-  static int weeksIn(double width) => width >= 520 ? 6 : 5;
+  /// Kept only so a caller still compiles; it no longer describes anything. Width
+  /// must not decide a calendar's shape -- a grid whose shape changes with the
+  /// window is a grid that lies about the month.
+  static int weeksIn(double width) => columnsPerRow;
 
   /// The column count a month genuinely needs.
   ///
@@ -245,14 +248,38 @@ class SpendingHeatmap extends StatelessWidget {
   static int leadingDeadForMonth(int year, int month) =>
       DateTime(year, month, 1).weekday - 1;
 
-  /// Dead cells after the last of the month, out to the column boundary.
-  static int trailingDeadForMonth(int year, int month, int columns) {
+  /// Dead cells after the last of the month, out to the row boundary.
+  static int trailingDeadForMonth(int year, int month, int rows) {
     final leading = leadingDeadForMonth(year, month);
     final daysInMonth = DateTime(year, month + 1, 0).day;
-    final total = columns * 7;
     final used = leading + daysInMonth;
-    final trailing = total - used;
+    final trailing = rows * columnsPerRow - used;
     return trailing < 0 ? 0 : trailing;
+  }
+
+  /// How many day-COLUMNS the grid draws. Always seven, because a week is seven
+  /// days and a calendar read left-to-right has the days across.
+  ///
+  /// This used to be a WEEK count and the grid was five week-columns by seven
+  /// weekday rows, which is the transpose of a calendar and reads as a scatter
+  /// rather than as a month.
+  static const int columnsPerRow = 7;
+
+  /// How many WEEK-ROWS a month needs.
+  ///
+  ///   rows = ceil((leadingDead + daysInMonth) / 7)
+  ///
+  /// where `leadingDead = DateTime(y, m, 1).weekday - 1`, so a month starting on
+  /// Sunday has no leading dead cells and one starting on Saturday has six.
+  ///
+  /// Clamped to 4..6: a 4-week month gets 4, and a 6-week month gets 6. Six-week
+  /// months are real (November 2026, May 2027) and truncating one loses visible
+  /// days, which is the exact bug that got Stage 5 through a green suite.
+  static int rowsForMonth(int year, int month) {
+    final leading = leadingDeadForMonth(year, month);
+    final daysInMonth = DateTime(year, month + 1, 0).day;
+    final rows = ((leading + daysInMonth) / columnsPerRow).ceil();
+    return rows < 4 ? 4 : (rows > 6 ? 6 : rows);
   }
 
   /// The cell size that fits [width] for a month of [weeks] weeks.
@@ -260,17 +287,17 @@ class SpendingHeatmap extends StatelessWidget {
   /// Divides by the number of columns AND takes off the gaps. Forgetting the
   /// divide is not a subtle bug: it hands back the whole run's width as the
   /// width of one cell, so on a narrow measure every cell would be enormous.
+  /// The cell size: FIXED, from the same constant the legend swatches use.
   ///
-  /// No `maxCell` cap. Capping at 15 and DISCARDING the remainder is what made
-  /// the grid hug the left on a wide card; the cells are Expanded now and grow
-  /// to fill, so this is only a height hint and a floor for a pathological
-  /// measure.
-  static double cellFor(double width, int weeks) {
-    if (weeks <= 0 || width <= 0) return maxCell;
-    final available = (width - (weeks - 1) * _gap) / weeks;
-    if (available <= 0) return maxCell;
-    return available < maxCell ? available : maxCell;
-  }
+  /// No width term. The measure is handled by the row's `spaceBetween`, which
+  /// spaces fixed cells across it -- so the grid SPANS the card (item 5's
+  /// left-hug fix, preserved) while the cells stay small (N1's size fix). Those
+  /// two only conflict through `Expanded`, and there is none here.
+  ///
+  /// [width] is still taken so a degenerate measure is handled rather than handed
+  /// to `SizedBox.square` unchecked.
+  static double cellFor(double width) =>
+      width <= 0 ? SpendingHeatmapShim.cell : SpendingHeatmapShim.cell;
 }
 
 /// One day. Empty days are still drawn, in the recessed surface, because a
@@ -300,10 +327,10 @@ class _Cell extends StatelessWidget {
       // A cell OUTSIDE the month. Dead space, and deliberately a different colour
       // from an empty day: a calendar with gaps in it is still a calendar, but a
       // grid whose padding reads as a quiet week is a chart lying about its shape.
-      return AspectRatio(
-        aspectRatio: 1,
+      return SizedBox.square(
+        dimension: size,
         child: DecoratedBox(
-          key: ValueKey('heat-dead-cell'),
+          key: const ValueKey('heat-dead-cell'),
           decoration: BoxDecoration(
             color: AppChartColors.heatmapDead(scheme),
             borderRadius: BorderRadius.circular(AppSpacing.xxs),
@@ -319,11 +346,12 @@ class _Cell extends StatelessWidget {
       message: spent == 0
           ? 'Nothing spent'
           : 'Day $dayNumber · ${spent.toStringAsFixed(0)}',
-      // SQUARE. The width comes from the Row via Expanded, so the height is
-      // pinned to it here; a fixed height made the cells rectangles as soon as
-      // they grew past the old 15-pixel cap.
-      child: AspectRatio(
-        aspectRatio: 1,
+      // FIXED square, from the shared cell constant. NOT an AspectRatio: sizing
+      // off the measure is exactly what made cells grow to ~45px on a wide card
+      // and the grid become 315px of screen. Sized from a constant, the row lays
+      // them out with `spaceBetween` and the grid spans the card anyway.
+      child: SizedBox.square(
+        dimension: size,
         child: Container(
           // A key per day, because a Tooltip's message is not a usable handle:
           // it differs for a day with no spending, so counting by message counts
