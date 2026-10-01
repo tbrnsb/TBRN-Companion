@@ -663,7 +663,7 @@ void main() {
       // The sections the drawer is actually for. If the route stopped building
       // them this test fails instead of a user finding an empty screen.
       expect(find.text('Currency'), findsOneWidget);
-      expect(find.text('Theme'), findsOneWidget);
+      expect(find.text('Themes'), findsOneWidget);
     });
 
     testWidgets('a very long tab title does not squeeze the gear out', (
