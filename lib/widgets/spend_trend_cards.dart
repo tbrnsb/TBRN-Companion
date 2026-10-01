@@ -185,8 +185,21 @@ class DailyTotalsChart extends StatelessWidget {
       // weight as every other.
       width: highlighted ? 10 : 7,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+      // A highlighted bar is nudged toward the ink so it reads as "the one you
+      // picked" against its own neighbours.
+      //
+      // NUDGED BY HOW MUCH IT NEEDS, not by a fixed 0.35. That constant was a
+      // different problem from the pager dots': this is not an alpha over a
+      // surface but a whole different colour, so a percentage either moved the
+      // bar too far toward the ink or not far enough, depending on the category's
+      // own luminance. Measured against the card it is drawn on, and moved the
+      // minimum amount that clears 3:1.
       color: highlighted
-          ? Color.lerp(color, Theme.of(context).colorScheme.onSurface, 0.35)
+          ? _nudgeTowardInk(
+              color,
+              Theme.of(context).colorScheme.onSurface,
+              Theme.of(context).colorScheme.surface,
+            )
           : color,
       // The value is on the card as text, so repeating it on every bar is
       // noise. Kept for the caller's benefit via the tooltip-free design.
@@ -592,3 +605,32 @@ class _Key extends StatelessWidget {
     );
   }
 }
+
+/// [colour] moved toward [ink] by the least amount that clears 3:1 on [surface].
+///
+/// Returns [colour] unchanged when it already clears, which is the common case.
+/// The direction is chosen by comparing luminance rather than by brightness,
+/// because a bar can be pale or dark on a pale or dark card and only one of the
+/// two directions helps.
+Color _nudgeTowardInk(Color colour, Color ink, Color surface) {
+  const floor = 3.0;
+  if (_ratio(colour, surface) >= floor) return colour;
+
+  final goLighter = _luminance(ink) > _luminance(colour);
+  var candidate = colour;
+  for (var i = 1; i <= 50; i++) {
+    candidate = Color.lerp(candidate, ink, 0.04)!;
+    if (_ratio(candidate, surface) >= floor) return candidate;
+  }
+  return goLighter ? ink : colour;
+}
+
+double _ratio(Color a, Color b) {
+  final la = _luminance(a);
+  final lb = _luminance(b);
+  final lighter = la > lb ? la : lb;
+  final darker = la > lb ? lb : la;
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+double _luminance(Color c) => c.computeLuminance();
