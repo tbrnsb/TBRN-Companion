@@ -54,25 +54,45 @@ Future<void> main() async {
     final index = provider.spendIndex(anchor: month);
     final others = _othersSpendIn(all, journeys, month);
 
+    // THREE figures, because they answer three different questions and conflating
+    // them is how a filter bug hides.
+    //
+    // - `raw` is every expense in storage for the month, other participants
+    //   included. It is the DATA and item 1 must not change it.
+    // - `ledger` is spendIndex: the same data after the shared-trip rule. This is
+    //   what budgets have always read.
+    // - `view` is totalExpenses: what the summary card reads. Item 1 makes this
+    //   equal `ledger`.
+    //
+    // raw - others == ledger is the invariant. view == ledger is item 1.
+    final raw = <String, double>{};
+    for (final t in all.whereType<Expense>()) {
+      if (t.date.year != month.year || t.date.month != month.month) continue;
+      raw[t.category.name] = (raw[t.category.name] ?? 0) + t.amount;
+    }
+    final rawTotal = raw.values.fold<double>(0, (a, b) => a + b);
+    final viewTotal = await provider.viewTotalForMonth(month);
+
     buffer
       ..writeln('')
       ..writeln('--- $key ---')
-      ..writeln('total spend: ${index.total.toStringAsFixed(2)}')
-      ..writeln('per category:');
+      ..writeln('raw storage total: ${rawTotal.toStringAsFixed(2)}')
+      ..writeln("others' trip spend: ${others.toStringAsFixed(2)}")
+      ..writeln(
+        'raw - others (must equal the ledger total): '
+        '${(rawTotal - others).toStringAsFixed(2)}',
+      )
+      ..writeln(
+        'ledger total (spendIndex, budgets): ${index.total.toStringAsFixed(2)}',
+      )
+      ..writeln('view total (summary card): ${viewTotal.toStringAsFixed(2)}')
+      ..writeln('SPLIT-BRAIN: ${(viewTotal - index.total).toStringAsFixed(2)}')
+      ..writeln('per category (ledger):');
     for (final category in ExpenseCategory.values) {
       final amount = index.forCategory(category);
       if (amount == 0) continue;
       buffer.writeln('  ${category.name}: ${amount.toStringAsFixed(2)}');
     }
-    buffer
-      ..writeln(
-        "other participants' trip spend, which must vanish in item 1: "
-        '${others.toStringAsFixed(2)}',
-      )
-      ..writeln(
-        'expected total after item 1: '
-        '${(index.total - others).toStringAsFixed(2)}',
-      );
   }
 
   // ignore: avoid_print
@@ -100,4 +120,22 @@ double _othersSpendIn(
     total += t.amount;
   }
   return total;
+}
+
+/// A measurement seam for this script and its assertions.
+///
+/// It navigates the provider and reads `totalExpenses` — the same path the month
+/// card takes — so comparing it against `spendIndex` is a real comparison rather
+/// than one number reached twice.
+///
+/// It LIVES HERE, in the test, rather than in the provider: it mutates the loaded
+/// month, and a library should not ship a method whose only purpose is to break a
+/// provider's state for a reporting script. The permanent guard against the
+/// split-brain is the provider test in `ledger_filter_test.dart` that asserts
+/// `totalExpenses == spendIndex().total` directly.
+extension ViewTotalForMonth on TransactionProvider {
+  Future<double> viewTotalForMonth(DateTime month) async {
+    await loadTransactionsForMonth(month.year, month.month);
+    return totalExpenses;
+  }
 }

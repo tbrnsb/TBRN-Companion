@@ -475,6 +475,51 @@ void main() {
       expect(find.text('spent · 3 people'), findsOneWidget);
     });
 
+    testWidgets('still shows 100% even though the ledger hides the others', (
+      tester,
+    ) async {
+      // THE ONE THING THAT MUST NOT MOVE. Another participant's trip expense is
+      // excluded from my Transactions tab, my month total, my charts and my
+      // budgets -- and this screen must keep showing all of it, because the money
+      // really was spent on the trip and it is what the settlement divides.
+      //
+      // The expected figure is computed from STORAGE rather than written down, so
+      // this fails if the summary starts filtering, and it cannot pass by agreeing
+      // with a constant that happens to match today.
+      usePhoneLayout(tester, _tallPhone);
+
+      await tester.runAsync(() async {
+        await StorageService().clear();
+        await _seedWorkingTrip(localParticipantId: 'you');
+      });
+      final p = await _providers(tester);
+
+      // Hive reads go through runAsync: the widget body is a fake-async zone where
+      // real filesystem work never completes.
+      final myView = (await tester.runAsync(() async {
+        final provider = TransactionProvider();
+        await provider.initialize();
+        return provider.myLedger
+            .where((t) => t.journeyId == 'trip-1')
+            .fold<double>(0, (sum, t) => sum + t.amount);
+      }))!;
+      final wholeTrip = (await tester.runAsync(() async {
+        final all = await StorageService().getTransactionsByJourney('trip-1');
+        return all.fold<double>(0, (sum, t) => sum + t.amount);
+      }))!;
+
+      // Strictly less. The ledger really is hiding something, so the assertion has
+      // teeth rather than comparing two numbers that happen to match.
+      expect(wholeTrip, greaterThan(myView));
+
+      await open(tester, p);
+      expect(
+        find.text('Rs. ${_groupThousands(wholeTrip)}'),
+        findsOneWidget,
+        reason: 'the trip summary must show the whole trip, not my slice of it',
+      );
+    });
+
     testWidgets('two transfers, and both are readable', (tester) async {
       usePhoneLayout(tester, _tallPhone);
 
@@ -1359,4 +1404,15 @@ void main() {
       expect(find.byKey(const ValueKey('paid-by-you')), findsOneWidget);
     });
   });
+}
+
+/// Groups [value] with thousands separators the way the app displays money.
+String _groupThousands(double value) {
+  final digits = value.toStringAsFixed(0);
+  final buffer = StringBuffer();
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) buffer.write(',');
+    buffer.write(digits[i]);
+  }
+  return buffer.toString();
 }
