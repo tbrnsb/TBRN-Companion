@@ -10,6 +10,7 @@ import 'package:flutter_application_1/providers/location_provider.dart';
 import 'package:flutter_application_1/providers/settings_provider.dart';
 import 'package:flutter_application_1/providers/transaction_provider.dart';
 import 'package:flutter_application_1/screens/settings_screen.dart';
+import 'package:flutter_application_1/theme/app_palettes.dart';
 import 'package:flutter_application_1/services/storage_service.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 
@@ -76,6 +77,129 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     await StorageService().clear();
+  });
+
+  group('the themes picker is family then variant', () {
+    testWidgets('every family is listed, with its own description', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      await tester.pumpWidget(_app());
+      await settleUi(tester);
+
+      for (final family in AppPalette.values) {
+        final row = find.byKey(ValueKey('family-${family.name}'));
+        await scrollToAndTap(tester, row);
+        // The tagline comes from the palette's own identity, not from copy
+        // invented per screen, so the two cannot drift apart.
+        expect(find.text(family.description), findsWidgets);
+      }
+    });
+
+    testWidgets('Light is ABSENT for a dark-only family, not disabled', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      await tester.pumpWidget(_app());
+      await settleUi(tester);
+
+      // TBRN is selected by default, so it shows all three.
+      expect(find.byKey(const ValueKey('variant-tbrn-light')), findsOneWidget);
+
+      for (final family in AppPalette.values.where((p) => !p.supportsLight)) {
+        await scrollToAndTap(
+          tester,
+          find.byKey(ValueKey('family-${family.name}')),
+        );
+        expect(
+          find.byKey(ValueKey('variant-${family.name}-light')),
+          findsNothing,
+          reason:
+              '${family.name} has no Light, so it must not offer one — a '
+              'disabled option is a promise the app cannot keep',
+        );
+        expect(
+          find.byKey(ValueKey('variant-${family.name}-dark')),
+          findsOneWidget,
+        );
+      }
+    });
+
+    testWidgets("Catppuccin's variants are labelled Mocha and Latte", (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      await tester.pumpWidget(_app());
+      await settleUi(tester);
+
+      await scrollToAndTap(
+        tester,
+        find.byKey(const ValueKey('family-catppuccin')),
+      );
+      expect(find.text('Mocha'), findsOneWidget);
+      expect(find.text('Latte'), findsOneWidget);
+      // And NOT "Catppuccin dark", which is a name nobody recognises.
+      expect(find.text('Dark'), findsNothing);
+    });
+
+    testWidgets('choosing a family then a variant re-themes immediately', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      await tester.pumpWidget(_app());
+      await settleUi(tester);
+
+      await scrollToAndTap(
+        tester,
+        find.byKey(const ValueKey('family-catppuccin')),
+      );
+      await scrollToAndTap(
+        tester,
+        find.byKey(const ValueKey('variant-catppuccin-light')),
+      );
+
+      // Asserted on the SELECTED CHIP, which is the observable consequence of the
+      // tap reaching the provider: the choice stuck. This harness builds a fixed
+      // AppTheme.light() app, so the provider's theme does not paint here — a
+      // limitation of the harness, not the app, and why the assertion is on state
+      // rather than on pixels. The real theme resolution is covered in
+      // palette_migration_test.dart and palettes_test.dart.
+      final latte = tester.widget<ChoiceChip>(
+        find.byKey(const ValueKey('variant-catppuccin-light')),
+      );
+      expect(latte.selected, isTrue);
+      final mocha = tester.widget<ChoiceChip>(
+        find.byKey(const ValueKey('variant-catppuccin-dark')),
+      );
+      expect(mocha.selected, isFalse);
+    });
+
+    testWidgets('there is no "Colours" group any more', (tester) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      await tester.pumpWidget(_app());
+      await settleUi(tester);
+
+      expect(find.text('Themes'), findsOneWidget);
+      // The old second group. Its name is gone, not renamed somewhere else.
+      expect(find.text('Colours'), findsNothing);
+    });
+
+    testWidgets('every control the old screen had still exists', (
+      tester,
+    ) async {
+      // A restructure, not a feature change. Nothing may be lost.
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      await tester.pumpWidget(_app());
+      await settleUi(tester);
+
+      for (final label in ['TBRN', 'Catppuccin', 'Solitude', 'Gruvbox']) {
+        await scrollTo(tester, find.text(label));
+      }
+      // Currency still has all three, and the data and demo sections survive.
+      for (final label in ['Rs.', 'Add demo data']) {
+        await scrollTo(tester, find.text(label));
+      }
+    });
   });
 
   group('the demo buttons fit their labels', () {

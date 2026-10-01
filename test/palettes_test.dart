@@ -66,26 +66,82 @@ void main() {
       }
     });
 
-    test('only TBRN and Catppuccin have a light mode', () {
-      expect(AppPalette.tbrn.supportsLight, isTrue);
-      expect(AppPalette.catppuccin.supportsLight, isTrue);
-      expect(AppPalette.kanagawa.supportsLight, isFalse);
-      expect(AppPalette.solitude.supportsLight, isFalse);
-      expect(AppPalette.gruvbox.supportsLight, isFalse);
-    });
-
-    test('a dark-only palette asked for light falls back to dark', () {
-      // Reachable only from a stored preference the Settings screen does not
-      // offer. A coherent dark screen beats a cream one in Kanagawa colours.
-      expect(
-        AppTheme.lightFor(AppPalette.kanagawa).colorScheme.brightness,
-        Brightness.dark,
-      );
-    });
-
-    test('TBRN is first, so the default index is TBRN', () {
+    test('there are exactly FOUR families, and TBRN is one of them', () {
+      // An exact count, because the whole reason this item exists is that a
+      // palette was removed and the removal has to be visible here rather than
+      // inferred. If a fifth family is added, this fails and says so.
+      expect(AppPalette.values, hasLength(4));
       expect(AppPalette.values.first, AppPalette.tbrn);
       expect(AppTheme.defaultPalette, AppPalette.tbrn);
+    });
+
+    test('only TBRN and Catppuccin offer Light, and the rest OMIT it', () {
+      expect(AppPalette.tbrn.supportsLight, isTrue);
+      expect(AppPalette.catppuccin.supportsLight, isTrue);
+      expect(AppPalette.solitude.supportsLight, isFalse);
+      expect(AppPalette.gruvbox.supportsLight, isFalse);
+
+      // Omitted, not disabled: `variants` is the single list of what exists, and
+      // a disabled Light is a promise the app cannot keep.
+      expect(AppPalette.solitude.variants, isNot(contains(ThemeVariant.light)));
+      expect(AppPalette.gruvbox.variants, isNot(contains(ThemeVariant.light)));
+      expect(AppPalette.tbrn.variants, contains(ThemeVariant.light));
+      expect(AppPalette.catppuccin.variants, contains(ThemeVariant.light));
+    });
+
+    test('every family offers System, so a user can always follow the OS', () {
+      for (final palette in AppPalette.values) {
+        expect(
+          palette.variants,
+          contains(ThemeVariant.system),
+          reason: '${palette.name} must offer System',
+        );
+        expect(
+          palette.variants,
+          contains(ThemeVariant.dark),
+          reason: '${palette.name} must offer Dark',
+        );
+      }
+    });
+
+    test("Catppuccin's variants are named Mocha and Latte", () {
+      // "Catppuccin dark" is a name nobody recognises. These two are.
+      expect(AppPalette.catppuccin.labelForVariant(ThemeVariant.dark), 'Mocha');
+      expect(
+        AppPalette.catppuccin.labelForVariant(ThemeVariant.light),
+        'Latte',
+      );
+      expect(AppPalette.tbrn.labelForVariant(ThemeVariant.dark), 'Dark');
+    });
+
+    test('a dark-only family asked for Light falls back to Dark', () {
+      // Reachable only from a stored preference the picker cannot produce. A
+      // coherent dark screen beats a cream one in Solitude colours.
+      for (final palette in [AppPalette.solitude, AppPalette.gruvbox]) {
+        expect(
+          AppPalettes.specFor(palette, ThemeVariant.light).palette,
+          palette,
+        );
+        expect(
+          AppTheme.forVariant(
+            palette,
+            ThemeVariant.light,
+          ).colorScheme.brightness,
+          Brightness.dark,
+        );
+      }
+    });
+
+    test('every family and variant resolves to a real theme', () {
+      for (final palette in AppPalette.values) {
+        for (final variant in palette.variants) {
+          expect(
+            AppTheme.forVariant(palette, variant),
+            isA<ThemeData>(),
+            reason: '${palette.name} / ${variant.name} has no theme',
+          );
+        }
+      }
     });
   });
 
@@ -178,11 +234,11 @@ void main() {
         AppSurfaceTier.raised,
         AppTheme.dark().colorScheme,
       ).color;
-      final kanagawa = AppSurfaces.specFor(
+      final gruvbox = AppSurfaces.specFor(
         AppSurfaceTier.raised,
-        AppTheme.darkFor(AppPalette.kanagawa).colorScheme,
+        AppTheme.darkFor(AppPalette.gruvbox).colorScheme,
       ).color;
-      expect(tbrn, isNot(kanagawa));
+      expect(tbrn, isNot(gruvbox));
     });
   });
 
