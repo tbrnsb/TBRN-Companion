@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:flutter_application_1/theme/app_chart_colors.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:flutter_application_1/utils/format.dart';
 import 'package:flutter_application_1/widgets/spend_trend_cards.dart'
@@ -229,12 +230,16 @@ class _Cell extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
 
     if (dayNumber == 0) {
+      // A cell OUTSIDE the month. Dead space, and deliberately a different colour
+      // from an empty day: a calendar with gaps in it is still a calendar, but a
+      // grid whose padding reads as a quiet week is a chart lying about its shape.
       return SizedBox(
         width: size,
         height: size,
         child: DecoratedBox(
+          key: ValueKey('heat-dead-cell'),
           decoration: BoxDecoration(
-            color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+            color: AppChartColors.heatmapDead(scheme),
             borderRadius: BorderRadius.circular(AppSpacing.xxs),
           ),
         ),
@@ -256,12 +261,10 @@ class _Cell extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          // Five steps rather than a continuous ramp: a continuous one produces
-          // eleven near-identical shades on a small cell, which reads as noise
-          // rather than as magnitude.
-          color: intensity <= 0
-              ? scheme.surfaceContainerHighest
-              : _shade(scheme.primary, intensity),
+          // The SPEND ramp from AppChartColors, and the empty-cell token for a
+          // day with nothing on it. Not a tint of `primary`: more spending
+          // ramping toward the primary reads as SELECTED rather than as cost.
+          color: AppChartColors.spendStep(scheme, intensity),
           borderRadius: BorderRadius.circular(AppSpacing.xxs),
           border: isHighlighted
               ? Border.all(color: scheme.tertiary, width: 2)
@@ -269,21 +272,6 @@ class _Cell extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  /// How strongly [primary] is laid down for a given intensity.
-  ///
-  /// Ramps within the primary rather than from `primaryContainer` to `primary`.
-  /// The container role is the same warm parchment as the light page — measured
-  /// at 1.27:1 against it — so a lightly-spent day was effectively invisible in
-  /// light mode. Alpha over the page gives a ramp whose faint end is still a
-  /// visible tint and whose heavy end is the full, 3:1-safe primary.
-  ///
-  /// Four steps, not a continuous ramp: on a 15-pixel cell eleven near-identical
-  /// shades read as noise rather than as magnitude.
-  static Color _shade(Color primary, double t) {
-    final step = (t * 4).ceil().clamp(1, 4) / 4;
-    return primary.withValues(alpha: 0.22 + step * 0.78);
   }
 }
 
@@ -314,9 +302,11 @@ class _Scale extends StatelessWidget {
               height: SpendingHeatmapShim.cell,
               decoration: BoxDecoration(
                 // Same ramp as the grid, or the legend lies about it.
+                // Same tokens as the grid, or the legend lies about it: the
+                // empty cell and the ramp steps both come from AppChartColors.
                 color: i == 0
-                    ? scheme.surfaceContainerHighest
-                    : scheme.primary.withValues(alpha: 0.22 + (i / 4) * 0.78),
+                    ? AppChartColors.heatmapEmpty(scheme)
+                    : AppChartColors.spendStep(scheme, i / 4),
                 borderRadius: BorderRadius.circular(AppSpacing.xxs),
               ),
             ),
