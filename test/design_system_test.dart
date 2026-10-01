@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutter_application_1/models/index.dart';
+import 'package:flutter_application_1/theme/app_chart_colors.dart';
+import 'package:flutter_application_1/theme/app_palettes.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:flutter_application_1/widgets/app_motion.dart';
 
@@ -21,23 +23,39 @@ void main() {
     // space or a future tweak has a little room before this fails.
     const minimumContrast = 3.0;
 
-    test('every category colour clears 3:1 on the light page', () {
+    // These measure the colour AS DRAWN, through AppCategoryColour, rather than
+    // the registry hex.
+    //
+    // That is the change stage 10 forced. Stage 0b tuned 28 fixed hexes to clear
+    // 3:1 on exactly two surfaces, and asserted against those two. Then stage 10
+    // added five surfaces per palette — and there is no set of 28 fixed hexes that
+    // clears 3:1 on six mid-tone surfaces while keeping every hue, because the
+    // 28 include several browns in the same narrow luminance band. So the registry
+    // hex is the category's IDENTITY and the drawn colour is resolved per surface.
+    //
+    // Asserted against TBRN's page, its RAISED card and its dark background —
+    // including `darkSurface`, which is the surface charts, legends and category
+    // chips actually draw on and which the old assertion missed.
+    test('every category colour clears 3:1 on every TBRN surface', () {
       final tooLow = <String>[];
-      for (final meta in _everyCategoryColour()) {
-        final ratio = _contrastRatio(meta.$2, AppColors.surfaceLow);
-        if (ratio < minimumContrast) {
-          tooLow.add('${meta.$1} ${ratio.toStringAsFixed(2)} on cream');
-        }
-      }
-      expect(tooLow, isEmpty, reason: tooLow.join('; '));
-    });
-
-    test('every category colour clears 3:1 on the dark background', () {
-      final tooLow = <String>[];
-      for (final meta in _everyCategoryColour()) {
-        final ratio = _contrastRatio(meta.$2, AppColors.darkBackground);
-        if (ratio < minimumContrast) {
-          tooLow.add('${meta.$1} ${ratio.toStringAsFixed(2)} on near-black');
+      for (final spec in [AppPalettes.tbrnLight, AppPalettes.tbrnDark]) {
+        for (final surface in {
+          'page': spec.background,
+          'raised': spec.surfaceLow,
+          'flat': spec.surfaceHigh,
+        }.entries) {
+          final metas = _everyCategoryColour().toList();
+          final drawn = AppCategoryColour.resolveAll([
+            for (final meta in metas) meta.$2,
+          ], surface.value);
+          for (var i = 0; i < metas.length; i++) {
+            final ratio = _contrastRatio(drawn[i], surface.value);
+            if (ratio < minimumContrast) {
+              tooLow.add(
+                '${metas[i].$1} ${ratio.toStringAsFixed(2)} on ${surface.key}',
+              );
+            }
+          }
         }
       }
       expect(tooLow, isEmpty, reason: tooLow.join('; '));
