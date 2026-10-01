@@ -1,4 +1,5 @@
 export 'app_gear.dart';
+export 'app_search.dart';
 export 'app_motion.dart';
 export 'app_stat_tile.dart';
 export 'chart_pager.dart';
