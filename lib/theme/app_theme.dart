@@ -357,7 +357,7 @@ class AppTheme {
       surfaceContainer: spec.surfaceMid,
       surfaceContainerHigh: spec.surfaceHigh,
       surfaceContainerHighest: spec.surfaceHighest,
-      onSurfaceVariant: isDark ? spec.outline : spec.secondary,
+      onSurfaceVariant: _secondaryTextFor(spec, isDark),
       outline: spec.outline,
       outlineVariant: spec.outlineSoft,
       shadow: const Color(0xFF000000),
@@ -375,6 +375,88 @@ class AppTheme {
   /// own backgrounds, so each is mixed toward its own text colour until it
   /// clears the threshold — computed rather than hand-picked so a palette edit
   /// cannot silently take the app back under 3:1.
+  /// The sub-text colour, with a MEASURED floor.
+  ///
+  /// It used to be `isDark ? spec.outline : spec.secondary`, and both halves were
+  /// wrong for body copy:
+  ///
+  /// - `spec.outline` is documented in `app_palettes.dart` as "a visible edge for
+  ///   a raised card" — a BORDER token, chosen to be quiet. Measured, it put every
+  ///   piece of sub-text in the app at **1.78 to 2.68:1** on a dark palette, which
+  ///   is under even the 3:1 that non-text gets, let alone the 4.5 body copy
+  ///   needs. That is why the chip labels, the "Search this month" hint, the
+  ///   chart captions and every stat-tile sub-label looked nearly invisible —
+  ///   across EVERY dark theme, because they all read this one token.
+  /// - `spec.secondary` is a saturated accent being asked to do muted body text.
+  ///   Catppuccin Latte measured 3.08–3.47:1 on it, so the light half failed too,
+  ///   for a different reason: a chromatic accent at body-copy size is a
+  ///   legibility problem a darker grey solves and a lighter grey does not.
+  ///
+  /// So it is COMPUTED, the same way [_paleFor] computes the primary: measure, and
+  /// mix toward the palette's own ink until the ratio clears. A palette edit can
+  /// then no longer silently put sub-text back under the floor, which is exactly
+  /// how the outline token got here.
+  ///
+  /// **4.5:1, not 3:1.** This is body copy -- a caption, a hint, a label -- not an
+  /// icon or a border. WCAG's 3:1 is the floor for non-text and for large text;
+  /// anything under 18pt regular is body copy and gets 4.5. Choosing 3 here would
+  /// have kept the bug and renamed it.
+  ///
+  /// Mixed toward [AppPaletteSpec.onSurface] in BOTH brightnesses, which is the
+  /// light-mode answer too: an accent cannot become body text by being lightened,
+  /// it has to move toward the ink the text is read against.
+  static const double secondaryTextFloor = 4.5;
+
+  static Color _secondaryTextFor(AppPaletteSpec spec, bool isDark) {
+    final source = isDark ? spec.outline : spec.secondary;
+    if (_clearsEverywhere(source, spec, isDark)) return source;
+
+    final ink = spec.onSurface;
+    var candidate = source;
+    for (var i = 1; i <= 60; i++) {
+      candidate = Color.lerp(candidate, ink, 0.04)!;
+      if (_clearsEverywhere(candidate, spec, isDark)) return candidate;
+    }
+    // Unreachable in practice: `onSurface` is the ink the rest of the text is
+    // painted with, so it clears by construction. Falling back to it rather than
+    // returning something that still fails means a caller cannot tell "adjusted"
+    // from "gave up" and would draw the original.
+    return ink;
+  }
+
+  /// Whether [colour] clears the floor against every surface sub-text lands on.
+  ///
+  /// All of them, not just the page. Sub-text is drawn on a card, inside a list
+  /// row and on a chip, and the WORST of those is what a user reads it against --
+  /// Gruvbox's containerHigh measured 1.78 where its surface measured 2.41.
+  static bool _clearsEverywhere(
+    Color colour,
+    AppPaletteSpec spec,
+    bool isDark,
+  ) {
+    final surfaces = <Color>[
+      spec.background,
+      spec.surfaceLow,
+      spec.surfaceLowest,
+      spec.surfaceMid,
+      spec.surfaceHigh,
+      spec.surfaceHighest,
+      // The accent card, which carries the balance figure's sub-label.
+      spec.container,
+    ];
+    return surfaces.every(
+      (surface) => _contrastRatio(colour, surface) >= secondaryTextFloor,
+    );
+  }
+
+  static double _contrastRatio(Color a, Color b) {
+    final la = _relativeLuminance(a);
+    final lb = _relativeLuminance(b);
+    final lighter = la > lb ? la : lb;
+    final darker = la > lb ? lb : la;
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
   static Color _paleFor(AppPaletteSpec spec) {
     final background = spec.background;
     if (_relativeLuminance(spec.primary) / _relativeLuminance(background) >=
