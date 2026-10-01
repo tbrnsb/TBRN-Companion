@@ -610,15 +610,15 @@ class _DayPickerSheetState extends State<_DayPickerSheet> {
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-            child: CalendarDatePicker(
-              // Month-scoped, because the picker keeps its own selected date
-              // internally: navigate to an earlier month and that stale date is
-              // now AFTER this month's `lastDate`, which trips an assertion in
-              // the framework. A fresh key per month is what makes it re-read
-              // its `initialDate` instead of defending a day that is gone.
-              key: ValueKey(
-                'day-picker-calendar-${_month.year}-${_month.month}',
-              ),
+                child: CalendarDatePicker(
+                  // Month-scoped, because the picker keeps its own selected date
+                  // internally: navigate to an earlier month and that stale date is
+                  // now AFTER this month's `lastDate`, which trips an assertion in
+                  // the framework. A fresh key per month is what makes it re-read
+                  // its `initialDate` instead of defending a day that is gone.
+                  key: ValueKey(
+                    'day-picker-calendar-${_month.year}-${_month.month}',
+                  ),
                   initialDate: initial,
                   firstDate: firstOfMonth,
                   lastDate: DateTime(_month.year, _month.month, lastSelectable),
