@@ -53,14 +53,20 @@ class LocationsScreen extends StatelessWidget {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          HapticFeedback.heavyImpact();
-          _showLocationDialog(context, null);
-        },
-        icon: const Icon(Icons.add_location_alt_rounded),
-        label: const Text('Add Location'),
-      ),
+      // RULE (a), the same decision as the other tabs: hidden while the list is
+      // empty, back as soon as there is a row. See transactions_screen.dart for
+      // why it is one rule rather than a per-call-site patch.
+      floatingActionButton:
+          context.select<LocationProvider, bool>((p) => p.locations.isEmpty)
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () {
+                HapticFeedback.heavyImpact();
+                _showLocationDialog(context, null);
+              },
+              icon: const Icon(Icons.add_location_alt_rounded),
+              label: const Text('Add Location'),
+            ),
     );
   }
 
