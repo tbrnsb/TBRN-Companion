@@ -7,12 +7,16 @@ Append-only. A fresh window resumes from the last line that says MERGED.
 ```
 PHASE B ITEM STATUS
 [x] 1.  Shared-trip ledger filter   fix/shared-trip-ledger-filter   MERGED 36df86f
-[ ] T1. Theme families + settings  fix/theme-families-and-settings
-[ ] T2. Secondary text contrast    fix/secondary-text-contrast
-[ ] 2.  Demo data dates            fix/demo-data-dates
-[ ] 3.  Duplicate add buttons      fix/duplicate-add-buttons
-[ ] 4.  Jump-to-day no-ops         fix/jump-day-noops
-[ ] 5.  Heatmap month shape        fix/heatmap-month-shape
+[x] T1. Theme families + settings  fix/theme-families-and-settings MERGED 2de8620
+[x] T2. Secondary text contrast    fix/secondary-text-contrast     MERGED a818595
+[x] 2.  Demo data dates            fix/demo-data-dates             MERGED b8387f8
+[x] 3.  Duplicate add buttons      fix/duplicate-add-buttons       MERGED a645bf9
+[x] 4.  Jump-to-day no-ops         fix/jump-day-noops             MERGED 6725875
+[x] 5.  Heatmap month shape        fix/heatmap-month-shape        MERGED 9db50a7
+[ ] N1. Heatmap cell size + shape  fix/heatmap-cell-size
+[ ] N2. Budget period limits       fix/budget-period-limits
+[ ] N3. Month navigation           fix/month-navigation
+[ ] N4. Search youtube view        fix/search-youtube-view
 [ ] 6.  Chart pager blank page     fix/chart-pager-blank-page
 [ ] 7.  Chart design system        fix/chart-design-system
 [ ] 8.  Date picker bounds         fix/date-picker-bounds
