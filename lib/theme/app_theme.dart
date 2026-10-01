@@ -114,7 +114,7 @@ class AppSurfaces {
   /// Every fill comes out of the ACTIVE scheme's container roles rather than out
   /// of a named TBRN constant, which is what lets one tier work in every
   /// palette. Naming `AppColors.darkSurface` here is why the raised card stayed
-  /// TBRN-brown on Kanagawa's ink: the tier was pinned to one palette's step.
+  /// TBRN-brown on Gruvbox's ink: the tier was pinned to one palette's step.
   ///
   /// The mapping, stated once, and it is BRIGHTNESS-AWARE:
   ///
@@ -247,7 +247,7 @@ class AppTheme {
   /// rather than inventing a light version. The Settings screen does not offer
   /// the combination in the first place — see [AppPaletteX.supportsLight] — so
   /// reaching this means a stored preference from a future palette, and a
-  /// coherent dark screen is the better failure than a cream one in Kanagawa
+  /// coherent dark screen is the better failure than a cream one in Gruvbox
   /// colours.
   static ThemeData lightFor(AppPalette palette) {
     if (AppPalettes.lightFor(palette) != null) {
@@ -259,6 +259,41 @@ class AppTheme {
   /// The dark theme for [palette]. Every palette has one.
   static ThemeData darkFor(AppPalette palette) =>
       _for(palette, Brightness.dark);
+
+  /// The theme for a FAMILY and a VARIANT.
+  ///
+  /// The shape the Settings picker speaks, and the one place the two-level
+  /// choice is resolved. [ThemeVariant.system] is NOT handled here — it needs the
+  /// platform brightness, which is `forSystem`'s job.
+  static ThemeData forVariant(AppPalette palette, ThemeVariant variant) {
+    final spec = AppPalettes.specFor(palette, variant);
+    // Brightness comes from the RESOLVED SPEC, not from the requested variant.
+    // A dark-only family asked for Light resolves to its dark spec, and building
+    // that spec with Brightness.light would hand Material a dark ladder in a
+    // light scheme — every card one step darker than the page, which is a hole
+    // rather than a raised surface.
+    final brightness = spec == AppPalettes.lightFor(palette)
+        ? Brightness.light
+        : Brightness.dark;
+    return _base(
+      _schemeFor(spec, brightness),
+      scaffold: spec.background,
+      palette: palette,
+    );
+  }
+
+  /// The theme for a FAMILY and a VARIANT — the shape the Settings picker uses.
+  ///
+  /// [ThemeVariant.system] resolves against the platform brightness, which is the
+  /// one place `dart:ui`'s `PlatformDispatcher` is needed. Everything else is
+  /// [forVariant] with a fixed brightness.
+  static ThemeData forSystem(AppPalette palette) => forVariant(
+    palette,
+    WidgetsBinding.instance.platformDispatcher.platformBrightness ==
+            Brightness.dark
+        ? ThemeVariant.dark
+        : ThemeVariant.light,
+  );
 
   /// Builds the theme for a palette and a brightness.
   ///
@@ -335,7 +370,7 @@ class AppTheme {
   /// The dark-mode primary: the palette's own primary, lifted if it is too dark
   /// to read on a near-black page.
   ///
-  /// Kanagawa's and Catppuccin's primaries are already pale and are used as they
+  /// Gruvbox's and Catppuccin's primaries are already pale and are used as they
   /// are. Gruvbox's amber and Solitude's grey both sit below 3:1 against their
   /// own backgrounds, so each is mixed toward its own text colour until it
   /// clears the threshold — computed rather than hand-picked so a palette edit
@@ -458,7 +493,7 @@ class AppTheme {
           side: BorderSide(color: scheme.outlineVariant),
         ),
         // One step above the page, from the scheme rather than a named TBRN
-        // tone. A literal here is why a Card stayed cream on Kanagawa's ink.
+        // tone. A literal here is why a Card stayed cream on Gruvbox's ink.
         color: isDark
             ? scheme.surfaceContainerLow
             : scheme.surfaceContainerLowest,

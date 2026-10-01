@@ -2,42 +2,82 @@ import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
 
-/// Which palette the app is wearing.
+/// A major COLOUR SCHEME: the first thing a user picks.
 ///
-/// [tbrn] stays first and stays the default. A user's stored index into this list
-/// must keep meaning the same thing, so values are only ever appended.
-enum AppPalette { tbrn, kanagawa, solitude, gruvbox, catppuccin }
+/// Four families. A family is not a brightness — Catppuccin's dark is Mocha and
+/// its light is Latte, and both are "Catppuccin". Choosing a family and then a
+/// [ThemeVariant] is how the Settings screen is organised, because that is how
+/// people think about a colour scheme: "I want the warm one" and then "in the
+/// dark".
+///
+/// ORDER IS NOT LOAD-BEARING. The palette is persisted BY NAME. An earlier
+/// build persisted an enum INDEX, and deleting a value silently re-themed saved
+/// users: Solitude at index 2 read back as Gruvbox. Do not reintroduce an index.
+/// Append values; never reorder or remove one without a migration.
+enum AppPalette { tbrn, catppuccin, solitude, gruvbox }
+
+/// A brightness within a family.
+///
+/// [system] is a VARIANT, not a separate global mode. That sounds like a
+/// distinction without one, and it matters: it is what lets "TBRN" be one row in
+/// the picker with three variants under it, instead of a palette group and an
+/// unrelated mode group the user has to reconcile.
+enum ThemeVariant { system, light, dark }
 
 extension AppPaletteX on AppPalette {
   String get label => switch (this) {
     AppPalette.tbrn => 'TBRN',
-    AppPalette.kanagawa => 'Kanagawa',
+    AppPalette.catppuccin => 'Catppuccin',
     AppPalette.solitude => 'Solitude',
     AppPalette.gruvbox => 'Gruvbox',
-    AppPalette.catppuccin => 'Catppuccin',
   };
 
+  /// The one line under the family name. Reused from the palette's own identity,
+  /// not invented per screen, so the two cannot disagree.
   String get description => switch (this) {
     AppPalette.tbrn => 'Cream and carafe',
-    AppPalette.kanagawa => 'Ink, indigo and gold',
+    AppPalette.catppuccin => 'Pastel, blue and mint',
     AppPalette.solitude => 'Cold grey, almost black',
     AppPalette.gruvbox => 'Warm earth and amber',
-    AppPalette.catppuccin => 'Pastel, blue and mint',
   };
 
-  /// Whether this palette has a light mode at all.
+  /// The variants this family actually offers, in the order they are shown.
   ///
-  /// Kanagawa, Solitude and Gruvbox are DARK ONLY, and saying so is not a detail
-  /// — asking a user to choose "Solitude + light" when no such thing exists
-  /// produces a screen that is neither palette nor the app they know.
-  bool get supportsLight => switch (this) {
-    AppPalette.tbrn => true,
-    AppPalette.catppuccin => true,
-    AppPalette.kanagawa || AppPalette.solitude || AppPalette.gruvbox => false,
+  /// Light is OMITTED for a dark-only family rather than rendered disabled.
+  /// A disabled "Light" is a promise the app cannot keep, and tapping it and
+  /// being snapped back to dark is worse than never offering it.
+  List<ThemeVariant> get variants => switch (this) {
+    AppPalette.tbrn || AppPalette.catppuccin => const [
+      ThemeVariant.system,
+      ThemeVariant.light,
+      ThemeVariant.dark,
+    ],
+    AppPalette.solitude ||
+    AppPalette.gruvbox => const [ThemeVariant.system, ThemeVariant.dark],
   };
 
-  /// The brightness actually used for a dark theme request.
-  Brightness get darkBrightness => Brightness.dark;
+  bool get supportsLight => variants.contains(ThemeVariant.light);
+
+  /// The label for one variant of this family.
+  ///
+  /// Catppuccin's two are named Mocha and Latte because "Catppuccin dark" is not
+  /// something anybody recognises — those are the names the palette has. Every
+  /// other family uses the plain brightness names.
+  String labelForVariant(ThemeVariant variant) => switch (this) {
+    AppPalette.catppuccin => switch (variant) {
+      ThemeVariant.system => 'System',
+      ThemeVariant.light => 'Latte',
+      ThemeVariant.dark => 'Mocha',
+    },
+    _ => switch (variant) {
+      ThemeVariant.system => 'System',
+      ThemeVariant.light => 'Light',
+      ThemeVariant.dark => 'Dark',
+    },
+  };
+
+  /// Whether [variant] is one this family offers.
+  bool hasVariant(ThemeVariant variant) => variants.contains(variant);
 }
 
 /// The tokens a theme needs beyond the ladder.
@@ -166,29 +206,6 @@ class AppPalettes {
     warning: Color(0xFFD9A05B),
   );
 
-  static const AppPaletteSpec kanagawaDark = AppPaletteSpec(
-    palette: AppPalette.kanagawa,
-    background: Color(0xFF1F1F28),
-    container: Color(0xFF223249),
-    outline: Color(0xFF54546D),
-    primary: Color(0xFFC0A36E),
-    secondary: Color(0xFF6A9589),
-    onSurface: Color(0xFFDCD7BA),
-    // Dark themes need the ladder ordered DARKEST first, so `surfaceLowest` sits
-    // deepest and the steps rise away from the page. Inverting this is what makes
-    // a dark card look like a hole rather than a raised surface.
-    surfaceLowest: Color(0xFF111116),
-    surfaceLow: Color(0xFF17171E),
-    surfaceMid: Color(0xFF1F1F28),
-    surfaceHigh: Color(0xFF2A3550),
-    surfaceHighest: Color(0xFF364460),
-    surfaceRecessed: Color(0xFF14141B),
-    outlineSoft: Color(0xFF3A3A4F),
-    error: Color(0xFFE82424),
-    success: Color(0xFF98BB6C),
-    warning: Color(0xFFE6C384),
-  );
-
   static const AppPaletteSpec solitudeDark = AppPaletteSpec(
     palette: AppPalette.solitude,
     background: Color(0xFF101315),
@@ -274,15 +291,28 @@ class AppPalettes {
   static AppPaletteSpec? lightFor(AppPalette palette) => switch (palette) {
     AppPalette.tbrn => tbrnLight,
     AppPalette.catppuccin => catppuccinLatte,
-    AppPalette.kanagawa || AppPalette.solitude || AppPalette.gruvbox => null,
+    AppPalette.solitude || AppPalette.gruvbox => null,
   };
 
   /// The dark spec for [palette]. Every palette has one.
   static AppPaletteSpec darkFor(AppPalette palette) => switch (palette) {
     AppPalette.tbrn => tbrnDark,
-    AppPalette.kanagawa => kanagawaDark,
     AppPalette.solitude => solitudeDark,
     AppPalette.gruvbox => gruvboxDark,
     AppPalette.catppuccin => catppuccinMocha,
   };
+
+  /// The spec a family + variant resolves to.
+  ///
+  /// [variant] is a VARIANT, so [ThemeVariant.light] on a dark-only family
+  /// resolves to that family's dark spec rather than to something invented. The
+  /// Settings screen does not offer the combination — `AppPaletteX.variants` is
+  /// the single list of what exists — so reaching it means a stored preference
+  /// the picker cannot produce, and a coherent dark screen is the better failure.
+  static AppPaletteSpec specFor(AppPalette palette, ThemeVariant variant) {
+    if (variant == ThemeVariant.light) {
+      return lightFor(palette) ?? darkFor(palette);
+    }
+    return darkFor(palette);
+  }
 }
