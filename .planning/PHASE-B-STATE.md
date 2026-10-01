@@ -487,3 +487,101 @@ raw uuid is worse than a row showing no payer.
 and `{calendar}{settings}` elsewhere. The calendar does not exist until item 9,
 and inserting a button that opens nothing would be worse than leaving it out, so
 the order is asserted there — once there is a calendar to assert it against.
+
+=====================================================================
+ITEMS 6 AND 9 — FIXED FROM A LIVE DEVICE, NOT A THEORY
+=====================================================================
+
+Branch `fix/chart-pager-blank-page`. Found by driving the installed build on a
+connected A001, not by reading code, and every claim below was reproduced with a
+screenshot before anything was changed.
+
+**THE TOOLCHAIN WAS BROKEN FIRST.** `flutter run` and `flutter test` both failed
+with `Disk quota exceeded` writing to `/tmp`. The cause was not the repo: `/tmp`
+is a 3.6G tmpfs being filled with 14MB `.so` temporaries (200+ of them), while
+the project disk had 189G free. Fixed by pointing both the Dart toolchain and the
+Gradle JVM at a real directory — the latter via `systemProp.java.io.tmpdir` in
+`android/gradle.properties`, because `compressDebugAssets` was the task dying and
+it is the JVM's temp dir, not TMPDIR, that it reads. **Anyone else building this
+on this machine was hitting the same wall and would have concluded the code was
+broken.**
+
+**ITEM 6 — THE HOLE UNDER THE CHARTS.** `chart_pager.dart` reserved a literal
+`_defaultHeight = 640` for all four pages. That number was correct when the
+heatmap filled the card's width. N1 shrank the heatmap to a 7x5 grid of 11px
+cells needing ~120px, so the reserve outlived its reason: the device showed every
+chart rendering in the top ~200px of a 640px box, with roughly 400px of nothing
+beneath it. The heatmap page was more hole than chart.
+
+The height is now MEASURED. Every page is laid out off-screen once at exactly the
+width the real pages get, and the tallest wins. One height for every page, so
+nothing below the dots moves while swiping — the existing "pages cannot jump"
+test still passes and is now asserting something real rather than a constant.
+
+Two things that had to be got right:
+  - The probe is REMOVED once it has a number. Leaving it put every chart in the
+    tree twice and broke "exactly one time-series chart is on screen" — a real
+    invariant that a permanent invisible twin would have turned into a lie.
+  - `Opacity(0)`, not `Offstage`, which skips layout and reports nothing.
+
+**ITEM 9 — THE CALENDAR IS GLOBAL, AND IT REACHES THE PAST.** Confirmed absent on
+device: transactions was `{search}{settings}` and the month grid was a card
+halfway down the Journey tab. That card answered a general question from the one
+screen that had nothing to do with it.
+
+  - `AppCalendarButton` beside Settings on all four tabs, same pattern and same
+    explicit-key discipline as `AppGearButton` (the calendar screen is full of
+    chevrons, so `find.byIcon` would match its own contents).
+  - `_TimelineCard` deleted. 164 lines.
+  - `CalendarScreen` navigates months inside `AppDateWindow`'s bounds and opens a
+    day by loading that month and narrowing the ledger to it.
+  - `peekTransactionsForMonth` added to the provider: a calendar must not yank the
+    ledger out from under the user by calling `loadTransactionsForMonth`, which
+    moves the month AND drops the selected day.
+
+**THE DAY PICKER COULD NOT REACH THE PAST.** `CalendarDatePicker` was hard-bounded
+to `firstDate`/`lastDate` of the month already on screen, so "jump to the 12th"
+was unanswerable when the 12th was in another month. The build before this drew
+chevrons in that sheet that did NOTHING — tapped, verified on device, no effect.
+The sheet is now its own StatefulWidget that pages months, bounded by the same
+`AppDateWindow`, with chevrons that DISABLE at a boundary.
+
+Two bugs found while fixing it, both mine, both caught by tests:
+  - `CalendarDatePicker` keeps its selected date internally, so navigating back a
+    month left a stale date AFTER the new `lastDate` and tripped a framework
+    assertion. It needs a MONTH-SCOPED key.
+  - The month chevrons' bounds were `!isBefore(floor)` / `!isAfter(ceiling)`,
+    which left them LIVE on the boundary month — the same dead-button bug, just
+    at the edges. Correctly `isAfter(floor)` / `isBefore(ceiling)`.
+
+**`DayActivitySheet` WAS LYING.** It showed "Nothing recorded on this day." for any
+day outside the loaded month — a confident statement about data it had never
+read. Harmless while it lived behind one screen; a lie the moment the calendar is
+global. It now distinguishes "empty" from "not looked at", and two tests assert
+each.
+
+**THE DOCK WAS PINNED TO ONE PALETTE.** `home_screen.dart` hardcoded
+`Color(0xFF100D0A)` dark / white light, so the foot of every screen was a black
+band belonging to no palette but one — wrong on Gruvbox, Catppuccin and Solitude.
+Now `colorScheme.surface`, with `AppSpacing` for its padding so it lines up with
+every other bar.
+
+**DEAD CODE REMOVED.** `TransactionSearchBar` and `ActiveSearchSummary` — the
+dedicated search view replaced both, nothing referenced either, and leaving them
+exported only invites the second search box that removal was for.
+
+**TESTS: 735 -> 747.** New `test/calendar_screen_test.dart` (12) covers: the
+button on all four tabs; the action ORDER read from real x positions rather than
+trusted from source; the calendar opening; the grid at 360dp with a clock-derived
+month name; the forward chevron dead on the current month; paging back relabelling
+correctly; the day picker reaching a previous month; the day picker walking to the
+shared floor and stopping with a dead chevron; and three pager tests that would
+all fail against the old constant. The two journey month tests MOVED to the
+calendar rather than being deleted — they still guard the 360dp overflow they were
+written for, at the same viewport.
+
+NOT VERIFIED: every appearance claim. The device was disconnected before a build
+containing these fixes could be installed, so nothing here has been SEEN running.
+Geometry and colour are asserted through the widget tree; that is not the same as
+looking at it, and the heatmap's visible grid in particular still deserves a human
+eye. A001 remains disconnected.

@@ -37,9 +37,14 @@ class DayActivitySheet extends StatelessWidget {
     final started = journeys.journeysStartingOn(day);
     final ended = journeys.journeysEndingOn(day);
 
-    // Only the loaded month is in memory, so a day in another month genuinely
-    // has no transactions to show. Saying so is better than showing an empty
-    // list that reads like "nothing happened".
+    // Only the month on screen is in memory. A day outside it has no
+    // transactions to show — but saying "nothing recorded" about a day whose
+    // month was simply never loaded is a lie, and it is the kind that looks
+    // exactly like the truth. It reads as "you spent nothing that day" when the
+    // app means "I have not looked".
+    //
+    // So it says which of the two it is. The honest message is less useful and
+    // much better than a confident wrong one.
     final monthLoaded =
         transactions.currentMonth?.year == day.year &&
         transactions.currentMonth?.month == day.month;
@@ -47,7 +52,8 @@ class DayActivitySheet extends StatelessWidget {
         ? transactions.getTransactionsInDateRange(day, day)
         : const <Transaction>[];
 
-    final nothing = started.isEmpty && ended.isEmpty && dayTransactions.isEmpty;
+    final noJourneys = started.isEmpty && ended.isEmpty;
+    final nothing = noJourneys && dayTransactions.isEmpty;
 
     return SafeArea(
       child: ConstrainedBox(
@@ -72,7 +78,10 @@ class DayActivitySheet extends StatelessWidget {
                   ? Padding(
                       padding: const EdgeInsets.all(AppSpacing.lg),
                       child: Text(
-                        'Nothing recorded on this day.',
+                        !monthLoaded && noJourneys
+                            ? 'No journeys on this day. Open the month in '
+                                  'Transactions to see what was spent.'
+                            : 'Nothing recorded on this day.',
                         style: textTheme.bodyMedium?.copyWith(
                           color: colorScheme.onSurfaceVariant,
                         ),

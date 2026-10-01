@@ -28,7 +28,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Smart Packing'),
-        actions: const [AppGearButton()],
+        actions: const [AppCalendarButton(), AppGearButton()],
       ),
       body: Consumer3<ChecklistProvider, LocationProvider, JourneyProvider>(
         builder:

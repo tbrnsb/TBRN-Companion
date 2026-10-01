@@ -37,7 +37,11 @@ class _JourneysScreenState extends State<JourneysScreen> {
   /// without retyping the rest, and a stray comma silently creating an empty
   /// entry. The list is the real shape of the data.
   final List<String> _plannedItems = [];
-  DateTime _timelineMonth = DateTime.now();
+
+  /// The month the shared log describes. Not editable here any more — the
+  /// calendar in the app bar owns month navigation now — so it is just "now",
+  /// stated once instead of at every use.
+  final DateTime _timelineMonth = DateTime.now();
   DateTime? _plannedStart;
 
   @override
@@ -67,6 +71,7 @@ class _JourneysScreenState extends State<JourneysScreen> {
                 onPressed: () => _shareJourneys(journeyProvider),
                 icon: const Icon(Icons.ios_share_rounded),
               ),
+              const AppCalendarButton(),
               const AppGearButton(),
             ],
           ),
@@ -102,23 +107,12 @@ class _JourneysScreenState extends State<JourneysScreen> {
                 const SizedBox(height: 24),
                 _SummaryRow(provider: journeyProvider),
                 const SizedBox(height: AppSpacing.lg),
-                _TimelineCard(
-                  month: _timelineMonth,
-                  journeys: journeyProvider.getJourneysForMonth(_timelineMonth),
-                  onPrevious: () => setState(() {
-                    _timelineMonth = DateTime(
-                      _timelineMonth.year,
-                      _timelineMonth.month - 1,
-                    );
-                  }),
-                  onNext: () => setState(() {
-                    _timelineMonth = DateTime(
-                      _timelineMonth.year,
-                      _timelineMonth.month + 1,
-                    );
-                  }),
-                ),
-                const SizedBox(height: 24),
+                // The month grid that used to live here is now the calendar in
+                // the app bar, on every tab. It answered a general question —
+                // "what was on the 12th?" — from the one screen that had
+                // nothing to do with it, and it duplicated day details the
+                // ledger already owns. Recent journeys below is the journey
+                // tab's actual job.
                 const SectionHeader('Recent journeys'),
                 const SizedBox(height: 12),
                 if (journeyProvider.journeys.isEmpty)
@@ -344,170 +338,6 @@ class _JourneysScreenState extends State<JourneysScreen> {
     ];
 
     await SharePlus.instance.share(ShareParams(text: lines.join('\n')));
-  }
-}
-
-class _TimelineCard extends StatelessWidget {
-  const _TimelineCard({
-    required this.month,
-    required this.journeys,
-    required this.onPrevious,
-    required this.onNext,
-  });
-
-  final DateTime month;
-  final List<Journey> journeys;
-  final VoidCallback onPrevious;
-  final VoidCallback onNext;
-
-  @override
-  Widget build(BuildContext context) {
-    final firstDay = DateTime(month.year, month.month, 1);
-    final lastDay = DateTime(month.year, month.month + 1, 0);
-    final leadingEmptyDays = firstDay.weekday % 7;
-    final totalCells = leadingEmptyDays + lastDay.day;
-    final rows = (totalCells / 7).ceil();
-    const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    final colorScheme = Theme.of(context).colorScheme;
-
-    final dayMap = <DateTime, int>{};
-    for (final journey in journeys) {
-      final key = DateTime(
-        journey.startTime.year,
-        journey.startTime.month,
-        journey.startTime.day,
-      );
-      dayMap[key] = (dayMap[key] ?? 0) + 1;
-    }
-
-    return AppSurface(
-      tier: AppSurfaceTier.raised,
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                IconButton(
-                  onPressed: onPrevious,
-                  icon: const Icon(Icons.chevron_left_rounded),
-                ),
-                // Flexible, because the row is two 48dp tap targets either side
-                // of this text. On a 360dp phone that left the label 29px wider
-                // than the space and the row overflowed. Fitted rather than
-                // ellipsised: a month name is short, and shrinking it a little
-                // beats showing "Septemb…".
-                Expanded(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      DateFormat.yMMMM().format(month),
-                      style: Theme.of(context).textTheme.titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ),
-                IconButton(
-                  onPressed: onNext,
-                  icon: const Icon(Icons.chevron_right_rounded),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: weekdays
-                  .map(
-                    (day) => Expanded(
-                      child: Center(
-                        child: Text(
-                          day,
-                          style: Theme.of(context).textTheme.labelSmall
-                              ?.copyWith(color: colorScheme.onSurfaceVariant),
-                        ),
-                      ),
-                    ),
-                  )
-                  .toList(),
-            ),
-            const SizedBox(height: 8),
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 7,
-                childAspectRatio: 1.15,
-                crossAxisSpacing: 6,
-                mainAxisSpacing: 6,
-              ),
-              itemCount: rows * 7,
-              itemBuilder: (context, index) {
-                final dayNumber = index - leadingEmptyDays + 1;
-                if (index < leadingEmptyDays || dayNumber > lastDay.day) {
-                  return const SizedBox.shrink();
-                }
-
-                final date = DateTime(month.year, month.month, dayNumber);
-                final count =
-                    dayMap[DateTime(date.year, date.month, date.day)] ?? 0;
-                final isToday = DateUtils.isSameDay(date, DateTime.now());
-
-                return Semantics(
-                  button: true,
-                  label: count > 0
-                      ? '$dayNumber, $count trip${count == 1 ? '' : 's'}. '
-                            'Tap to see what happened.'
-                      : '$dayNumber. Nothing recorded.',
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(10),
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      DayActivitySheet.show(context, date);
-                    },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: isToday
-                            ? colorScheme.primaryContainer
-                            : colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Text(
-                            '$dayNumber',
-                            style: TextStyle(
-                              fontWeight: isToday
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                              color: isToday
-                                  ? colorScheme.onPrimaryContainer
-                                  : null,
-                            ),
-                          ),
-                          if (count > 0)
-                            Positioned(
-                              bottom: 4,
-                              child: Container(
-                                width: 6,
-                                height: 6,
-                                decoration: BoxDecoration(
-                                  color: colorScheme.primary,
-                                  borderRadius: BorderRadius.circular(99),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 
