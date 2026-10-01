@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:flutter_application_1/models/index.dart';
+import 'package:flutter_application_1/services/csv_document.dart';
 import 'package:flutter_application_1/services/demo_data_service.dart';
 import 'package:flutter_application_1/services/storage_service.dart';
 
@@ -382,21 +382,88 @@ class TransactionProvider extends ChangeNotifier {
     }
   }
 
-  Future<String> exportCurrentMonthCsv() async {
+  /// The loaded month as CSV, in the format `CsvImporter` reads back.
+  ///
+  /// WRITTEN BY THE IMPORTER, NOT BY HAND. The header, the column order, the
+  /// quoting and the amount format are all [CsvDocument.header] and friends, so
+  /// export and import cannot disagree about the format — the round trip is the
+  /// thing that has to hold, and two hand-written versions of a CSV format
+  /// drift the first time somebody adds a column.
+  ///
+  /// TWO DATA-QUALITY RULES, applied here:
+  ///
+  /// - A trashed record is not exported. It is not in the user's ledger and the
+  ///   file is meant to be a copy of the ledger.
+  /// - Another participant's trip expense is NOT exported. It is not the user's
+  ///   spending — see `isMyLedgerEntry`. Exporting it would put a stranger's
+  ///   expense into a file the user then shares, and re-importing that file would
+  ///   bring it back as if it were theirs. The trip's own costs belong to the
+  ///   trip's own share file, which is `TripSnapshot` and not this.
+  String exportCurrentMonthCsv() {
+    final live = _transactions
+        .where((t) => !t.isDeleted)
+        .where(isMyLedgerEntryFor(_localParticipantFor))
+        .toList();
+
     final csvRows = <String>[
-      'date,description,amount,category,type',
-      ..._transactions.map(
-        (t) =>
-            '${DateFormat('yyyy-MM-dd').format(t.date)},${_escapeCsv(t.description)},${t.amount.toStringAsFixed(2)},${_escapeCsv(t.effectiveCategoryName)},${t.type}',
-      ),
+      CsvDocument.header,
+      for (final t in live) CsvDocument.encodeRow(t, currencySymbol: ''),
     ];
     return csvRows.join('\n');
   }
 
-  String _escapeCsv(String value) {
-    final escaped = value.replaceAll('"', '""');
-    return '"$escaped"';
+  /// Every live, my-ledger transaction on [month], for the CSV importer.
+  ///
+  /// Reads the month from storage rather than from [transactions], because an
+  /// import can carry records from any month and the duplicate check has to see
+  /// what is already on the device — not only what the user happens to be looking
+  /// at. Without that, importing a file twice while browsing October would add
+  /// the same September row a second time.
+  Future<List<Transaction>> existingLedgerForImport() async {
+    final all = await _storageService.getAllTransactions();
+    return all
+        .where((t) => !t.isDeleted)
+        .where(isMyLedgerEntryFor(_localParticipantFor))
+        .toList();
   }
+
+  /// Writes [items] in one pass, folding each into the loaded month.
+  ///
+  /// Add-only by construction: every item is a NEW record with its own id, so
+  /// nothing existing is overwritten. Returns the ids actually written, so the
+  /// caller can report a real count rather than the number it hoped to write.
+  ///
+  /// One pass rather than a loop over [addTransaction] because each call there
+  /// notifies listeners, and a 200-row import would rebuild the screen 200 times
+  /// — which on this provider means re-slicing the charts on every frame.
+  Future<List<String>> addTransactionsInBulk(List<Transaction> items) async {
+    if (items.isEmpty) return [];
+    final written = <String>[];
+    try {
+      for (final item in items) {
+        await _storageService.addTransaction(item);
+        written.add(item.id);
+        if (_isInLoadedMonth(item.date)) {
+          _transactions.add(item);
+        }
+        _allTransactions?.add(item);
+      }
+      notifyListeners();
+      return written;
+    } catch (e) {
+      _error = 'Failed to import transactions: $e';
+      notifyListeners();
+      return written;
+    }
+  }
+
+  /// Registers [name] as a custom expense category, if it is not one already.
+  ///
+  /// The importer's custom categories go through the SAME registry path the
+  /// "Other" screen uses, so a name imported from a file behaves exactly like one
+  /// typed by hand — offered as a suggestion, filed as `ExpenseCategory.other`
+  /// with a `customName`, never added as a new `ExpenseCategory` value.
+  Future<void> registerImportedCategory(String name) => addCustomCategory(name);
 
   Future<void> loadAllTransactions() async {
     _isLoading = true;
