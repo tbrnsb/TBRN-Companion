@@ -9,6 +9,7 @@ import 'package:flutter_application_1/screens/checklists/checklists_screen.dart'
 import 'package:flutter_application_1/screens/journeys/journeys_screen.dart';
 import 'package:flutter_application_1/screens/locations/locations_screen.dart';
 import 'package:flutter_application_1/screens/transactions/transactions_screen.dart';
+import 'package:flutter_application_1/theme/app_theme.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -52,11 +53,18 @@ class _HomeScreenState extends State<HomeScreen> {
         child: _buildBody(),
       ),
       bottomNavigationBar: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xs,
+        ),
         decoration: BoxDecoration(
-          color: Theme.of(context).brightness == Brightness.dark
-              ? const Color(0xFF100D0A)
-              : Colors.white,
+          // The SCHEME, not a literal. This bar was `Color(0xFF100D0A)` in dark
+          // and white in light, which quietly pinned the bottom of every screen
+          // to one palette: on Gruvbox, Catppuccin and Solitude the dock was a
+          // black band that belonged to none of them. It also used raw 12 and 8
+          // where AppSpacing.sm and .xs are the same numbers and the reason
+          // every other bar lines up.
+          color: colorScheme.surface,
           border: Border(
             top: BorderSide(
               color: colorScheme.outlineVariant.withValues(alpha: 0.35),
