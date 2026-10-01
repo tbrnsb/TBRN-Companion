@@ -73,3 +73,94 @@ read it. A computed property, not a cache.
 raw storage, ledger (`spendIndex`) and view (`totalExpenses`). All three must
 agree except that raw includes others' trip spend. If raw moves, the DATA changed.
 If only view moves, the view changed. Say which.
+
+### T1 — theme families + settings — MERGED `2de8620`
+Branch `fix/theme-families-and-settings`. **633 → 661 tests (+28)**, gate green.
+Kanagawa REMOVED exhaustively: enum, spec, name, tagline, and every comment
+using it as a live example (all rewritten to name Gruvbox). 4 families.
+
+**Migration table — legacy int → meant → now restores:**
+
+| int | meant | restores |
+|---|---|---|
+| 0 | tbrn | tbrn |
+| 1 | kanagawa | tbrn (default, no throw) |
+| 2 | solitude | **solitude** |
+| 3 | gruvbox | **gruvbox** |
+| 4 | catppuccin | catppuccin |
+
+Stored by NAME now; legacy int read once through a LITERAL table and removed.
+The name key is `theme_palette_name` — a DIFFERENT key from the legacy
+`theme_palette`, because `getString` on an int key throws.
+
+**Theme/brightness spec count: 6** (2 light + 4 dark). Was 7 with Kanagawa.
+The Stage 10 report's "nine" was wrong; counted in code.
+
+**BUG FOUND: `load()`'s absent theme-mode fallback was `2`, which is
+`ThemeMode.dark`.** The documented `ThemeMode.system` default was overwritten
+before the first frame on EVERY launch. Now `ThemeMode.system.index`. A stored
+2 is still honoured as dark.
+
+Currency and ThemeMode remain INDEXED on purpose — their enums are not changing.
+
+Settings restructured: ONE "Themes" section FIRST, family → variant, live
+preview, Light OMITTED (not disabled) for the dark-only families. "Colours"
+string is gone from lib/.
+
+### T2 — secondary text contrast — MERGED `a818595`
+Branch `fix/secondary-text-contrast`. **661 → 669 tests (+8)**, gate green.
+
+`onSurfaceVariant` was `isDark ? spec.outline : spec.secondary`. `outline` is a
+BORDER token. Measured 1.78–2.68:1 on the four dark specs. Now computed, mixed
+toward the palette's own `onSurface` until it clears. **Floor 4.5:1** (body copy).
+
+| spec | surface | container | containerHigh |
+|---|---|---|---|
+| tbrn light | 6.14 → 6.14 | 5.78 → 5.78 | 5.38 → 5.38 |
+| tbrn dark | 2.68 → 7.80 | 2.58 → 7.51 | 2.44 → 7.12 |
+| solitude dark | 2.32 → 6.74 | 2.24 → 6.50 | 2.12 → 6.15 |
+| gruvbox dark | 2.41 → 8.70 | 2.26 → 8.16 | 1.78 → 6.42 |
+| catppuccin mocha | 2.63 → 9.08 | 2.46 → 8.48 | 1.88 → 6.50 |
+| catppuccin latte | 3.47 → 5.51 | 3.31 → 5.27 | 3.08 → 4.90 |
+
+TBRN light already passed and is deliberately UNTOUCHED.
+
+**The two 0.35 alphas, measured as composited colours:**
+- Pager dots: 0.35 → 1.63:1 (cream). Set to **0.75**, lowest clearing 3:1 in all
+  six specs. Constant `ChartPager`'s `inactiveDotAlpha`.
+- Trend card highlight: NOT an alpha problem — a whole different colour. Now
+  `_nudgeTowardInk`, moved the least amount that clears 3:1 against the card.
+
+**Per-site verdict:** every one of ~70 `onSurfaceVariant` reads across 25 files
+is body copy or an icon. NONE is decorative-quiet, so NONE needed a quieter
+token. Only non-text sites: pager dots (fixed) and `spending_map.dart:46` icon
+(correct at the new token).
+
+### Item 2 — demo data dates — MERGED `b8387f8`
+Branch `fix/demo-data-dates`. **669 → 676 tests (+7)**, gate green.
+
+`DateTime(y, m, now.day - n)` clamped to `1..now.day` collapsed every record
+onto day 1 early in a month. Now day is a POSITION in the month, capped at today.
+Amounts made lumpy (was: a few large, many identical small).
+
+**Baseline after item 2** (August and September unchanged):
+- 2026-08 — 7170.50, split-brain 0.00
+- 2026-09 — 12670.50, split-brain 0.00
+- 2026-10 — **450.50 → 4126.75**, split-brain 0.00
+
+**Item 1's September verification STILL HOLDS** (12670.50, others 8400.00).
+
+### Item 3 — duplicate add buttons — MERGED `a645bf9`
+Branch `fix/duplicate-add-buttons`. **676 → 680 tests (+4)**, gate green.
+
+RULE (a) decided once: FAB hidden while empty, EmptyState carries the action.
+Fixed `transactions_screen` and `locations_screen`.
+`checklists_screen` was flagged as possibly INVERSE — it is NOT; `isEmpty ?
+null : FAB` is rule (a) already applied correctly.
+
+FAB condition reads the MONTH not the search result. Stage 6 search empty state,
+Stage 7 budgets, Stage 8 trash and Stage 9 import preview all have NO FAB at
+all, so none can double up.
+
+`test/spend_screen_test.dart` gained `tapAddAffordance`, which taps the FAB if
+present else the EmptyState's button.
