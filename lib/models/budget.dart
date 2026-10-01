@@ -61,6 +61,119 @@ extension BudgetPeriodX on BudgetPeriod {
   }
 }
 
+/// One budget's storage key: `cat:<name>:<period>` or `trip:<id>:<period>`.
+///
+/// The PERIOD is part of the key because the limit is for a period. A monthly
+/// food budget and a weekly one are different numbers for different questions,
+/// and before this the provider stored `cat:food` for both — so setting a weekly
+/// limit silently replaced the monthly one, and reading either showed whichever
+/// was written last.
+///
+/// Parsing lives here rather than in the provider because a key that is written
+/// in one place and read in another is how a limit stops being found. A key that
+/// has no period segment is [isLegacy], and the provider migrates it to month
+/// rather than dropping it.
+class BudgetKey {
+  const BudgetKey._(
+    this.raw,
+    this.scope,
+    this.label,
+    this.period,
+    this.isLegacy,
+  );
+
+  /// A key for an app-level category budget.
+  factory BudgetKey.forCategory(String categoryName, BudgetPeriod period) =>
+      BudgetKey._(
+        'cat:$categoryName:${period.name}',
+        null,
+        categoryName,
+        period,
+        false,
+      );
+
+  /// A key for a journey-level budget.
+  ///
+  /// A journey id is a UUID and a category name is an enum name, so neither
+  /// contains a colon and the last segment is unambiguously the period.
+  factory BudgetKey.forJourney(String journeyId, BudgetPeriod period) =>
+      BudgetKey._(
+        'trip:$journeyId:${period.name}',
+        journeyId,
+        journeyId,
+        period,
+        false,
+      );
+
+  /// Reads a stored key, or null when [raw] is not one of ours.
+  ///
+  /// Accepts the period-less form for migration. Anything with a trailing segment
+  /// that is not a period is rejected rather than guessed at: a corrupt key
+  /// reported as a real budget is worse than a key ignored.
+  static BudgetKey? parse(String raw) {
+    if (raw.startsWith('trip:')) {
+      final rest = raw.substring(5);
+      final split = rest.lastIndexOf(':');
+      if (split < 0) {
+        return BudgetKey._(raw, rest, rest, BudgetPeriod.month, true);
+      }
+      final id = rest.substring(0, split);
+      final period = _periodNamed(rest.substring(split + 1));
+      if (id.isEmpty || period == null) return null;
+      return BudgetKey._(raw, id, id, period, false);
+    }
+    if (raw.startsWith('cat:')) {
+      final rest = raw.substring(4);
+      final split = rest.lastIndexOf(':');
+      if (split < 0) {
+        return BudgetKey._(raw, null, rest, BudgetPeriod.month, true);
+      }
+      final name = rest.substring(0, split);
+      final period = _periodNamed(rest.substring(split + 1));
+      if (name.isEmpty || period == null) return null;
+      return BudgetKey._(raw, null, name, period, false);
+    }
+    return null;
+  }
+
+  static BudgetPeriod? _periodNamed(String name) {
+    for (final period in BudgetPeriod.values) {
+      if (period.name == name) return period;
+    }
+    return null;
+  }
+
+  /// The stored form.
+  final String raw;
+
+  /// The journey id for a journey-level budget, null for a category budget.
+  final String? scope;
+
+  /// The category name, or the journey id.
+  final String label;
+
+  final BudgetPeriod period;
+
+  /// True when [raw] had no period segment and therefore needs migrating.
+  final bool isLegacy;
+
+  bool get isJourneyLevel => scope != null;
+
+  /// The period-aware key to write to, for a legacy key.
+  BudgetKey get migrated => isJourneyLevel
+      ? BudgetKey.forJourney(scope!, BudgetPeriod.month)
+      : BudgetKey.forCategory(label, BudgetPeriod.month);
+
+  @override
+  bool operator ==(Object other) => other is BudgetKey && other.raw == raw;
+
+  @override
+  int get hashCode => raw.hashCode;
+
+  @override
+  String toString() => 'BudgetKey($raw)';
+}
+
 /// One budget reading: what a limit was, what has been spent against it, and
 /// what is left.
 ///
@@ -139,9 +252,15 @@ class BudgetStatus {
     return '${money(remaining)} left of your $label limit';
   }
 
-  /// A stable key for persistence and for tests, so two readings of the same
-  /// budget are never stored as two.
-  String get storageKey => scope == null ? 'cat:$label' : 'trip:$scope';
+  /// A stable key for persistence, for notification de-duplication and for
+  /// tests, so two readings of the same budget are never treated as two.
+  ///
+  /// Period-aware, because a crossing in this month and a crossing in this week
+  /// are different facts: with a period-less key the second one was suppressed
+  /// as a duplicate of the first and the user was told about it once, ever.
+  String get storageKey => scope == null
+      ? BudgetKey.forCategory(label, period).raw
+      : BudgetKey.forJourney(scope!, period).raw;
 }
 
 /// A limit the user has set, with the scope it applies to.
@@ -150,19 +269,34 @@ class BudgetStatus {
 /// captured total: a stored figure that outlived its data was how a budget
 /// started disagreeing with the month total printed above it.
 class Budget {
-  const Budget({this.scope, required this.label, this.limit});
+  const Budget({
+    this.scope,
+    required this.label,
+    this.limit,
+    this.period = BudgetPeriod.month,
+  });
 
   /// Null for an app-level category budget.
   final String? scope;
   final String label;
   final double? limit;
 
+  /// The period this limit is FOR. Month is the default only because a
+  /// period-less key migrates to it; nothing new is written without one.
+  final BudgetPeriod period;
+
   bool get isJourneyLevel => scope != null;
+
+  /// The key this budget is stored under.
+  String get storageKey => isJourneyLevel
+      ? BudgetKey.forJourney(scope!, period).raw
+      : BudgetKey.forCategory(label, period).raw;
 
   Map<String, dynamic> toJson() => {
     'scope': scope,
     'label': label,
     'limit': limit,
+    'period': period.name,
   };
 }
 
