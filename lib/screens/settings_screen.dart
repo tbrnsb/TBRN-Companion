@@ -10,6 +10,7 @@ import 'package:flutter_application_1/services/csv_export.dart';
 import 'package:flutter_application_1/screens/transactions/csv_import_sheet.dart';
 import 'package:flutter_application_1/screens/trash_screen.dart';
 import 'package:flutter_application_1/services/storage_service.dart';
+import 'package:flutter_application_1/theme/app_palettes.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
 
 /// The width at which "Add demo data" and "Clear demo data" sit side by side
@@ -120,6 +121,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: AppSpacing.lg),
 
           _DataSection(counts: _counts, onReload: _reloadEverything),
+
+          const SizedBox(height: AppSpacing.lg),
+
+          // A SEPARATE group below the mode group, not a fourth option in it.
+          // Light / dark / system stays exactly three options with the same
+          // ThemeMode.system default, so a user who has never opened Settings is
+          // still in system mode; this only picks the colours within it.
+          _SettingsSection(
+            title: 'Colours',
+            child: Column(
+              children: [
+                for (final palette in AppPalette.values)
+                  _PaletteOption(
+                    palette: palette,
+                    selected: settings.palette,
+                    themeMode: settings.themeMode,
+                    onSelect: (value) => settings.setPalette(value),
+                  ),
+              ],
+            ),
+          ),
 
           const SizedBox(height: AppSpacing.lg),
 
@@ -259,6 +281,115 @@ class _TrashSection extends StatelessWidget {
         },
       ),
     );
+  }
+}
+
+/// One palette in the "Colours" group.
+///
+/// Shows a LIVE swatch strip from the palette's own ladder rather than a named
+/// hex, so what a user taps is exactly what they will get — and a palette whose
+/// ladder is broken is visible as a broken strip in Settings instead of only on
+/// the screens behind it.
+class _PaletteOption extends StatelessWidget {
+  const _PaletteOption({
+    required this.palette,
+    required this.selected,
+    required this.themeMode,
+    required this.onSelect,
+  });
+
+  final AppPalette palette;
+  final AppPalette selected;
+  final ThemeMode themeMode;
+  final ValueChanged<AppPalette> onSelect;
+
+  /// The themes this palette can actually produce right now.
+  ///
+  /// A dark-only palette under Light mode is a lie the user can catch: the
+  /// swatch strip is built from the light theme, and there is no light theme, so
+  /// the honest thing is to say the palette is dark-only and preview that.
+  List<ThemeData> get _previews {
+    final light = AppTheme.lightFor(palette);
+    final dark = AppTheme.darkFor(palette);
+    if (themeMode == ThemeMode.light) return [light];
+    if (themeMode == ThemeMode.dark) return [dark];
+    return [light, dark];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isSelected = palette == selected;
+
+    return ListTile(
+      key: ValueKey('palette-${palette.name}'),
+      contentPadding: EdgeInsets.zero,
+      selected: isSelected,
+      onTap: () => onSelect(palette),
+      leading: Icon(
+        isSelected
+            ? Icons.radio_button_checked_rounded
+            : Icons.radio_button_unchecked_rounded,
+        color: isSelected ? scheme.primary : scheme.outline,
+      ),
+      title: Text(palette.label),
+      subtitle: Text(
+        [
+          palette.description,
+          // Said plainly, because "Solitude + light" is a combination the app
+          // cannot deliver and offering it silently would show a user a screen
+          // that is neither.
+          if (!palette.supportsLight) 'dark only',
+        ].join(' · '),
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: scheme.onSurfaceVariant,
+        ),
+      ),
+      trailing: _SwatchStrip(themes: _previews),
+    );
+  }
+}
+
+/// A palette's real ladder, painted.
+///
+/// Not a coloured circle with a hardcoded hex: those are exactly the literals
+/// item 7 says must not live outside the theme, and a strip is legible in a way
+/// a single dot is not — a palette with a collapsed ladder shows as a stripe.
+class _SwatchStrip extends StatelessWidget {
+  const _SwatchStrip({required this.themes});
+
+  final List<ThemeData> themes;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: AppSpacing.xl + AppSpacing.sm,
+      height: AppSpacing.xs + AppSpacing.xxs,
+      child: Row(
+        children: [
+          for (final themeData in themes)
+            for (final colour in _ladderOf(themeData))
+              Expanded(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(color: colour),
+                  child: const SizedBox.expand(),
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+
+  static List<Color> _ladderOf(ThemeData themeData) {
+    final scheme = themeData.colorScheme;
+    return [
+      scheme.surfaceContainerLowest,
+      scheme.surfaceContainerLow,
+      scheme.surfaceContainer,
+      scheme.surfaceContainerHigh,
+      scheme.surfaceContainerHighest,
+    ];
   }
 }
 
