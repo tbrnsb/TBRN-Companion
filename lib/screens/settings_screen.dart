@@ -70,6 +70,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: AppSpacing.screenPadding,
         children: [
+          // APPEARANCE FIRST. The old screen led with Currency and had the theme
+          // split across two groups that had to be reconciled with each other, so
+          // it read as a settings dump rather than as something with an order.
+          // One "Themes" group, two levels deep: a family, then a variant of it.
+          _ThemesSection(
+            palette: settings.palette,
+            variant: settings.variant,
+            onPalette: settings.setPalette,
+            onVariant: settings.setVariant,
+          ),
+
+          const SizedBox(height: AppSpacing.lg),
+
           _SettingsSection(
             title: 'Currency',
             child: Column(
@@ -95,53 +108,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: AppSpacing.lg),
 
-          _SettingsSection(
-            title: 'Theme',
-            child: Column(
-              children: [
-                _ThemeOption(
-                  mode: ThemeMode.light,
-                  selected: settings.themeMode,
-                  onSelect: (mode) => settings.setThemeMode(mode),
-                ),
-                _ThemeOption(
-                  mode: ThemeMode.dark,
-                  selected: settings.themeMode,
-                  onSelect: (mode) => settings.setThemeMode(mode),
-                ),
-                _ThemeOption(
-                  mode: ThemeMode.system,
-                  selected: settings.themeMode,
-                  onSelect: (mode) => settings.setThemeMode(mode),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: AppSpacing.lg),
-
           _DataSection(counts: _counts, onReload: _reloadEverything),
-
-          const SizedBox(height: AppSpacing.lg),
-
-          // A SEPARATE group below the mode group, not a fourth option in it.
-          // Light / dark / system stays exactly three options with the same
-          // ThemeMode.system default, so a user who has never opened Settings is
-          // still in system mode; this only picks the colours within it.
-          _SettingsSection(
-            title: 'Colours',
-            child: Column(
-              children: [
-                for (final palette in AppPalette.values)
-                  _PaletteOption(
-                    palette: palette,
-                    selected: settings.palette,
-                    themeMode: settings.themeMode,
-                    onSelect: (value) => settings.setPalette(value),
-                  ),
-              ],
-            ),
-          ),
 
           const SizedBox(height: AppSpacing.lg),
 
@@ -211,46 +178,154 @@ class _CurrencyOption extends StatelessWidget {
   }
 }
 
-class _ThemeOption extends StatelessWidget {
-  const _ThemeOption({
-    required this.mode,
-    required this.selected,
-    required this.onSelect,
+/// The "Themes" section: a FAMILY, then a VARIANT of it.
+///
+/// Two levels because that is how a colour scheme is actually chosen — "I want
+/// the warm one", and then "in the dark". The previous screen had a Theme group
+/// and a separate Colours group, and a user who picked Gruvbox still had to work
+/// out which of the two answered their question.
+///
+/// Live preview: choosing a family or a variant re-themes the app immediately,
+/// because the only honest way to choose a colour scheme is to look at it. A
+/// picker that applies on "Save" makes the user memorise swatches and guess.
+class _ThemesSection extends StatelessWidget {
+  const _ThemesSection({
+    required this.palette,
+    required this.variant,
+    required this.onPalette,
+    required this.onVariant,
   });
 
-  final ThemeMode mode;
-  final ThemeMode selected;
-  final ValueChanged<ThemeMode> onSelect;
+  final AppPalette palette;
+  final ThemeVariant variant;
+  final ValueChanged<AppPalette> onPalette;
+  final ValueChanged<ThemeVariant> onVariant;
 
   @override
   Widget build(BuildContext context) {
-    final isSelected = mode == selected;
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
 
-    final label = switch (mode) {
-      ThemeMode.light => 'Light',
-      ThemeMode.dark => 'Dark',
-      ThemeMode.system => 'System',
-    };
-
-    return ListTile(
-      leading: Icon(Icons.brightness_6_rounded, color: colorScheme.primary),
-      title: Text(label),
-      trailing: isSelected
-          ? Icon(Icons.check, color: colorScheme.primary)
-          : null,
-      onTap: () => onSelect(mode),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Themes',
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        AppSurface(
+          tier: AppSurfaceTier.raised,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final family in AppPalette.values)
+                _FamilyRow(
+                  family: family,
+                  palette: palette,
+                  variant: variant,
+                  onPalette: onPalette,
+                  onVariant: onVariant,
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
 
-/// CSV export and the full destructive wipe.
+/// One family. Its variants are shown underneath, and ONLY for the family that is
+/// selected.
 ///
-/// The counts are owned by the screen rather than here, so that adding or
-/// clearing demo data elsewhere on the screen refreshes them too.
-/// "Deleted (3)" — the way into the trash.
-///
-/// Only rendered when the trash holds something; see the call site.
+/// Collapsed, a family is one row. Expanded, it shows the variants it actually
+/// has — so Light is simply ABSENT for Solitude and Gruvbox rather than present
+/// and greyed out. A disabled option is a promise the app cannot keep, and
+/// tapping it and being snapped back to Dark is worse than never offering it.
+class _FamilyRow extends StatelessWidget {
+  const _FamilyRow({
+    required this.family,
+    required this.palette,
+    required this.variant,
+    required this.onPalette,
+    required this.onVariant,
+  });
+
+  final AppPalette family;
+  final AppPalette palette;
+  final ThemeVariant variant;
+  final ValueChanged<AppPalette> onPalette;
+  final ValueChanged<ThemeVariant> onVariant;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isSelected = family == palette;
+
+    // The effective variant for THIS family, not the app's. Choosing Gruvbox and
+    // then switching to Catppuccin must land on a variant Catppuccin has, so the
+    // stored variant is checked against the family's own list.
+    final effective = family.hasVariant(variant)
+        ? variant
+        : family.variants.first;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ListTile(
+          key: ValueKey('family-${family.name}'),
+          contentPadding: EdgeInsets.zero,
+          selected: isSelected,
+          onTap: () => onPalette(family),
+          leading: Icon(
+            isSelected
+                ? Icons.radio_button_checked_rounded
+                : Icons.radio_button_unchecked_rounded,
+            color: isSelected ? scheme.primary : scheme.outline,
+          ),
+          title: Text(family.label),
+          subtitle: Text(
+            family.description,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          // The family's OWN ladder, painted from its real theme rather than from
+          // a hex. A collapsed ladder shows as a flat stripe, so a broken
+          // palette is visible here instead of only on the screens behind.
+          trailing: _SwatchStrip(
+            themes: [
+              for (final v in family.variants) AppTheme.forVariant(family, v),
+            ],
+          ),
+        ),
+        if (isSelected)
+          Padding(
+            padding: const EdgeInsets.only(
+              left: AppSpacing.lg,
+              bottom: AppSpacing.xs,
+            ),
+            child: Wrap(
+              spacing: AppSpacing.xs,
+              children: [
+                for (final v in family.variants)
+                  ChoiceChip(
+                    key: ValueKey('variant-${family.name}-${v.name}'),
+                    label: Text(family.labelForVariant(v)),
+                    selected: v == effective,
+                    onSelected: (_) => onVariant(v),
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _TrashSection extends StatelessWidget {
   const _TrashSection({required this.count});
 
@@ -290,72 +365,6 @@ class _TrashSection extends StatelessWidget {
 /// hex, so what a user taps is exactly what they will get — and a palette whose
 /// ladder is broken is visible as a broken strip in Settings instead of only on
 /// the screens behind it.
-class _PaletteOption extends StatelessWidget {
-  const _PaletteOption({
-    required this.palette,
-    required this.selected,
-    required this.themeMode,
-    required this.onSelect,
-  });
-
-  final AppPalette palette;
-  final AppPalette selected;
-  final ThemeMode themeMode;
-  final ValueChanged<AppPalette> onSelect;
-
-  /// The themes this palette can actually produce right now.
-  ///
-  /// A dark-only palette under Light mode is a lie the user can catch: the
-  /// swatch strip is built from the light theme, and there is no light theme, so
-  /// the honest thing is to say the palette is dark-only and preview that.
-  List<ThemeData> get _previews {
-    final light = AppTheme.lightFor(palette);
-    final dark = AppTheme.darkFor(palette);
-    if (themeMode == ThemeMode.light) return [light];
-    if (themeMode == ThemeMode.dark) return [dark];
-    return [light, dark];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final isSelected = palette == selected;
-
-    return ListTile(
-      key: ValueKey('palette-${palette.name}'),
-      contentPadding: EdgeInsets.zero,
-      selected: isSelected,
-      onTap: () => onSelect(palette),
-      leading: Icon(
-        isSelected
-            ? Icons.radio_button_checked_rounded
-            : Icons.radio_button_unchecked_rounded,
-        color: isSelected ? scheme.primary : scheme.outline,
-      ),
-      title: Text(palette.label),
-      subtitle: Text(
-        [
-          palette.description,
-          // Said plainly, because "Solitude + light" is a combination the app
-          // cannot deliver and offering it silently would show a user a screen
-          // that is neither.
-          if (!palette.supportsLight) 'dark only',
-        ].join(' · '),
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: scheme.onSurfaceVariant,
-        ),
-      ),
-      trailing: _SwatchStrip(themes: _previews),
-    );
-  }
-}
-
-/// A palette's real ladder, painted.
-///
-/// Not a coloured circle with a hardcoded hex: those are exactly the literals
-/// item 7 says must not live outside the theme, and a strip is legible in a way
-/// a single dot is not — a palette with a collapsed ladder shows as a stripe.
 class _SwatchStrip extends StatelessWidget {
   const _SwatchStrip({required this.themes});
 
