@@ -1,3 +1,4 @@
+export 'app_calendar.dart';
 export 'app_gear.dart';
 export 'app_search.dart';
 export 'app_motion.dart';

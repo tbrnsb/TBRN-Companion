@@ -12,6 +12,7 @@ import 'package:flutter_application_1/screens/transactions/add_transaction_sheet
 import 'package:flutter_application_1/screens/transactions/expense_detail_screen.dart';
 import 'package:flutter_application_1/screens/transactions/income_detail_screen.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:flutter_application_1/utils/date_window.dart';
 import 'package:flutter_application_1/utils/format.dart';
 import 'package:flutter_application_1/widgets/widgets.dart';
 
@@ -23,11 +24,14 @@ class TransactionsScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Transactions'),
-        // Search, then settings. Item 9 inserts the calendar between them, and
-        // the order is asserted there — once the calendar exists. Until then the
-        // gap would be a dead button, and a control that opens nothing is worse
-        // than a control that is not there.
-        actions: const [AppSearchButton(), AppGearButton()],
+        // Search, then calendar, then settings — the same order on every tab, so
+        // the control that moves between days sits in the same place whichever
+        // screen you are on.
+        actions: const [
+          AppSearchButton(),
+          AppCalendarButton(),
+          AppGearButton(),
+        ],
       ),
       body: Consumer<TransactionProvider>(
         builder: (context, provider, _) {
@@ -313,7 +317,18 @@ class TransactionsScreen extends StatelessWidget {
     }).toList();
   }
 
-  /// Opens the day picker for the month on screen.
+  /// Opens the day picker, starting on the month on screen.
+  ///
+  /// NAVIGABLE, because a picker scoped to one month cannot reach any day
+  /// outside it. "Jump to the 12th" and the 12th is in August while September
+  /// is on screen, so the answer is to go back a month on the card first, then
+  /// open this — a two-step errand for a one-step question, and the old build
+  /// proved it worse than that: it drew chevrons that did nothing.
+  ///
+  /// Bounded by [AppDateWindow], the same floor and ceiling the month chevrons
+  /// on the card use. A day filter is a view of recorded transactions, so it
+  /// stops at the earliest month the app will let you record anything in and at
+  /// the current month, because a future month is not a thing that has happened.
   ///
   /// Days that actually have transactions are marked, so the picker is not 30
   /// equally plausible empty cells. Only days up to today are offered: a
@@ -325,81 +340,14 @@ class TransactionsScreen extends StatelessWidget {
     // Captured before the sheet opens, so nothing reads `context` after an await.
     final messenger = ScaffoldMessenger.of(context);
     final month = provider.currentMonth ?? DateTime.now();
-    final today = DateTime.now();
-    final withData = provider.daysWithTransactions;
-    final lastDay = DateTime(month.year, month.month + 1, 0).day;
-    final maxDay = month.year == today.year && month.month == today.month
-        ? today.day
-        : lastDay;
 
     final picked = await showModalBottomSheet<DayPick>(
       context: context,
       isScrollControlled: true,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.lg,
-                0,
-                AppSpacing.lg,
-                AppSpacing.xs,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Jump to a day',
-                      style: Theme.of(sheetContext).textTheme.titleMedium,
-                    ),
-                  ),
-                  if (provider.selectedDay != null)
-                    TextButton(
-                      key: const ValueKey('day-picker-whole-month'),
-                      // An EXPLICIT result, distinct from a dismiss. Both used to
-                      // be null, so swiping the sheet away cleared the day filter.
-                      onPressed: () => Navigator.pop(
-                        sheetContext,
-                        const DayPick.wholeMonth(),
-                      ),
-                      child: const Text('Whole month'),
-                    ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-              child: CalendarDatePicker(
-                // Clamped to [maxDay]. `initialDate` later than `lastDate`
-                // asserts, so this can only ever be out of range if a stored
-                // selection is -- which is exactly what the crash was.
-                initialDate: _clampTo(
-                  provider.selectedDay ?? DateTime(month.year, month.month, 1),
-                  DateTime(month.year, month.month, 1),
-                  DateTime(month.year, month.month, maxDay),
-                ),
-                firstDate: DateTime(month.year, month.month, 1),
-                lastDate: DateTime(month.year, month.month, maxDay),
-                onDateChanged: (day) =>
-                    Navigator.pop(sheetContext, DayPick.day(day)),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-              child: Text(
-                withData.isEmpty
-                    ? 'Nothing recorded this month yet.'
-                    : '${withData.length} '
-                          'day${withData.length == 1 ? '' : 's'} '
-                          'have transactions',
-                style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(sheetContext).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          ],
-        ),
+      builder: (sheetContext) => _DayPickerSheet(
+        initialMonth: month,
+        selectedDay: provider.selectedDay,
+        daysWithData: provider.daysWithTransactions,
       ),
     );
 
@@ -417,13 +365,6 @@ class TransactionsScreen extends StatelessWidget {
       provider,
       provider.setSelectedDay(picked.day),
     );
-  }
-
-  /// [value] held inside [lo]..[hi].
-  static DateTime _clampTo(DateTime value, DateTime lo, DateTime hi) {
-    if (value.isBefore(lo)) return lo;
-    if (value.isAfter(hi)) return hi;
-    return value;
   }
 
   /// Makes the outcome of a day tap VISIBLE.
@@ -509,6 +450,203 @@ class TransactionsScreen extends StatelessWidget {
 /// means rebuilding a [BudgetStatus] per limit here — a second place the
 /// near-limit and overspend thresholds live, free to drift from the budgets
 /// screen's copy. The count belongs where the limits are, one tap away.
+/// "Jump to a day", navigable across months.
+///
+/// Its own [State] because the month on screen is not the month the sheet
+/// opened on: the chevrons move it. The bounds come from [AppDateWindow], the
+/// same floor and ceiling the month card uses, so the picker cannot offer a day
+/// in a month the rest of the app would refuse to show.
+///
+/// The chevrons DISABLE at a boundary rather than being hidden or left inert.
+/// A control that looks live and does nothing is worse than an absent one: it
+/// is the same bug as the dead chevrons this replaced.
+class _DayPickerSheet extends StatefulWidget {
+  const _DayPickerSheet({
+    required this.initialMonth,
+    required this.selectedDay,
+    required this.daysWithData,
+  });
+
+  final DateTime initialMonth;
+  final DateTime? selectedDay;
+  final Set<DateTime> daysWithData;
+
+  @override
+  State<_DayPickerSheet> createState() => _DayPickerSheetState();
+}
+
+class _DayPickerSheetState extends State<_DayPickerSheet> {
+  late DateTime _month = DateTime(
+    widget.initialMonth.year,
+    widget.initialMonth.month,
+  );
+
+  DateTime get _floor => AppDateWindow.monthFloor(DateTime.now());
+  DateTime get _ceiling => AppDateWindow.monthCeiling(DateTime.now());
+
+  // Strictly between, for the same reason as the calendar: the floor and the
+  // ceiling are months you may BE on but not page away from. A chevron that is
+  // live at a boundary is the dead-button bug this replaced.
+  bool get _canGoBack => _month.isAfter(_floor);
+  bool get _canGoForward => _month.isBefore(_ceiling);
+
+  /// [value] held inside [lo]..[hi].
+  ///
+  /// `CalendarDatePicker` ASSERTS if `initialDate` falls outside its range, so a
+  /// stored selection belonging to another month has to be pulled inside rather
+  /// than trusted.
+  static DateTime _clampTo(DateTime value, DateTime lo, DateTime hi) {
+    if (value.isBefore(lo)) return lo;
+    if (value.isAfter(hi)) return hi;
+    return value;
+  }
+
+  void _step(int delta) {
+    final next = AppDateWindow.clampMonth(
+      DateTime(_month.year, _month.month + delta),
+      DateTime.now(),
+    );
+    if (next == _month) return;
+    setState(() => _month = next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final now = DateTime.now();
+
+    final firstOfMonth = DateTime(_month.year, _month.month, 1);
+    final lastDay = DateTime(_month.year, _month.month + 1, 0).day;
+    // A month that has not happened yet cannot have a transaction on it, so the
+    // current month stops at today.
+    final lastSelectable =
+        firstOfMonth.year == now.year && firstOfMonth.month == now.month
+        ? now.day
+        : lastDay;
+
+    // Clamped, because `initialDate` outside [firstDate, lastDate] asserts and
+    // a stored selection from another month is exactly the case that crashed it.
+    final initial = _clampTo(
+      widget.selectedDay ?? firstOfMonth,
+      firstOfMonth,
+      DateTime(_month.year, _month.month, lastSelectable),
+    );
+
+    final highlighted = widget.daysWithData
+        .where((d) => d.year == _month.year && d.month == _month.month)
+        .length;
+
+    return SafeArea(
+      // Scrollable, because a month grid plus a header does not fit on a short
+      // phone and an overflowing bottom sheet is both an error stripe and an
+      // unreachable calendar. Constrained to most of the screen so it reads as a
+      // sheet rather than as a full page.
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.8,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  0,
+                  AppSpacing.lg,
+                  AppSpacing.xs,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Jump to a day',
+                        style: theme.textTheme.titleMedium,
+                      ),
+                    ),
+                    if (widget.selectedDay != null)
+                      TextButton(
+                        key: const ValueKey('day-picker-whole-month'),
+                        // An EXPLICIT result, distinct from a dismiss. Both used to
+                        // be null, so swiping the sheet away cleared the day filter.
+                        onPressed: () =>
+                            Navigator.pop(context, const DayPick.wholeMonth()),
+                        child: const Text('Whole month'),
+                      ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                child: Row(
+                  children: [
+                    IconButton(
+                      key: const ValueKey('day-picker-prev-month'),
+                      tooltip: _canGoBack
+                          ? 'Previous month'
+                          : 'Earliest month is ${DateFormat.yMMMM().format(_floor)}',
+                      onPressed: _canGoBack ? () => _step(-1) : null,
+                      icon: const Icon(Icons.chevron_left_rounded),
+                    ),
+                    Expanded(
+                      child: Text(
+                        DateFormat.yMMMM().format(_month),
+                        key: const ValueKey('day-picker-month-label'),
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.titleSmall,
+                      ),
+                    ),
+                    IconButton(
+                      key: const ValueKey('day-picker-next-month'),
+                      tooltip: _canGoForward
+                          ? 'Next month'
+                          : 'Later than this month has not happened',
+                      onPressed: _canGoForward ? () => _step(1) : null,
+                      icon: const Icon(Icons.chevron_right_rounded),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+            child: CalendarDatePicker(
+              // Month-scoped, because the picker keeps its own selected date
+              // internally: navigate to an earlier month and that stale date is
+              // now AFTER this month's `lastDate`, which trips an assertion in
+              // the framework. A fresh key per month is what makes it re-read
+              // its `initialDate` instead of defending a day that is gone.
+              key: ValueKey(
+                'day-picker-calendar-${_month.year}-${_month.month}',
+              ),
+                  initialDate: initial,
+                  firstDate: firstOfMonth,
+                  lastDate: DateTime(_month.year, _month.month, lastSelectable),
+                  onDateChanged: (day) =>
+                      Navigator.pop(context, DayPick.day(day)),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                child: Text(
+                  highlighted == 0
+                      ? 'Nothing recorded in ${DateFormat.yMMMM().format(_month)}.'
+                      : '$highlighted '
+                            'day${highlighted == 1 ? '' : 's'} '
+                            'have transactions',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// "2 matches · Search" on the list, while a search is active.
 ///
 /// The list is showing the result set when this is on screen, and a narrowed
