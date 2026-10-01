@@ -95,7 +95,7 @@ class BudgetProvider extends ChangeNotifier {
   /// to be remembered.
   List<BudgetStatus> statusesFor(
     BudgetSpendIndex index, {
-    required List<String> journeyLabels,
+    required Map<String, String> journeyLabels,
   }) {
     final results = <BudgetStatus>[];
 
@@ -105,10 +105,11 @@ class BudgetProvider extends ChangeNotifier {
         results.add(
           BudgetStatus(
             scope: budget.scope,
-            label: journeyLabels.firstWhere(
-              (name) => name == budget.label,
-              orElse: () => budget.label,
-            ),
+            // Resolved to the trip's DESTINATION, which is what a user recognises.
+            // This used to take a `List<String>` and search it for the label, which
+            // could only ever find the label — so every trip budget was titled with
+            // its raw id. Same lookup as [notifyCrossed], so the two agree.
+            label: journeyLabels[budget.scope] ?? budget.label,
             limit: budget.limit,
             spent: spent,
             period: index.period,
