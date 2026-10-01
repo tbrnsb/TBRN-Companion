@@ -252,14 +252,27 @@ class TransactionsScreen extends StatelessWidget {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          HapticFeedback.lightImpact();
-          AddTransactionSheet.show(context);
-        },
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Add'),
-      ),
+      // RULE (a), applied from ONE decision and not per call site: when the list
+      // is empty the EmptyState carries the action and the FAB is hidden; the
+      // moment there is a row the FAB comes back.
+      //
+      // Both used to be on screen at once on an empty list -- the FAB
+      // unconditionally, plus the empty state's own button -- so the same action
+      // appeared twice in different shapes and the screen read as broken. The
+      // FAB returns as soon as there is something to add to.
+      floatingActionButton:
+          context.select<TransactionProvider, bool>(
+            (p) => p.transactions.isNotEmpty,
+          )
+          ? FloatingActionButton.extended(
+              onPressed: () {
+                HapticFeedback.lightImpact();
+                AddTransactionSheet.show(context);
+              },
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Add'),
+            )
+          : null,
     );
   }
 
