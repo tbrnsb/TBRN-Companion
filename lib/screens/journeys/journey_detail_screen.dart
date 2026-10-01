@@ -76,8 +76,14 @@ class JourneyDetailScreen extends StatelessWidget {
           const SizedBox(height: AppSpacing.lg),
 
           // Cross-system context.
+          //
+          // The LIVE twin of the settlement's query. A trashed trip expense is
+          // gone from the user's ledger, so it must not still be adding to the
+          // trip's headline spend here — while settlement keeps counting it,
+          // because the other people did spend it. Two reads of one box,
+          // answering two different questions, on purpose.
           FutureBuilder<List<Transaction>>(
-            future: transactions.getTransactionsByJourney(current.id),
+            future: transactions.getLiveTransactionsForJourney(current.id),
             builder: (context, snapshot) {
               final transactions = snapshot.data ?? const <Transaction>[];
               final expenses = transactions.whereType<Expense>().toList();

@@ -544,6 +544,159 @@ class TransactionProvider extends ChangeNotifier {
     }
   }
 
+  /// The trashed records, newest deletion first.
+  ///
+  /// A separate read rather than a filter of [transactions], because the whole
+  /// point is that trashed rows are NOT in [transactions] — they were dropped
+  /// from both caches when they were trashed, and from every storage query. The
+  /// trash screen is the one place that wants them back.
+  Future<List<Transaction>> loadTrashedTransactions() async {
+    try {
+      return await _storageService.getTrashedTransactions();
+    } catch (e) {
+      _error = 'Failed to load the trash: $e';
+      notifyListeners();
+      return [];
+    }
+  }
+
+  /// Moves [id] to the trash. It disappears from the ledger immediately.
+  ///
+  /// SOFT: the row stays on disk with a `deletedAt` stamp, so restoring it is a
+  /// flag change rather than a re-typed record. A hard delete cannot be undone
+  /// and a mistake with it is unrecoverable — which is exactly what a personal
+  /// finance ledger must not offer.
+  ///
+  /// Dropped from BOTH caches and written in one pass, because a cache that kept
+  /// the row would keep counting it against every wide-period budget while the
+  /// month list showed it correctly gone. Two screens disagreeing about whether
+  /// an expense exists is worse than either answer alone.
+  ///
+  /// NOT tombstoned on the journey, unlike [deleteTransaction]. The trip's
+  /// `removedIds` exists to stop an IMPORT resurrecting an expense the user
+  /// really did remove from a shared file; a trashed record is still on disk and
+  /// still in the trip, so tombstoning it would make a restore come back as a
+  /// duplicate of something the importer already knows it may not re-add.
+  Future<bool> moveToTrash(String id) async {
+    final target = _findInCaches(id);
+    if (target == null || target.isDeleted) return false;
+
+    try {
+      final trashed = target.withDeletedAt(DateTime.now());
+      await _storageService.updateTransaction(trashed);
+
+      // Dropped from BOTH caches by hand rather than delegated to
+      // [updateTransaction], which by design KEEPS a row whose date is in the
+      // loaded month — correct for an edit, wrong for a trash, because a trashed
+      // row must not stay in any live list. One flag, one place that decides
+      // what happens to a trashed record in the caches.
+      _transactions.removeWhere((t) => t.id == id);
+      _allTransactions?.removeWhere((t) => t.id == id);
+
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _error = 'Failed to move to trash: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Puts [id] back into the ledger.
+  ///
+  /// Re-inserted into both caches and, if it belongs to a month other than the
+  /// one on screen, it simply is not in the month list — which is correct. The
+  /// user restores it and then sees it again when they navigate to the month it
+  /// belongs to, rather than it appearing on a screen whose month says otherwise.
+  Future<bool> restoreFromTrash(String id) async {
+    final target = await _findTrashed(id);
+    if (target == null || !target.isDeleted) return false;
+
+    try {
+      final live = target.withDeletedAt(null);
+      await _storageService.updateTransaction(live);
+
+      // Re-inserted into both caches. Into the MONTH list only when its date
+      // belongs to the month on screen — restoring a March expense while looking
+      // at October should not put it in an October list.
+      _allTransactions?.removeWhere((t) => t.id == id);
+      _allTransactions?.add(live);
+      _transactions.removeWhere((t) => t.id == id);
+      if (_isInLoadedMonth(live.date)) {
+        _transactions.add(live);
+      }
+
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _error = 'Failed to restore: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Permanently removes [id]. Used by the trash screen's own delete action.
+  ///
+  /// The only irreversible path, and it is a deliberate tap behind the trash
+  /// rather than a stray swipe. Tombstones the journey exactly as
+  /// [deleteTransaction] does, because at this point the row really is going.
+  Future<bool> deleteForever(String id) async {
+    final target = await _findTrashed(id);
+    if (target == null) return false;
+    try {
+      await deleteTransaction(id);
+      // deleteTransaction already drops it from both caches; this is the
+      // trashed row, which was never in either, so there is nothing left to do.
+      // The method is here as the named, testable entry point the trash screen
+      // calls, rather than the screen reaching into storage itself.
+      return true;
+    } catch (e) {
+      _error = 'Failed to delete: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Empties the trash. Every trashed record, permanently.
+  Future<int> emptyTrash() async {
+    try {
+      final trashed = await _storageService.getTrashedTransactions();
+      for (final t in trashed) {
+        await deleteTransaction(t.id);
+      }
+      return trashed.length;
+    } catch (e) {
+      _error = 'Failed to empty the trash: $e';
+      notifyListeners();
+      return 0;
+    }
+  }
+
+  /// The record with [id] from whichever cache has it, live or trashed.
+  ///
+  /// A trashed row is in NEITHER cache — that is the point of trashing it — so
+  /// this has to be able to look in the storage trash as well, or the trash
+  /// screen's buttons would find nothing to act on.
+  Future<Transaction?> _findTrashed(String id) async {
+    final inCache = _findInCaches(id);
+    if (inCache != null) return inCache;
+    final trashed = await _storageService.getTrashedTransactions();
+    for (final t in trashed) {
+      if (t.id == id) return t;
+    }
+    return null;
+  }
+
+  Transaction? _findInCaches(String id) {
+    for (final t in _transactions) {
+      if (t.id == id) return t;
+    }
+    for (final t in _allTransactions ?? const <Transaction>[]) {
+      if (t.id == id) return t;
+    }
+    return null;
+  }
+
   /// Writes the tombstone directly to storage.
   ///
   /// Deliberately not through [JourneyProvider]: that provider caches journeys
@@ -614,9 +767,28 @@ class TransactionProvider extends ChangeNotifier {
     return sorted;
   }
 
+  /// The trip's expenses, trashed ones included.
+  ///
+  /// Unfiltered ON PURPOSE — this feeds the trip's settlement, which must keep
+  /// counting an expense the user deleted from their own ledger, because the
+  /// money really was spent on the trip. See [getLiveTransactionsForJourney] for
+  /// the display half.
   Future<List<Transaction>> getTransactionsByJourney(String journeyId) async {
     try {
       return await _storageService.getTransactionsByJourney(journeyId);
+    } catch (e) {
+      _error = 'Failed to get transactions: $e';
+      notifyListeners();
+      return [];
+    }
+  }
+
+  /// The trip's expenses for DISPLAY — live rows only.
+  Future<List<Transaction>> getLiveTransactionsForJourney(
+    String journeyId,
+  ) async {
+    try {
+      return await _storageService.getLiveTransactionsByJourney(journeyId);
     } catch (e) {
       _error = 'Failed to get transactions: $e';
       notifyListeners();
@@ -701,6 +873,15 @@ class TransactionProvider extends ChangeNotifier {
 
     for (final t in source) {
       if (!t.isExpense) continue;
+      // A trashed record is never spending. Checked HERE as well as at read time,
+      // and that redundancy is the point rather than belt-and-braces: the storage
+      // layer already filters these out, so this line cannot be reached today —
+      // but `source` is a CACHE, and a cache is only as correct as the writes
+      // that keep it so. If one write path ever forgets to drop a trashed row,
+      // this is what stops a deleted expense being counted against a yearly
+      // budget and every wide-period chart. A month-scoped test would never reach
+      // it, because the month query is filtered upstream.
+      if (t.isDeleted) continue;
       // The shared-trip rule, applied here and nowhere else. Another
       // participant's trip expense is excluded from BOTH pools: it is not my
       // spending, and it is not the trip's cost either — the trip's costs are
