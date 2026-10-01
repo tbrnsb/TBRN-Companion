@@ -180,6 +180,39 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('the journey list belongs to the month on the grid', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      final transactions = await _transactions(tester);
+      final journeys = await _journeys(tester);
+
+      // A journey that started in a DIFFERENT month. It must not appear under
+      // the current month's calendar: "August 18" listed beneath an October grid
+      // is not information.
+      final longAgo = DateTime(DateTime.now().year, DateTime.now().month - 3);
+      journeys.journeys.add(
+        Journey(
+          destination: 'Old trip',
+          origin: 'Kathmandu',
+          startTime: longAgo,
+          endTime: longAgo.add(const Duration(days: 2)),
+        ),
+      );
+
+      await tester.pumpWidget(
+        _app(
+          transactions: transactions,
+          journeys: journeys,
+          home: const CalendarScreen(),
+        ),
+      );
+      await settleUi(tester);
+
+      expect(find.text('Old trip'), findsNothing);
+      expect(find.text(DateFormat.yMMMMd().format(longAgo)), findsNothing);
+    });
+
     testWidgets('cannot page past the current month', (tester) async {
       usePhoneLayout(tester, TestViewports.phonePortrait);
       final transactions = await _transactions(tester);
@@ -225,15 +258,13 @@ void main() {
   });
 
   group('the day picker reaches the past', () {
-    testWidgets('a dead chevron is gone: the sheet pages months', (
-      tester,
+    /// Opens "Jump to a day" from the month card, with one expense present so
+    /// the month summary card is on screen at all.
+    Future<void> openPicker(
+      WidgetTester tester,
+      TransactionProvider transactions,
+      JourneyProvider journeys,
     ) async {
-      usePhoneLayout(tester, TestViewports.phonePortrait);
-      final transactions = await _transactions(tester);
-      final journeys = await _journeys(tester);
-
-      // One expense in the current month, so the month summary card — which is
-      // what opens the picker — is on screen at all.
       await tester.runAsync(
         () => transactions.addTransaction(
           Expense(
@@ -250,23 +281,82 @@ void main() {
       );
       await settleUi(tester);
 
-      // Open "Jump to a day" from the month card.
       await tester.tap(find.byIcon(Icons.calendar_today_rounded).first);
       await settleUi(tester);
+    }
 
-      expect(
-        find.byKey(const ValueKey('day-picker-prev-month')),
-        findsOneWidget,
+    testWidgets('its range spans the whole window, so it can reach the past', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      final transactions = await _transactions(tester);
+      final journeys = await _journeys(tester);
+
+      await openPicker(tester, transactions, journeys);
+
+      final picker = tester.widget<CalendarDatePicker>(
+        find.byKey(const ValueKey('day-picker-calendar')),
       );
 
-      // Go back a month, and the sheet must actually be showing it.
-      await tester.tap(find.byKey(const ValueKey('day-picker-prev-month')));
-      await settleUi(tester);
+      // Relationships, not equality against a separately captured `now`:
+      // testWidgets runs on a faked clock, so two DateTime.now() calls in one
+      // test are not guaranteed to agree and the assertion would be about the
+      // clock rather than about the picker.
+      expect(
+        picker.firstDate,
+        AppDateWindow.monthFloor(picker.lastDate),
+        reason: 'the range must start exactly on the shared floor',
+      );
+      expect(picker.lastDate.day, DateTime.now().day);
+      expect(picker.lastDate.isAfter(DateTime.now()), isFalse);
 
-      expect(find.text(DateFormat.yMMMM().format(_lastMonth())), findsWidgets);
+      // THE fix. Scoping the range to the month on screen is what made a day in
+      // another month unreachable; the picker drives its own chevrons from this
+      // range, so the range IS the behaviour. A one-month range cannot render a
+      // chevron that moves.
+      expect(
+        picker.firstDate.isBefore(
+          DateTime(picker.lastDate.year, picker.lastDate.month, 1),
+        ),
+        isTrue,
+      );
     });
 
-    testWidgets('the whole month is reachable, and no further back', (
+    testWidgets('one row of month navigation, not two', (tester) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      final transactions = await _transactions(tester);
+      final journeys = await _journeys(tester);
+
+      await openPicker(tester, transactions, journeys);
+
+      // The first version added its own chevron row above the picker and left
+      // the built-in one below, so the device showed two month navigators and
+      // only one of them worked.
+      expect(find.byType(CalendarDatePicker), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('day-picker-prev-month')),
+        findsNothing,
+        reason: 'the added chevron row is what created the duplicate',
+      );
+      expect(
+        find.byKey(const ValueKey('day-picker-next-month')),
+        findsNothing,
+        reason: 'the added chevron row is what created the duplicate',
+      );
+    });
+
+    testWidgets('it says a day HAS transactions, not HAVE', (tester) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      final transactions = await _transactions(tester);
+      final journeys = await _journeys(tester);
+
+      await openPicker(tester, transactions, journeys);
+
+      expect(find.textContaining('1 day has transactions'), findsOneWidget);
+      expect(find.textContaining('1 day have transactions'), findsNothing);
+    });
+
+    testWidgets('whole month is offered once a day is selected', (
       tester,
     ) async {
       usePhoneLayout(tester, TestViewports.phonePortrait);
@@ -283,37 +373,86 @@ void main() {
           ),
         ),
       );
-
       await tester.pumpWidget(
         _app(transactions: transactions, journeys: journeys),
       );
       await settleUi(tester);
 
+      // With nothing narrowed there is nothing to escape from, so the control is
+      // absent rather than inert.
+      await tester.tap(find.byIcon(Icons.calendar_today_rounded).first);
+      await settleUi(tester);
+      expect(
+        find.byKey(const ValueKey('day-picker-whole-month')),
+        findsNothing,
+      );
+      await tester.tapAt(const Offset(20, 20));
+      await settleUi(tester);
+
+      // Narrow to a day, and the way back appears.
+      transactions.setSelectedDay(DateTime.now());
+      await settleUi(tester);
       await tester.tap(find.byIcon(Icons.calendar_today_rounded).first);
       await settleUi(tester);
 
-      // Walk all the way to the floor the pickers share, then one more press.
-      final floor = AppDateWindow.monthFloor(DateTime.now());
-      for (var i = 0; i < 40; i++) {
-        final back = tester.widget<IconButton>(
-          find.byKey(const ValueKey('day-picker-prev-month')),
-        );
-        if (back.onPressed == null) break;
-        await tester.tap(find.byKey(const ValueKey('day-picker-prev-month')));
-        await settleUi(tester);
-      }
-
-      // Stopped exactly on the floor, and the chevron is now dead rather than
-      // inert-but-live.
-      expect(find.text(DateFormat.yMMMM().format(floor)), findsWidgets);
       expect(
-        tester
-            .widget<IconButton>(
-              find.byKey(const ValueKey('day-picker-prev-month')),
-            )
-            .onPressed,
-        isNull,
+        find.byKey(const ValueKey('day-picker-whole-month')),
+        findsOneWidget,
       );
+    });
+    testWidgets('picking a past day loads ITS month and narrows to it', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      final transactions = await _transactions(tester);
+      final journeys = await _journeys(tester);
+
+      // A known past day, inside the window the picker offers.
+      final now = DateTime.now();
+      final past = DateTime(
+        now.year,
+        now.month,
+        1,
+      ).subtract(const Duration(days: 20));
+      await tester.runAsync(
+        () => transactions.addTransaction(
+          Expense(
+            amount: 120,
+            category: ExpenseCategory.food,
+            description: 'Lunch',
+            date: DateTime.now(),
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(
+        _app(transactions: transactions, journeys: journeys),
+      );
+      await settleUi(tester);
+      await tester.tap(find.byIcon(Icons.calendar_today_rounded).first);
+      await settleUi(tester);
+
+      // The picker can now OFFER a day outside the loaded month...
+      final picker = tester.widget<CalendarDatePicker>(
+        find.byKey(const ValueKey('day-picker-calendar')),
+      );
+      expect(picker.firstDate.isBefore(past), isTrue);
+
+      // ...so selecting one has to load that month. It did not: the day was
+      // offered, tapped, and dropped, because setSelectedDay refuses a day whose
+      // month it has not read. The tap did nothing and looked broken.
+      //
+      // Invoked through the callback rather than by tapping the day text:
+      // CalendarDatePicker lays its grid out itself, and in a widget test a tap
+      // at a day's centre reliably lands on a neighbouring cell. The callback is
+      // the same path a real tap takes; the hit test is the part being unreliable,
+      // not the behaviour under test.
+      picker.onDateChanged(past);
+      await settleUi(tester);
+
+      expect(transactions.currentMonth?.year, past.year);
+      expect(transactions.currentMonth?.month, past.month);
+      expect(transactions.selectedDay?.day, past.day);
     });
   });
 
