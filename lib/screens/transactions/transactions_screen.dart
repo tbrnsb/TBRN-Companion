@@ -87,6 +87,13 @@ class TransactionsScreen extends StatelessWidget {
                   count: provider.filteredTransactions.length,
                   onPrevious: provider.previousMonth,
                   onNext: provider.nextMonth,
+                  // DISABLED, not hidden and not inert. A chevron that is
+                  // present but does nothing is a tap that produces no change,
+                  // which is indistinguishable from a tap that did not register.
+                  // A disabled one says the boundary is reached; a missing one
+                  // would leave a gap that looks like a layout mistake.
+                  canGoPrevious: provider.canGoToPreviousMonth,
+                  canGoNext: provider.canGoToNextMonth,
                   onPickDay: () => _pickDay(context, provider),
                   selectedDayLabel: provider.selectedDay == null
                       ? null
@@ -618,6 +625,8 @@ class _MonthSummaryCard extends StatelessWidget {
     required this.count,
     required this.onPrevious,
     required this.onNext,
+    required this.canGoPrevious,
+    required this.canGoNext,
     required this.onPickDay,
     required this.selectedDayLabel,
     required this.onClearDay,
@@ -632,6 +641,11 @@ class _MonthSummaryCard extends StatelessWidget {
   final int count;
   final VoidCallback onPrevious;
   final VoidCallback onNext;
+
+  /// Whether each chevron has somewhere to go. False disables it rather than
+  /// hiding it, so the boundary is visible instead of mysterious.
+  final bool canGoPrevious;
+  final bool canGoNext;
 
   /// Opens the day picker.
   final VoidCallback onPickDay;
@@ -666,8 +680,9 @@ class _MonthSummaryCard extends StatelessWidget {
                 width: AppSpacing.xl + AppSpacing.sm,
                 height: AppSpacing.xl + AppSpacing.sm,
                 child: IconButton(
-                  tooltip: 'Previous month',
-                  onPressed: onPrevious,
+                  key: const ValueKey('month-previous'),
+                  tooltip: canGoPrevious ? 'Previous month' : 'Earliest month',
+                  onPressed: canGoPrevious ? onPrevious : null,
                   padding: EdgeInsets.zero,
                   icon: const Icon(Icons.chevron_left_rounded),
                 ),
@@ -702,6 +717,10 @@ class _MonthSummaryCard extends StatelessWidget {
                       Flexible(
                         child: Text(
                           DateFormat.yMMMM().format(month),
+                          // Its own key, so a test can read WHICH month is on
+                          // screen. Asserting on a formatted string built the same
+                          // way the widget builds it proves only that intl works.
+                          key: const ValueKey('month-label'),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: textTheme.titleMedium?.copyWith(
@@ -717,8 +736,9 @@ class _MonthSummaryCard extends StatelessWidget {
                 width: AppSpacing.xl + AppSpacing.sm,
                 height: AppSpacing.xl + AppSpacing.sm,
                 child: IconButton(
-                  tooltip: 'Next month',
-                  onPressed: onNext,
+                  key: const ValueKey('month-next'),
+                  tooltip: canGoNext ? 'Next month' : 'Latest month',
+                  onPressed: canGoNext ? onNext : null,
                   padding: EdgeInsets.zero,
                   icon: const Icon(Icons.chevron_right_rounded),
                 ),
