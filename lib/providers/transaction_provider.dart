@@ -296,31 +296,51 @@ class TransactionProvider extends ChangeNotifier {
 
   /// Narrows the view to one day, or back to the whole month with null.
   ///
-  /// A day outside the loaded month is ignored rather than silently emptying
-  /// the screen, which is what would otherwise happen if the caller passed one.
-  void setSelectedDay(DateTime? day) {
+  /// NEVER SILENT. It used to return without feedback in two cases -- a day
+  /// outside the loaded month, and a day equal to the current selection -- and a
+  /// tap that produces no visible change is indistinguishable from a tap that did
+  /// not register. The two refusals now come back as a [DaySelectionOutcome]
+  /// the caller turns into something the user can see.
+  DaySelectionOutcome setSelectedDay(DateTime? day) {
     if (day == null) {
-      if (_selectedDay == null) return;
+      if (_selectedDay == null) return const DaySelectionAlreadyWholeMonth();
       _selectedDay = null;
       notifyListeners();
-      return;
+      return const DaySelectionCleared();
+    }
+
+    // A day that has not happened is refused too, not just a day in another
+    // month. `lastDate` in the picker is capped at today, so a selected day past
+    // today made `initialDate` LATER than `lastDate` and the sheet asserted on
+    // open -- a crash reached by selecting a day. Caught by the item 4 test.
+    final now = DateTime.now();
+    if (day.year > now.year ||
+        (day.year == now.year && day.month > now.month) ||
+        (day.year == now.year && day.month == now.month && day.day > now.day)) {
+      return const DayInTheFuture();
     }
 
     final loaded = _currentMonth;
     if (loaded != null &&
         (day.year != loaded.year || day.month != loaded.month)) {
-      return;
+      // Refused, and SAID SO. Silently ignoring a day in another month is what
+      // made this feel broken: the user taps the 14th and nothing at all happens.
+      return DayOutsideLoadedMonth(DateTime(loaded.year, loaded.month));
     }
+
     final current = _selectedDay;
     if (current != null &&
         current.year == day.year &&
         current.month == day.month &&
         current.day == day.day) {
-      return;
+      // Re-tapping the day you are already on. Also said out loud -- a tap with
+      // no effect needs to be a tap that explains itself.
+      return DayAlreadySelected(day);
     }
 
     _selectedDay = DateTime(day.year, day.month, day.day);
     notifyListeners();
+    return DaySelected(day);
   }
 
   /// Every day in the loaded month that has at least one transaction, keyed by

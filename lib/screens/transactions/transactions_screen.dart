@@ -91,7 +91,12 @@ class TransactionsScreen extends StatelessWidget {
                   selectedDayLabel: provider.selectedDay == null
                       ? null
                       : DateFormat.yMMMMd().format(provider.selectedDay!),
-                  onClearDay: () => provider.setSelectedDay(null),
+                  // No await here, so reading `context` is safe.
+                  onClearDay: () => _applyDaySelection(
+                    ScaffoldMessenger.of(context),
+                    provider,
+                    provider.setSelectedDay(null),
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.md),
                 _FilterButtons(
@@ -324,6 +329,8 @@ class TransactionsScreen extends StatelessWidget {
     BuildContext context,
     TransactionProvider provider,
   ) async {
+    // Captured before the sheet opens, so nothing reads `context` after an await.
+    final messenger = ScaffoldMessenger.of(context);
     final month = provider.currentMonth ?? DateTime.now();
     final today = DateTime.now();
     final withData = provider.daysWithTransactions;
@@ -332,7 +339,7 @@ class TransactionsScreen extends StatelessWidget {
         ? today.day
         : lastDay;
 
-    final picked = await showModalBottomSheet<DateTime>(
+    final picked = await showModalBottomSheet<DayPick>(
       context: context,
       isScrollControlled: true,
       builder: (sheetContext) => SafeArea(
@@ -356,7 +363,13 @@ class TransactionsScreen extends StatelessWidget {
                   ),
                   if (provider.selectedDay != null)
                     TextButton(
-                      onPressed: () => Navigator.pop(sheetContext, null),
+                      key: const ValueKey('day-picker-whole-month'),
+                      // An EXPLICIT result, distinct from a dismiss. Both used to
+                      // be null, so swiping the sheet away cleared the day filter.
+                      onPressed: () => Navigator.pop(
+                        sheetContext,
+                        const DayPick.wholeMonth(),
+                      ),
                       child: const Text('Whole month'),
                     ),
                 ],
@@ -365,12 +378,18 @@ class TransactionsScreen extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
               child: CalendarDatePicker(
-                initialDate:
-                    provider.selectedDay ??
-                    DateTime(month.year, month.month, 1),
+                // Clamped to [maxDay]. `initialDate` later than `lastDate`
+                // asserts, so this can only ever be out of range if a stored
+                // selection is -- which is exactly what the crash was.
+                initialDate: _clampTo(
+                  provider.selectedDay ?? DateTime(month.year, month.month, 1),
+                  DateTime(month.year, month.month, 1),
+                  DateTime(month.year, month.month, maxDay),
+                ),
                 firstDate: DateTime(month.year, month.month, 1),
                 lastDate: DateTime(month.year, month.month, maxDay),
-                onDateChanged: (day) => Navigator.pop(sheetContext, day),
+                onDateChanged: (day) =>
+                    Navigator.pop(sheetContext, DayPick.day(day)),
               ),
             ),
             Padding(
@@ -391,14 +410,53 @@ class TransactionsScreen extends StatelessWidget {
       ),
     );
 
-    if (picked == null) {
-      // "Whole month" dismisses with null, which is indistinguishable from the
-      // sheet being swiped away, so treat a null while a day is selected as a
-      // request to clear it.
-      if (provider.selectedDay != null) provider.setSelectedDay(null);
+    // A DISMISS and a "Whole month" are different intentions, and for a long
+    // time they were both null. Swiping the sheet away silently cleared the day
+    // filter, so selecting a day and then changing your mind about the sheet
+    // changed the view anyway.
+    if (picked == null || picked.isDismissed) return;
+    if (picked.result == DayPickResult.wholeMonth) {
+      _applyDaySelection(messenger, provider, provider.setSelectedDay(null));
       return;
     }
-    provider.setSelectedDay(picked);
+    _applyDaySelection(
+      messenger,
+      provider,
+      provider.setSelectedDay(picked.day),
+    );
+  }
+
+  /// [value] held inside [lo]..[hi].
+  static DateTime _clampTo(DateTime value, DateTime lo, DateTime hi) {
+    if (value.isBefore(lo)) return lo;
+    if (value.isAfter(hi)) return hi;
+    return value;
+  }
+
+  /// Makes the outcome of a day tap VISIBLE.
+  ///
+  /// A tap that changes nothing must say so. Without this, selecting a day in
+  /// another month, or re-tapping the day already on screen, did nothing at all
+  /// and was indistinguishable from a tap that had not registered -- which is how
+  /// a working control comes to look broken.
+  void _applyDaySelection(
+    ScaffoldMessengerState messenger,
+    TransactionProvider provider,
+    DaySelectionOutcome outcome,
+  ) {
+    final message = switch (outcome) {
+      DayOutsideLoadedMonth(:final loadedMonth) =>
+        'That day is in ${DateFormat.yMMMM().format(loadedMonth)}, which is not '
+            'the month on screen.',
+      DayInTheFuture() => 'That day has not happened yet.',
+      DayAlreadySelected() => 'Already showing that day.',
+      DaySelectionAlreadyWholeMonth() => 'Already showing the whole month.',
+      DaySelected() || DaySelectionCleared() => null,
+    };
+    if (message == null) return;
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   List<Widget> _groupTransactions(List<Transaction> transactions) {
