@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import 'package:flutter_application_1/theme/app_chart_colors.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
@@ -80,7 +81,13 @@ class SpendingHeatmap extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Which days you spend', style: theme.textTheme.titleSmall),
+        // The MONTH, derived from the data rather than written down. The card
+        // said 'Which days you spend' and nothing else, so a grid of red squares
+        // had no month attached to it and could be read as belonging to any.
+        Text(
+          'Which days you spend · ${DateFormat.yMMMM().format(DateTime(year, month))}',
+          style: theme.textTheme.titleSmall,
+        ),
         const SizedBox(height: AppSpacing.xxs),
         Row(
           children: [
@@ -97,7 +104,7 @@ class SpendingHeatmap extends StatelessWidget {
               ),
             ),
             const SizedBox(width: AppSpacing.xs),
-            _Scale(),
+            _Scale(rampLength: AppChartColors.rampLength(scheme)),
           ],
         ),
         const SizedBox(height: AppSpacing.xs),
@@ -111,33 +118,47 @@ class SpendingHeatmap extends StatelessWidget {
             // per month: a 5-week month drawn in 6 columns leaves one empty
             // column, which is how every calendar handles it and reads as a
             // calendar rather than as a gap in the data.
-            final weeks = weeksIn(constraints.maxWidth);
+            // THE MONTH decides the shape. `weeksIn` used to return a fixed 5
+            // under 520dp, which silently truncated a 6-week month: a real day
+            // simply was not drawn. Rows are now derived from the month, so the
+            // grid is 4, 5 or 6 rows and is never missing anything.
+            final weeks = columnsForMonth(year, month);
             final cell = cellFor(constraints.maxWidth, weeks);
 
             return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              // stretch, not start: with `start` each Row sized to its content
+              // and the leftover width was DISCARDED, so the grid hugged the
+              // left and threw away a third of the card on a wide phone. Cells
+              // now grow to fill the measure.
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 for (var weekday = 0; weekday < 7; weekday++)
                   Padding(
                     padding: EdgeInsets.only(bottom: weekday == 6 ? 0 : _gap),
                     child: Row(
                       children: [
+                        // Expanded DIRECTLY inside the Row. Wrapping it in the
+                        // Padding and expanding that gives the Padding
+                        // BoxParentData where FlexParentData is expected, and
+                        // Expanded throws.
                         for (var week = 0; week < weeks; week++)
-                          Padding(
-                            padding: EdgeInsets.only(
-                              right: week == weeks - 1 ? 0 : _gap,
-                            ),
-                            child: _Cell(
-                              size: cell,
-                              dayNumber: _dayAt(
-                                weekday: weekday,
-                                week: week,
-                                firstWeekday: firstWeekday,
-                                daysInMonth: daysInMonth,
+                          Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                right: week == weeks - 1 ? 0 : _gap,
                               ),
-                              amount: spendByDay,
-                              busiest: busiest,
-                              isHighlighted: _isHighlighted(weekday, week),
+                              child: _Cell(
+                                size: cell,
+                                dayNumber: _dayAt(
+                                  weekday: weekday,
+                                  week: week,
+                                  firstWeekday: firstWeekday,
+                                  daysInMonth: daysInMonth,
+                                ),
+                                amount: spendByDay,
+                                busiest: busiest,
+                                isHighlighted: _isHighlighted(weekday, week),
+                              ),
                             ),
                           ),
                       ],
@@ -187,17 +208,63 @@ class SpendingHeatmap extends StatelessWidget {
   static int _daysInMonthOf(List<DayTotal> days) =>
       DateTime(days.first.date.year, days.first.date.month + 1, 0).day;
 
-  /// How many week-columns the grid draws at [width].
+  /// How many week-COLUMNS the grid draws for a month.
   ///
-  /// Fixed per width, not per month, so the weekday labels line up with the
-  /// columns they name and a 5-week month just leaves the last column empty.
+  /// 7 rows are weekdays and the columns are WEEKS, so a month needs
+  /// `leadingDead + daysInMonth` cells and the column count is whatever that
+  /// rounds up to. Six-week months are real (November 2026, May 2027) and
+  /// drawing only five columns loses a week of visible days, which is the exact
+  /// class of bug that got Stage 5 through a green suite.
+  ///
+  /// The 6-week case is drawn at 6 and lets the cells shrink slightly. Cells are
+  /// now Expanded, so they take whatever width is left after the extra column --
+  /// there is no `maxCell` cap discarding the remainder any more.
+  ///
+  /// [width] is no longer consulted: the MONTH decides the shape, and a grid
+  /// whose shape changes with the window is a grid that lies.
   static int weeksIn(double width) => width >= 520 ? 6 : 5;
+
+  /// The column count a month genuinely needs.
+  ///
+  ///   columns = ceil((leadingDead + daysInMonth) / 7)
+  ///
+  /// Where `leadingDead = DateTime(y, m, 1).weekday - 1`, so a month starting on
+  /// Sunday has no leading dead cells and one starting on Saturday has six.
+  static int columnsForMonth(int year, int month) {
+    final leadingDead = DateTime(year, month, 1).weekday - 1;
+    final daysInMonth = DateTime(year, month + 1, 0).day;
+    final total = leadingDead + daysInMonth;
+    final columns = (total / 7).ceil();
+    // A 28-day February starting on Monday needs 4; anything pathological is
+    // clamped to the two real bounds rather than producing a zero- or
+    // ten-column grid.
+    return columns < 4 ? 4 : (columns > 6 ? 6 : columns);
+  }
+
+  /// Dead cells before the first of the month.
+  static int leadingDeadForMonth(int year, int month) =>
+      DateTime(year, month, 1).weekday - 1;
+
+  /// Dead cells after the last of the month, out to the column boundary.
+  static int trailingDeadForMonth(int year, int month, int columns) {
+    final leading = leadingDeadForMonth(year, month);
+    final daysInMonth = DateTime(year, month + 1, 0).day;
+    final total = columns * 7;
+    final used = leading + daysInMonth;
+    final trailing = total - used;
+    return trailing < 0 ? 0 : trailing;
+  }
 
   /// The cell size that fits [width] for a month of [weeks] weeks.
   ///
   /// Divides by the number of columns AND takes off the gaps. Forgetting the
   /// divide is not a subtle bug: it hands back the whole run's width as the
   /// width of one cell, so on a narrow measure every cell would be enormous.
+  ///
+  /// No `maxCell` cap. Capping at 15 and DISCARDING the remainder is what made
+  /// the grid hug the left on a wide card; the cells are Expanded now and grow
+  /// to fill, so this is only a height hint and a floor for a pathological
+  /// measure.
   static double cellFor(double width, int weeks) {
     if (weeks <= 0 || width <= 0) return maxCell;
     final available = (width - (weeks - 1) * _gap) / weeks;
@@ -233,9 +300,8 @@ class _Cell extends StatelessWidget {
       // A cell OUTSIDE the month. Dead space, and deliberately a different colour
       // from an empty day: a calendar with gaps in it is still a calendar, but a
       // grid whose padding reads as a quiet week is a chart lying about its shape.
-      return SizedBox(
-        width: size,
-        height: size,
+      return AspectRatio(
+        aspectRatio: 1,
         child: DecoratedBox(
           key: ValueKey('heat-dead-cell'),
           decoration: BoxDecoration(
@@ -253,22 +319,26 @@ class _Cell extends StatelessWidget {
       message: spent == 0
           ? 'Nothing spent'
           : 'Day $dayNumber · ${spent.toStringAsFixed(0)}',
-      child: Container(
-        // A key per day, because a Tooltip's message is not a usable handle:
-        // it differs for a day with no spending, so counting by message counts
-        // only the busy days.
-        key: ValueKey('heat-cell-$dayNumber'),
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          // The SPEND ramp from AppChartColors, and the empty-cell token for a
-          // day with nothing on it. Not a tint of `primary`: more spending
-          // ramping toward the primary reads as SELECTED rather than as cost.
-          color: AppChartColors.spendStep(scheme, intensity),
-          borderRadius: BorderRadius.circular(AppSpacing.xxs),
-          border: isHighlighted
-              ? Border.all(color: scheme.tertiary, width: 2)
-              : null,
+      // SQUARE. The width comes from the Row via Expanded, so the height is
+      // pinned to it here; a fixed height made the cells rectangles as soon as
+      // they grew past the old 15-pixel cap.
+      child: AspectRatio(
+        aspectRatio: 1,
+        child: Container(
+          // A key per day, because a Tooltip's message is not a usable handle:
+          // it differs for a day with no spending, so counting by message counts
+          // only the busy days.
+          key: ValueKey('heat-cell-$dayNumber'),
+          decoration: BoxDecoration(
+            // The SPEND ramp from AppChartColors, and the empty-cell token for a
+            // day with nothing on it. Not a tint of `primary`: more spending
+            // ramping toward the primary reads as SELECTED rather than as cost.
+            color: AppChartColors.spendStep(scheme, intensity),
+            borderRadius: BorderRadius.circular(AppSpacing.xxs),
+            border: isHighlighted
+                ? Border.all(color: scheme.tertiary, width: 2)
+                : null,
+          ),
         ),
       ),
     );
@@ -277,7 +347,11 @@ class _Cell extends StatelessWidget {
 
 /// "less" and "more", so the shading has a legend.
 class _Scale extends StatelessWidget {
-  const _Scale();
+  const _Scale({required this.rampLength});
+
+  /// How many swatches, including the empty cell. Passed in rather than read
+  /// from a constant so the legend and the grid cannot disagree.
+  final int rampLength;
 
   @override
   Widget build(BuildContext context) {
@@ -304,9 +378,12 @@ class _Scale extends StatelessWidget {
                 // Same ramp as the grid, or the legend lies about it.
                 // Same tokens as the grid, or the legend lies about it: the
                 // empty cell and the ramp steps both come from AppChartColors.
+                // The ramp's OWN length, never a literal 4. A hardcoded divisor
+                // silently skips steps the moment a theme offers a different
+                // number of them, and the legend then lies about the grid.
                 color: i == 0
                     ? AppChartColors.heatmapEmpty(scheme)
-                    : AppChartColors.spendStep(scheme, i / 4),
+                    : AppChartColors.spendStep(scheme, i / (rampLength - 1)),
                 borderRadius: BorderRadius.circular(AppSpacing.xxs),
               ),
             ),
