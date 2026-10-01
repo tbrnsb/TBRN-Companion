@@ -8,7 +8,6 @@ import 'package:flutter_application_1/providers/transaction_provider.dart';
 import 'package:flutter_application_1/providers/settings_provider.dart';
 import 'package:flutter_application_1/services/storage_service.dart';
 import 'package:flutter_application_1/services/notification_service.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
 import 'package:flutter_application_1/screens/home_screen.dart';
 
 void main() async {
@@ -50,8 +49,8 @@ class MainApp extends StatelessWidget {
             title: 'TBRN',
             debugShowCheckedModeBanner: false,
             themeMode: settings.themeMode,
-            theme: AppTheme.light(),
-            darkTheme: AppTheme.dark(),
+            theme: settings.lightTheme,
+            darkTheme: settings.darkTheme,
             home: const HomeScreen(),
           );
         },

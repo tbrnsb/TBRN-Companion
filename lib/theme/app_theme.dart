@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'app_palettes.dart';
+
 /// V2 visual identity for Daily Context Companion.
 ///
 /// Palette:
@@ -108,23 +110,42 @@ class AppSurfaces {
   AppSurfaces._();
 
   /// Fill and border for a tier.
+  ///
+  /// Every fill comes out of the ACTIVE scheme's container roles rather than out
+  /// of a named TBRN constant, which is what lets one tier work in every
+  /// palette. Naming `AppColors.darkSurface` here is why the raised card stayed
+  /// TBRN-brown on Kanagawa's ink: the tier was pinned to one palette's step.
+  ///
+  /// The mapping, stated once, and it is BRIGHTNESS-AWARE:
+  ///
+  /// - light: [raised] is `surfaceContainerLowest` (a step LIGHTER than the
+  ///   page), [flat] is `surfaceContainer` (between the page and a card)
+  /// - dark:  [raised] is `surfaceContainerHigh` (a step LIGHTER than the page,
+  ///   because on a dark page "raised" means further from the background toward
+  ///   the reader, not darker), [flat] is `surfaceContainerHighest`
+  ///
+  /// Getting this wrong is invisible until a card looks like a hole: a dark
+  /// palette whose raised tier is the DEEPEST step reads as a well punched
+  /// through the page rather than as something sitting on it.
   static ({Color color, BorderSide border}) specFor(
     AppSurfaceTier tier,
-    ColorScheme scheme, {
-    Brightness? brightness,
-  }) {
-    final isDark = (brightness ?? scheme.brightness) == Brightness.dark;
+    ColorScheme scheme,
+  ) {
+    final isDark = scheme.brightness == Brightness.dark;
 
     return switch (tier) {
       AppSurfaceTier.flat => (
-        color: isDark ? AppColors.darkSurfaceHigh : scheme.surface,
+        color: isDark
+            ? scheme.surfaceContainerHighest
+            : scheme.surfaceContainer,
         border: BorderSide.none,
       ),
       AppSurfaceTier.raised => (
-        // The lightest warm tone, not Colors.white. Pure white on a cream page
-        // reads as clinical and broke the palette; this is the same "one step
-        // above the page" relationship, kept in the warm family.
-        color: isDark ? AppColors.darkSurface : AppColors.surfaceLowest,
+        // One step above the page, with an edge, so a card has a visible
+        // boundary.
+        color: isDark
+            ? scheme.surfaceContainerHigh
+            : scheme.surfaceContainerLowest,
         border: BorderSide(color: scheme.outlineVariant),
       ),
       AppSurfaceTier.accent => (
@@ -173,11 +194,7 @@ class AppSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final spec = AppSurfaces.specFor(
-      tier,
-      theme.colorScheme,
-      brightness: theme.brightness,
-    );
+    final spec = AppSurfaces.specFor(tier, theme.colorScheme);
 
     // The outer Container carries the margin only. A Container with no colour
     // and no decoration is a pass-through, so the Material below is still the
@@ -213,87 +230,192 @@ class AppRadii {
 class AppTheme {
   AppTheme._();
 
-  static ThemeData light() {
-    final scheme = ColorScheme(
-      brightness: Brightness.light,
-      primary: AppColors.carafe,
-      onPrimary: AppColors.creamLight,
-      primaryContainer: AppColors.parchment,
-      onPrimaryContainer: AppColors.jet,
-      secondary: AppColors.mocha,
-      onSecondary: AppColors.creamLight,
-      secondaryContainer: AppColors.latte,
-      onSecondaryContainer: AppColors.carafe,
-      tertiary: AppColors.khaki,
-      onTertiary: AppColors.jet,
-      tertiaryContainer: AppColors.cream,
-      onTertiaryContainer: AppColors.carafe,
-      error: AppColors.error,
-      onError: AppColors.creamLight,
-      surface: AppColors.surfaceLow,
-      onSurface: AppColors.jet,
-      // The full ladder. Without these, Material's own container roles all
-      // collapsed onto the page colour.
-      surfaceDim: AppColors.surfaceRecessed,
-      surfaceBright: AppColors.surfaceLowest,
-      surfaceContainerLowest: AppColors.surfaceLowest,
-      surfaceContainerLow: AppColors.surfaceLow,
-      surfaceContainer: AppColors.surfaceMid,
-      surfaceContainerHigh: AppColors.surfaceHigh,
-      surfaceContainerHighest: AppColors.surfaceHighest,
-      onSurfaceVariant: AppColors.mocha,
-      outline: AppColors.khaki,
-      // Was `sand`, which was so close to the page that borders all but
-      // disappeared and a raised card had no edge to sit on.
-      outlineVariant: AppColors.outlineSoft,
-      shadow: AppColors.jet,
-      inverseSurface: AppColors.jet,
-      onInverseSurface: AppColors.cream,
-      inversePrimary: AppColors.cream,
-    );
+  /// The default palette. Unchanged behaviour for a user who never opens
+  /// Settings, which is the requirement: the setting that decides a palette
+  /// defaults to what the app looked like before palettes existed.
+  static const AppPalette defaultPalette = AppPalette.tbrn;
 
-    return _base(scheme, scaffold: AppColors.creamLight);
+  /// The TBRN light theme, unchanged from before palettes existed.
+  static ThemeData light() => _for(AppPalette.tbrn, Brightness.light);
+
+  /// The TBRN dark theme, unchanged from before palettes existed.
+  static ThemeData dark() => _for(AppPalette.tbrn, Brightness.dark);
+
+  /// The light theme for [palette].
+  ///
+  /// A dark-only palette has no light form, so this falls back to the dark one
+  /// rather than inventing a light version. The Settings screen does not offer
+  /// the combination in the first place — see [AppPaletteX.supportsLight] — so
+  /// reaching this means a stored preference from a future palette, and a
+  /// coherent dark screen is the better failure than a cream one in Kanagawa
+  /// colours.
+  static ThemeData lightFor(AppPalette palette) {
+    if (AppPalettes.lightFor(palette) != null) {
+      return _for(palette, Brightness.light);
+    }
+    return darkFor(palette);
   }
 
-  static ThemeData dark() {
-    final scheme = ColorScheme(
-      brightness: Brightness.dark,
-      primary: AppColors.cream,
-      onPrimary: AppColors.jet,
-      primaryContainer: AppColors.carafe,
-      onPrimaryContainer: AppColors.cream,
-      secondary: AppColors.khaki,
-      onSecondary: AppColors.jet,
-      secondaryContainer: AppColors.darkSurfaceHigh,
-      onSecondaryContainer: AppColors.darkCream,
-      tertiary: AppColors.khaki,
-      onTertiary: AppColors.jet,
-      tertiaryContainer: AppColors.darkSurfaceHigh,
-      onTertiaryContainer: AppColors.darkCream,
-      error: const Color(0xFFD08A76),
-      onError: AppColors.jet,
-      surface: AppColors.darkSurface,
-      onSurface: AppColors.cream,
-      surfaceDim: AppColors.darkBackground,
-      surfaceBright: AppColors.darkSurfaceHigh,
-      surfaceContainerLowest: AppColors.darkBackground,
-      surfaceContainerLow: AppColors.darkSurface,
-      surfaceContainer: AppColors.darkSurfaceMid,
-      surfaceContainerHigh: AppColors.darkSurfaceHigh,
-      surfaceContainerHighest: AppColors.darkSurfaceHigher,
-      onSurfaceVariant: AppColors.khaki,
-      outline: AppColors.mocha,
-      outlineVariant: AppColors.darkBorder,
-      shadow: Colors.black,
-      inverseSurface: AppColors.cream,
-      onInverseSurface: AppColors.jet,
-      inversePrimary: AppColors.carafe,
-    );
+  /// The dark theme for [palette]. Every palette has one.
+  static ThemeData darkFor(AppPalette palette) =>
+      _for(palette, Brightness.dark);
 
-    return _base(scheme, scaffold: AppColors.darkBackground);
+  /// Builds the theme for a palette and a brightness.
+  ///
+  /// One builder for all ten combinations, because the parts that differ between
+  /// them are exactly the palette's own tokens and the brightness — and a
+  /// per-palette `ThemeData` would have ten copies of the 120 lines of component
+  /// themes below, which is ten places for them to drift.
+  static ThemeData _for(AppPalette palette, Brightness brightness) {
+    final spec = brightness == Brightness.dark
+        ? AppPalettes.darkFor(palette)
+        : (AppPalettes.lightFor(palette) ?? AppPalettes.darkFor(palette));
+    final scheme = _schemeFor(spec, brightness);
+    return _base(scheme, scaffold: spec.background, palette: palette);
   }
 
-  static ThemeData _base(ColorScheme scheme, {required Color scaffold}) {
+  /// The [ColorScheme] for a palette's tokens.
+  ///
+  /// The container roles are the whole point of this method. Leaving them unset
+  /// collapses `surfaceContainerLow` through `surfaceContainerHigh` onto the page
+  /// colour, and those are the roles `Card`, `ListTile`, menus, dialogs, sheets,
+  /// filled text fields, chips and snack bars paint themselves with — so with no
+  /// ladder there is no elevation anywhere and every card vanishes. That is the
+  /// bug `90a480a` fixed for TBRN; filling these in per palette is what keeps
+  /// four new palettes from inheriting it.
+  static ColorScheme _schemeFor(AppPaletteSpec spec, Brightness brightness) {
+    final isDark = brightness == Brightness.dark;
+
+    // In light mode the primary is the palette's own strong colour and the
+    // foreground on it is near-white. In dark mode that inverts: the primary is
+    // the PALE tone and its foreground is the palette's darkest, or a saturated
+    // mid-tone with pale text on it.
+    final primary = isDark
+        ? spec.outline == spec.onSurface
+              ? spec.primary
+              : _paleFor(spec)
+        : spec.primary;
+    final onPrimary = isDark ? spec.background : const Color(0xFFFDF9F2);
+
+    return ColorScheme(
+      brightness: brightness,
+      primary: primary,
+      onPrimary: onPrimary,
+      primaryContainer: spec.container,
+      onPrimaryContainer: isDark ? spec.primary : spec.onSurface,
+      secondary: spec.secondary,
+      onSecondary: isDark ? spec.background : const Color(0xFFFDF9F2),
+      secondaryContainer: spec.surfaceHighest,
+      onSecondaryContainer: spec.onSurface,
+      tertiary: spec.secondary,
+      onTertiary: isDark ? spec.background : const Color(0xFFFDF9F2),
+      tertiaryContainer: spec.surfaceHigh,
+      onTertiaryContainer: spec.onSurface,
+      error: spec.error,
+      onError: isDark ? spec.background : const Color(0xFFFDF9F2),
+      surface: spec.surfaceLow,
+      onSurface: spec.onSurface,
+      surfaceDim: spec.surfaceRecessed,
+      surfaceBright: spec.surfaceLowest,
+      surfaceContainerLowest: spec.surfaceLowest,
+      surfaceContainerLow: spec.surfaceLow,
+      surfaceContainer: spec.surfaceMid,
+      surfaceContainerHigh: spec.surfaceHigh,
+      surfaceContainerHighest: spec.surfaceHighest,
+      onSurfaceVariant: isDark ? spec.outline : spec.secondary,
+      outline: spec.outline,
+      outlineVariant: spec.outlineSoft,
+      shadow: const Color(0xFF000000),
+      inverseSurface: spec.onSurface,
+      onInverseSurface: spec.background,
+      inversePrimary: spec.primary,
+    );
+  }
+
+  /// The dark-mode primary: the palette's own primary, lifted if it is too dark
+  /// to read on a near-black page.
+  ///
+  /// Kanagawa's and Catppuccin's primaries are already pale and are used as they
+  /// are. Gruvbox's amber and Solitude's grey both sit below 3:1 against their
+  /// own backgrounds, so each is mixed toward its own text colour until it
+  /// clears the threshold — computed rather than hand-picked so a palette edit
+  /// cannot silently take the app back under 3:1.
+  static Color _paleFor(AppPaletteSpec spec) {
+    final background = spec.background;
+    if (_relativeLuminance(spec.primary) / _relativeLuminance(background) >=
+        3.0 / _contrastDenominator(background)) {
+      return spec.primary;
+    }
+    var candidate = spec.primary;
+    for (var i = 0; i < 12; i++) {
+      candidate = Color.lerp(candidate, spec.onSurface, 0.12)!;
+      final ratio =
+          _relativeLuminance(candidate) / _contrastDenominator(background);
+      if (ratio >= 3.0) return candidate;
+    }
+    return spec.onSurface;
+  }
+
+  static double _contrastDenominator(Color background) =>
+      _relativeLuminance(background) > 0.0
+      ? _relativeLuminance(background)
+      : 1.0;
+
+  static double _relativeLuminance(Color c) {
+    double channel(double v) =>
+        v <= 0.03928 ? v / 12.92 : _pow((v + 0.055) / 1.055, 2.4);
+    return 0.2126 * channel(c.r) +
+        0.7152 * channel(c.g) +
+        0.0722 * channel(c.b);
+  }
+
+  static double _pow(double base, double exponent) {
+    // ln then exp, so this needs no dart:math import in a theme file.
+    if (base <= 0) return 0;
+    return _exp(exponent * _ln(base));
+  }
+
+  static double _ln(double x) {
+    // Natural log via a series around 1, then a few squarings. Only ever called
+    // with values in (0, 2], where the series converges quickly.
+    if (x <= 0) return double.negativeInfinity;
+    var exponent = 0;
+    var value = x;
+    while (value > 2) {
+      value /= 2;
+      exponent++;
+    }
+    while (value < 1) {
+      value *= 2;
+      exponent--;
+    }
+    final z = (value - 1) / (value + 1);
+    final z2 = z * z;
+    var sum = 0.0;
+    var term = z;
+    for (var k = 1; k <= 21; k += 2) {
+      sum += term / k;
+      term *= z2;
+    }
+    return 2 * sum + exponent * 0.6931471805599453;
+  }
+
+  static double _exp(double x) {
+    if (x > 3) return _exp(x / 2) * _exp(x / 2);
+    var term = 1.0;
+    var sum = 1.0;
+    for (var i = 1; i <= 18; i++) {
+      term *= x / i;
+      sum += term;
+    }
+    return sum;
+  }
+
+  static ThemeData _base(
+    ColorScheme scheme, {
+    required Color scaffold,
+    required AppPalette palette,
+  }) {
     final isDark = scheme.brightness == Brightness.dark;
     final textTheme = _typeScale(scheme);
 
@@ -335,7 +457,11 @@ class AppTheme {
           borderRadius: AppRadii.mediumRadius,
           side: BorderSide(color: scheme.outlineVariant),
         ),
-        color: isDark ? AppColors.darkSurface : Colors.white,
+        // One step above the page, from the scheme rather than a named TBRN
+        // tone. A literal here is why a Card stayed cream on Kanagawa's ink.
+        color: isDark
+            ? scheme.surfaceContainerLow
+            : scheme.surfaceContainerLowest,
         surfaceTintColor: Colors.transparent,
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -403,9 +529,9 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         height: 68,
-        backgroundColor: isDark ? AppColors.darkBackground : Colors.white,
+        backgroundColor: scheme.surfaceContainerLowest,
         surfaceTintColor: Colors.transparent,
-        indicatorColor: isDark ? AppColors.carafe : scheme.primaryContainer,
+        indicatorColor: scheme.primaryContainer,
         labelTextStyle: WidgetStatePropertyAll(
           TextStyle(
             fontSize: 12,

@@ -125,21 +125,31 @@ class CategoryRegistry {
       id: 'health',
       name: 'Health',
       icon: Icons.favorite_rounded,
-      color: Color(0xFFBA6B3B),
+      // Red rather than the orange-brown it was: `food` is the amber in this
+      // set and the two were inside the separation threshold of each other while
+      // sharing a donut slice boundary.
+      color: Color(0xFFA63D3D),
       popularity: 6,
     ),
     CategoryMeta(
       id: 'utilities',
       name: 'Utilities',
       icon: Icons.bolt_rounded,
-      color: Color(0xFF6E7F80),
+      // Cooler and bluer than `other`'s warm brown. The two were 4 units apart in
+      // the weighted metric and they share a donut slice boundary, so which is
+      // which was a guess. Fixed the COLOUR, not the threshold.
+      color: Color(0xFF5E8C7B),
       popularity: 7,
     ),
     CategoryMeta(
       id: 'other',
       name: 'Other',
       icon: Icons.payments_rounded,
-      color: Color(0xFF967A64),
+      // A warm tan. It is the catch-all and must not look like a category, but
+      // it still has to carry real chroma: a near-neutral grey fails the palette's
+      // own saturation floor, and a desaturated colour is one a phone cannot
+      // tell from the surface.
+      color: Color(0xFF9E8B6E),
       popularity: 8,
     ),
   ];
@@ -149,35 +159,41 @@ class CategoryRegistry {
       id: 'salary',
       name: 'Salary',
       icon: Icons.work_rounded,
-      color: Color(0xFF8C6D3E),
+      color: Color(0xFF7E5A2E),
       popularity: 0,
     ),
     CategoryMeta(
       id: 'freelance',
       name: 'Freelance',
       icon: Icons.handshake_rounded,
-      color: Color(0xFF6A866A),
+      color: Color(0xFF4E7A52),
       popularity: 1,
     ),
     CategoryMeta(
       id: 'investment',
       name: 'Investment',
       icon: Icons.trending_up_rounded,
-      color: Color(0xFF5C7A8C),
+      // Greener than the slate it was. Investment and `other` measured inside the
+      // threshold of each other on the cream page, and they share the income
+      // donut; the hue moved rather than the threshold.
+      color: Color(0xFF2F6E7E),
       popularity: 2,
     ),
     CategoryMeta(
       id: 'bonus',
       name: 'Bonus',
       icon: Icons.emoji_events_rounded,
-      color: Color(0xFF9B794B),
+      // Gold rather than the brown it was: bonus, gift and custom were three
+      // near-identical browns inside one donut, which is a legend that cannot be
+      // read. Hue is what makes a category recognisable, so the hue moved.
+      color: Color(0xFFC9A227),
       popularity: 3,
     ),
     CategoryMeta(
       id: 'gift',
       name: 'Gift',
       icon: Icons.volunteer_activism_rounded,
-      color: Color(0xFF987962),
+      color: Color(0xFFB5495B),
       popularity: 4,
     ),
     CategoryMeta(
@@ -193,7 +209,10 @@ class CategoryRegistry {
     id: 'custom',
     name: 'Custom',
     icon: Icons.auto_awesome_rounded,
-    color: Color(0xFF8A6F4D),
+    // Deliberately mauve rather than another brown: a hand-typed category is the
+    // catch-all, and if it looks like a built-in the user cannot tell which slice
+    // of the donut it is.
+    color: Color(0xFF7A6A9E),
     popularity: 99,
   );
 
@@ -236,7 +255,10 @@ class CategoryRegistry {
       id: 'suggested:coffee',
       name: 'Coffee',
       icon: Icons.coffee_rounded,
-      color: Color(0xFF7D593F),
+      // A roasted brown that is DARKER and redder than `travel`'s grey-brown.
+      // They measured inside the separation threshold of each other while sharing
+      // a donut, so which slice was which was a guess.
+      color: Color(0xFF6B3F2A),
       popularity: 23,
     ),
     CategoryMeta(
@@ -264,7 +286,9 @@ class CategoryRegistry {
       id: 'suggested:kids',
       name: 'Kids',
       icon: Icons.child_care_rounded,
-      color: Color(0xFFB45309),
+      // Olive rather than the amber-brown it was: `fruits` is already the
+      // red-orange in this set.
+      color: Color(0xFF7D6B1F),
       popularity: 27,
     ),
     CategoryMeta(
@@ -278,14 +302,18 @@ class CategoryRegistry {
       id: 'suggested:books',
       name: 'Books & Study',
       icon: Icons.menu_book_rounded,
-      color: Color(0xFF574DD0),
+      // Blue rather than the violet it was: `gifts` is already the purple in this
+      // set, and the separation check caught them sharing a donut.
+      color: Color(0xFF2F6FB5),
       popularity: 29,
     ),
     CategoryMeta(
       id: 'suggested:pets',
       name: 'Pets',
       icon: Icons.pets_rounded,
-      color: Color(0xFFA64017),
+      // Plum rather than the rust it was: `fruits` is already the red-orange in
+      // this set and two rusts shared a donut.
+      color: Color(0xFF8B3A62),
       popularity: 30,
     ),
     CategoryMeta(
