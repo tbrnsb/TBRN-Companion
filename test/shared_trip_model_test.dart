@@ -520,7 +520,7 @@ void main() {
       );
 
       expect(result.isValid, isFalse);
-      expect(result.message, contains('not a TBRN trip'));
+      expect(result.message, contains('not a TBRN Companion trip'));
     });
 
     test('a snapshot with no journey is refused', () {
