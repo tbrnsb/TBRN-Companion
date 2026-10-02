@@ -9,7 +9,9 @@ import 'package:daily_companion/providers/journey_provider.dart';
 import 'package:daily_companion/providers/settings_provider.dart';
 import 'package:daily_companion/providers/transaction_provider.dart';
 import 'package:daily_companion/screens/budgets/budgets_screen.dart';
-import 'package:daily_companion/services/demo_data_service.dart';
+
+import 'seed_fixture.dart';
+
 import 'package:daily_companion/services/storage_service.dart';
 import 'package:daily_companion/theme/app_theme.dart';
 
@@ -592,15 +594,15 @@ void main() {
     );
   });
 
-  group('against real demo data', () {
+  group('against a realistic month', () {
     // The invariant the whole accessor exists to protect: the per-category
     // figures and the month total come from ONE pass over the data, so they
-    // cannot disagree. Run against the demo seed rather than a hand-built
-    // fixture, because the demo set is where shared-trip expenses, custom
-    // categories and a settlement all coexist — the cases a synthetic list
-    // would leave out.
+    // cannot disagree. Run against the seeded fixture rather than a
+    // hand-built list, because the fixture is where shared-trip expenses,
+    // custom categories and a settlement all coexist — the cases a synthetic
+    // list would leave out.
     test('per-category totals add up to the month total', () async {
-      await DemoDataService.seedAll();
+      await SeedFixture.seed();
       final provider = TransactionProvider();
       await provider.initialize();
 
@@ -625,7 +627,7 @@ void main() {
       expect(
         customSum,
         greaterThan(0),
-        reason: 'the demo data has custom categories and they must be separate',
+        reason: 'the fixture has custom categories and they must be separate',
       );
 
       var categorySum = 0.0;

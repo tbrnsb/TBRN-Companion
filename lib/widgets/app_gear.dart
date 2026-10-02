@@ -24,8 +24,8 @@ class AppGearButton extends StatelessWidget {
   /// Pushes Settings onto the current route.
   ///
   /// A push rather than a swap, so the back gesture returns to whatever tab the
-  /// user was on. Deep links, CSV export, the wipe and demo data all keep
-  /// working exactly as before — only the way in changed.
+  /// user was on. Deep links, CSV export and the wipe all keep working exactly
+  /// as before — only the way in changed.
   static Future<void> open(BuildContext context) {
     return Navigator.of(context).push(
       MaterialPageRoute<void>(

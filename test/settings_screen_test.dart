@@ -30,10 +30,10 @@ Future<void> settleUi(WidgetTester tester) async {
 
 /// Scrolls the settings list until [finder] is built, then taps it.
 ///
-/// The settings screen is a lazy ListView and the Demo section is its last
-/// child, so it simply does not exist in the tree until the list is scrolled
-/// down. Tapping a target that is clipped at the fold edge is unreliable for
-/// the same reason.
+/// The settings screen is a lazy ListView and the lower sections are its last
+/// children, so they simply do not exist in the tree until the list is
+/// scrolled down. Tapping a target that is clipped at the fold edge is
+/// unreliable for the same reason.
 Future<void> scrollTo(WidgetTester tester, Finder finder) async {
   await tester.scrollUntilVisible(
     finder,
@@ -276,19 +276,6 @@ void main() {
       expect(find.text('Export this month as CSV'), findsOneWidget);
       expect(find.text('Import transactions from CSV'), findsOneWidget);
       expect(find.text('Remove all data'), findsOneWidget);
-    });
-
-    testWidgets('the demo actions are a menu too', (tester) async {
-      usePhoneLayout(tester, const Size(412, 2600));
-      await tester.pumpWidget(_app());
-      await settleUi(tester);
-
-      expect(find.text('Add demo data'), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('settings-demo-menu')));
-      await settleUi(tester);
-
-      expect(find.text('Add demo data'), findsOneWidget);
-      expect(find.text('Clear demo data'), findsOneWidget);
     });
   });
 

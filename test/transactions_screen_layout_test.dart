@@ -24,7 +24,7 @@ Future<void> settleUi(WidgetTester tester) async {
 
 /// A month with a bar on most days, in both directions.
 ///
-/// The demo month was ten records on one day, and the September month has a
+/// A seeded month was ten records on one day, and the September month has a
 /// few. Between them they cover the case that matters: a plot whose TALLEST bar
 /// reaches the top of its own box, which is when an overlap is visible at all.
 Future<void> seedAMonth() async {

@@ -16,7 +16,7 @@ import 'visual_smoke_test.dart' show initTestStorage;
 ///
 /// Dates and amounts are built from arguments rather than hardcoded literals, so
 /// nothing here asserts against a month name or a figure that a future change to
-/// the demo set would silently invalidate.
+/// a seeded fixture would silently invalidate.
 String sampleCsv({
   DateTime? firstDate,
   double food = 120.5,
