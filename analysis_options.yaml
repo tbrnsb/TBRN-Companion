@@ -7,8 +7,3 @@ analyzer:
     - backup/**
     - build/**
     - android/**
-    - ios/**
-    - web/**
-    - windows/**
-    - macos/**
-    - linux/**

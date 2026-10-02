@@ -25,17 +25,26 @@ migrate_working_dir/
 
 # Flutter/Dart/Pub related
 **/doc/api/
-**/ios/Flutter/.last_build_id
 .dart_tool/
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
 /build/
-# `/build/` above is root-anchored, so the platform build directories were
-# still being tracked. Match them at any depth.
+# `/build/` above is root-anchored, so the Android build directory was still
+# being tracked. Match it explicitly.
 /android/build/
-/ios/Build/
 /coverage/
+
+# This is an Android-only app, so the iOS, macOS, Linux, Windows and web
+# scaffolding is gone. `flutter build apk` still recreates those directories,
+# and the generated files in them carry absolute paths from the machine that
+# built them, so the directories are ignored rather than deleted. Their own
+# .gitignore files went with them, which is why this has to be here.
+/ios/
+/macos/
+/linux/
+/windows/
+/web/
 
 # Generated IDE / Gradle problem reports
 **/problems-report.html
