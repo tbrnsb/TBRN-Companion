@@ -5,38 +5,38 @@ import 'package:uuid/uuid.dart';
 import 'package:daily_companion/models/index.dart';
 import 'package:daily_companion/services/storage_service.dart';
 
-/// Seeds and removes the app's sample data.
+/// A realistic three months of records, for tests to read.
 ///
-/// Demo records are identified by an id prefix, not by their text. Matching on
-/// a name or description would delete a user's real checklist called "Demo
-/// pack", and would miss a demo record whose text the user had edited. The id
-/// is immutable in the UI, so a prefix on it is a reliable marker.
+/// The budget and ledger tests need data with a shape a hand-built list does not
+/// produce: a shared trip whose payer is not on your roster, a custom category,
+/// and three months of history rather than one. Asserting against a realistic
+/// set is what makes those invariants mean something.
 ///
-/// Nothing here runs on app start. Seeding is one explicit user action from
-/// Settings, and clearing removes only what this class created.
-class DemoDataService {
-  DemoDataService._();
+/// Records carry an id prefix, so a test can tell fixture records from anything
+/// it wrote itself. Nothing here runs on app start -- a test calls [seed].
+class SeedFixture {
+  SeedFixture._();
 
   /// Every seeded record's id starts with this.
-  static const String idPrefix = 'demo-';
+  static const String idPrefix = 'fixture-';
 
-  /// Shown in the UI so demo records are obvious on sight, not just in the
-  /// data.
-  static const String label = '[Demo]';
+  /// Prefixed onto descriptions, so a failing assertion shows which set a record
+  /// came from.
+  static const String label = '[Fixture]';
 
-  static bool isDemoId(String? id) => id != null && id.startsWith(idPrefix);
+  static bool isSeedId(String? id) => id != null && id.startsWith(idPrefix);
 
   static String newId() => '$idPrefix${const Uuid().v4()}';
 
   static DateTime _daysAgo(int days) =>
       DateTime.now().subtract(Duration(days: days));
 
-  /// Writes one batch of demo data across all four sections.
+  /// Writes one batch of records across all four sections.
   ///
   /// Every date lands in the current month or the past, never the future, so
   /// the records show up in the timeline and the month summary rather than
   /// hiding behind a date filter.
-  static Future<void> seedAll() async {
+  static Future<void> seed() async {
     final storage = StorageService();
 
     final active = Journey(
@@ -57,10 +57,10 @@ class DemoDataService {
       endTime: _daysAgo(41),
       completed: true,
     );
-    // A shared trip, so the settlement is visible without anyone having to add
+    // A shared trip, so the settlement is exercised without anyone having to add
     // three people by hand. The amounts are the worked example from the README:
     // 5500 + 5400 + 3000 across three people, which does not divide, and leaves
-    // Sita owing. A demo that settles to zero would show none of the feature.
+    // Sita owing. A set that settles to zero would hide the rounding.
     final shared = Journey(
       id: newId(),
       destination: '$label Annapurna Base Camp',
@@ -75,7 +75,7 @@ class DemoDataService {
         TripParticipant.create(name: 'Sita', id: '$idPrefix-sita'),
       ],
       localParticipantId: '$idPrefix-you',
-      tripCode: 'DEMO24',
+      tripCode: 'KIT2026',
     );
     await storage.addJourney(active);
     await storage.addJourney(shared);
@@ -86,7 +86,7 @@ class DemoDataService {
     final weekend = Checklist(
       id: newId(),
       name: '$label Weekend pack',
-      description: 'Sample list for the sample trip.',
+      description: 'A list for the trip.',
       journeyId: active.id,
     );
     await storage.addChecklist(weekend);
@@ -110,7 +110,7 @@ class DemoDataService {
     final essentials = Checklist(
       id: newId(),
       name: '$label Everyday essentials',
-      description: 'Sample everyday list.',
+      description: 'The everyday list.',
       isEverydayEssentials: true,
     );
     await storage.addChecklist(essentials);
@@ -127,7 +127,7 @@ class DemoDataService {
     final winter = Checklist(
       id: newId(),
       name: '$label Cold season kit',
-      description: 'Sample list for a winter trip.',
+      description: 'A list for a winter trip.',
       journeyId: completed.id,
     );
     await storage.addChecklist(winter);
@@ -160,7 +160,7 @@ class DemoDataService {
           name: '$label ${place.$1}',
           latitude: place.$2,
           longitude: place.$3,
-          description: 'Sample place.',
+          description: 'A saved place.',
           journeyId: active.id,
         ),
       );
@@ -180,7 +180,7 @@ class DemoDataService {
     }
   }
 
-  /// Demo spend for the current month.
+  /// Spend for the current month.
   ///
   /// Spread across the month by POSITION rather than by subtracting days from
   /// today. `DateTime(y, m, now.day - n)` is the version this replaces, and it
@@ -199,7 +199,7 @@ class DemoDataService {
   /// would have made four weeks of identical numbers and a heatmap that
   /// normalises against a median of repeats.
   ///
-  /// Every category in the app appears somewhere in here. A demo that never
+  /// Every category in the app appears somewhere in here. A set that never
   /// shows a category cannot be checked, and a user who finds one of them for
   /// the first time has to trust that it works.
   ///
@@ -222,7 +222,7 @@ class DemoDataService {
     const total = 30;
     var slot = 0;
 
-    // Built through a function so each record gets its own demo id at
+    // Built through a function so each record gets its own id at
     // construction time. copyWith cannot set an id.
     Transaction income(double amount, String category, String what) => Income(
       id: newId(),
@@ -468,53 +468,5 @@ class DemoDataService {
     // the length has to be known before the date is built.
     final lastDay = DateTime(year, month + 1, 0).day;
     return DateTime(year, month, day.clamp(1, lastDay));
-  }
-
-  /// Removes every demo record, in every month and every section, and returns
-  /// how many were removed.
-  ///
-  /// The previous implementation iterated the in-memory list of whatever month
-  /// happened to be loaded and deleted all of it — demo and real alike — so it
-  /// removed neither reliably nor safely. This reads every box instead.
-  static Future<int> clearAll() async {
-    final storage = StorageService();
-    var removed = 0;
-
-    for (final transaction in await storage.getAllTransactions()) {
-      if (isDemoId(transaction.id)) {
-        await storage.deleteTransaction(transaction.id);
-        removed++;
-      }
-    }
-
-    for (final journey in await storage.getAllJourneys()) {
-      if (isDemoId(journey.id)) {
-        await storage.deleteJourney(journey.id);
-        removed++;
-      }
-    }
-
-    for (final location in await storage.getAllLocations()) {
-      if (!isDemoId(location.id)) continue;
-      // Logs belong to the place, so they go with it.
-      for (final log in await storage.getLocationLogs(location.id)) {
-        await storage.deleteLocationLog(log.id);
-        removed++;
-      }
-      await storage.deleteLocation(location.id);
-      removed++;
-    }
-
-    for (final checklist in await storage.getAllChecklists()) {
-      if (!isDemoId(checklist.id)) continue;
-      // deleteChecklist removes the checklist's items along with it, but those
-      // items are separate records in their own box, so they are counted here
-      // for the return value to reflect every row actually deleted.
-      removed += checklist.items.length;
-      await storage.deleteChecklist(checklist.id);
-      removed++;
-    }
-
-    return removed;
   }
 }

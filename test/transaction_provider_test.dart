@@ -547,48 +547,6 @@ void main() {
     );
   });
 
-  group('demo data', () {
-    test('the current month holds demo spend, and the months before hold theirs', () async {
-      // The seed now spans three months on purpose: month navigation was empty
-      // everywhere except whichever month you happened to open the app in.
-      final now = DateTime.now();
-      final provider = TransactionProvider();
-      await provider.initialize();
-      await provider.addDemoData();
-
-      await provider.loadTransactionsForMonth(now.year, now.month);
-      final thisMonth = provider.transactions
-          .where((t) => t.description.startsWith('[Demo]'))
-          .toList();
-      expect(
-        thisMonth,
-        isNotEmpty,
-        reason: 'the current month has no demo spend',
-      );
-
-      // The month the provider loaded is the one it reports, and nothing from a
-      // different month leaks into it.
-      for (final t in thisMonth) {
-        expect(t.date.year, now.year, reason: '${t.description} left the year');
-        expect(
-          t.date.month,
-          now.month,
-          reason: '${t.description} left the month',
-        );
-      }
-
-      // And the month before is not empty, which is what makes the arrows on
-      // the month header do anything.
-      final lastMonth = DateTime(now.year, now.month - 1);
-      await provider.loadTransactionsForMonth(lastMonth.year, lastMonth.month);
-      expect(
-        provider.transactions.where((t) => t.description.startsWith('[Demo]')),
-        isNotEmpty,
-        reason: 'last month has no demo spend',
-      );
-    });
-  });
-
   group('write outcome and month isolation', () {
     test('addTransaction reports that the write succeeded', () async {
       final provider = await _providerFor(2024, 1);

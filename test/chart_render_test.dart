@@ -13,10 +13,10 @@ import 'package:daily_companion/widgets/spending_heatmap.dart';
 
 import 'test_viewports.dart';
 
-/// The only day a freshly seeded demo month has recorded.
+/// The only day a freshly seeded month has recorded.
 final _oneDay = DateTime(2026, 10, 2);
 
-/// September 2026, the eight days the demo month actually holds.
+/// September 2026, the eight days the fixture month actually holds.
 ///
 /// The shape that showed the bug on the device: few days, so the rods are wide
 /// and spaced far apart, and a peak that leaves the tallest rod near the top of

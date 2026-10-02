@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:daily_companion/models/index.dart';
 import 'package:daily_companion/services/csv_document.dart';
-import 'package:daily_companion/services/demo_data_service.dart';
 import 'package:daily_companion/services/storage_service.dart';
 import 'package:daily_companion/utils/date_window.dart';
 
@@ -1268,23 +1267,4 @@ class TransactionProvider extends ChangeNotifier {
   double getTotalSpending() {
     return getSpendingByCategory();
   }
-
-  /// Seeds one batch of sample data across checklists, journeys, places and
-  /// transactions.
-  ///
-  /// Delegated to [DemoDataService] so the demo records for the whole app live
-  /// in one place, rather than spend-only seeding hidden on this provider.
-  /// The caller is responsible for reloading the providers afterwards; nothing
-  /// runs on app start.
-  Future<void> addDemoData() => DemoDataService.seedAll();
-
-  /// Removes every demo record, in every month and every section.
-  ///
-  /// This used to iterate [transactions] — only the loaded month — and delete
-  /// every one of them, demo and real alike, while its dialog claimed "Clear
-  /// All Data". It removed neither all the demo data nor only the demo data.
-  /// The real user's records were the ones at risk. It now delegates to
-  /// [DemoDataService.clearAll], which reads every box and matches on the demo
-  /// id prefix, so nothing the user created can be caught by it.
-  Future<int> clearDemoData() => DemoDataService.clearAll();
 }

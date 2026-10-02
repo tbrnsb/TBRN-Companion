@@ -80,8 +80,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Reloads every provider that caches records, then the counts.
   ///
   /// Both matter after any change made straight to storage. The counts used to
-  /// live in the Data section alone, so adding or clearing demo data left the
-  /// "Stored on this device" numbers showing what was there before.
+  /// live in the Data section alone, so a change elsewhere left the "Stored on
+  /// this device" numbers showing what was there before.
   Future<void> _reloadEverything() async {
     final providers = _DataProviders.read(context);
     await providers.reload();
@@ -218,8 +218,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _TrashSection(count: _counts!.trashedTransactions),
             const SizedBox(height: AppSpacing.lg),
           ],
-
-          _DemoSection(onReload: _reloadEverything),
         ],
       ),
     );
@@ -251,7 +249,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 }
 
-/// The section wrapper the Data, Trash and Demo groups still use.
+/// The section wrapper the Data and Trash groups still use.
 ///
 /// Kept rather than folded into `SettingsGroup`, because those three predate it
 /// and each has its own footnote behaviour; the groups on the new screen use
@@ -605,175 +603,6 @@ class _CountLine extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _DemoSection extends StatefulWidget {
-  const _DemoSection({required this.onReload});
-
-  /// Re-reads every provider and the storage counts after demo data is added or
-  /// cleared.
-  final Future<void> Function() onReload;
-
-  @override
-  State<_DemoSection> createState() => _DemoSectionState();
-}
-
-class _DemoSectionState extends State<_DemoSection> {
-  bool _loading = false;
-
-  Future<void> _addDemo() async {
-    setState(() => _loading = true);
-    await showDialog(
-      context: context,
-      builder: (context) => _AddDemoDialog(onReload: widget.onReload),
-    );
-    if (mounted) {
-      setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _clearDemo() async {
-    await showDialog(
-      context: context,
-      builder: (context) => _ClearDemoDialog(onReload: widget.onReload),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Demo Data',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        AppSurface(
-          tier: AppSurfaceTier.raised,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Sample records for trying the app out. Every demo record is '
-                'labelled "[Demo]" so you can tell them apart from your own.',
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              // A MENU, for the same reason the Data actions are one.
-              //
-              // Two side-by-side buttons needed a measured 380dp before either
-              // label stopped wrapping, so most phones stacked them and the pair
-              // looked broken. One row plus a menu has no width to get wrong,
-              // and the destructive action stops being a button a thumb lands on
-              // while looking for the other one.
-              SizedBox(
-                width: double.infinity,
-                child: MenuAnchor(
-                  builder: (menuContext, controller, _) => OutlinedButton.icon(
-                    key: const ValueKey('settings-demo-menu'),
-                    onPressed: _loading
-                        ? null
-                        : () => controller.isOpen
-                              ? controller.close()
-                              : controller.open(),
-                    icon: const Icon(Icons.science_outlined),
-                    label: const Text('Demo data actions'),
-                  ),
-                  menuChildren: [
-                    MenuItemButton(
-                      key: const ValueKey('settings-add-demo'),
-                      onPressed: _loading ? null : _addDemo,
-                      leadingIcon: const Icon(Icons.add_rounded),
-                      child: const Text('Add demo data'),
-                    ),
-                    MenuItemButton(
-                      key: const ValueKey('settings-clear-demo'),
-                      onPressed: _loading ? null : _clearDemo,
-                      leadingIcon: const Icon(Icons.delete_outline_rounded),
-                      child: const Text('Clear demo data'),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _AddDemoDialog extends StatelessWidget {
-  const _AddDemoDialog({required this.onReload});
-
-  final Future<void> Function() onReload;
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Add demo data?'),
-      content: const Text(
-        'This adds sample checklists, journeys, places, expenses and income '
-        'for the current month. Every record is labelled "[Demo]" so you can '
-        'tell it from your own, and "Clear demo data" removes all of it again.',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () async {
-            final providers = _DataProviders.read(context);
-            await providers.transactions.addDemoData();
-            // Reloads the providers and the storage counts together; the counts
-            // used to go stale here because they were owned by the Data section
-            // rather than the screen.
-            await onReload();
-            if (context.mounted) Navigator.pop(context);
-          },
-          child: const Text('Add demo data'),
-        ),
-      ],
-    );
-  }
-}
-
-class _ClearDemoDialog extends StatelessWidget {
-  const _ClearDemoDialog({required this.onReload});
-
-  final Future<void> Function() onReload;
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Clear demo data?'),
-      content: const Text(
-        'This removes only the records created by "Add demo data", across every '
-        'section and every month. Anything you added yourself is left alone.',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () async {
-            final providers = _DataProviders.read(context);
-            await providers.transactions.clearDemoData();
-            await onReload();
-            if (context.mounted) Navigator.pop(context);
-          },
-          child: const Text('Clear demo data'),
-        ),
-      ],
     );
   }
 }

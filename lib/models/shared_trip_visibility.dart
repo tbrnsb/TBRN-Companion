@@ -3,10 +3,10 @@ import 'transaction.dart';
 /// THE SHARED-TRIP RULE.
 ///
 /// A trip expense records which participant fronted it (`paidByParticipantId`)
-/// and which trip it belongs to (`journeyId`). Demo data writes those as real
-/// `Expense` rows, and nothing used to look at either field, so Sita's groceries
-/// and Raj's boat ride landed on the Transactions tab and were counted in the
-/// month total, in every chart, in every budget, and in search.
+/// and which trip it belongs to (`journeyId`). Importing a shared trip writes
+/// those as real `Expense` rows, and nothing used to look at either field, so
+/// Sita's groceries and Raj's boat ride landed on the Transactions tab and were
+/// counted in the month total, in every chart, in every budget, and in search.
 ///
 /// The rule, in full:
 ///
