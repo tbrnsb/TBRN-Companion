@@ -1,6 +1,6 @@
 # TBRN
 
-![Verify](https://github.com/tbrnsb/Daily-companion/actions/workflows/verify.yml/badge.svg)
+![Verify](https://github.com/tbrnsb/TBRN-companion/actions/workflows/verify.yml/badge.svg)
 
 A pocket companion for money and trips. Log what you spend, keep track of what
 you're packing, and record where a trip has taken you.
@@ -114,8 +114,8 @@ Android only. Built and tested against Flutter 3.47.0 on the stable channel and
 Dart 3.13.0.
 
 ```bash
-git clone https://github.com/tbrnsb/Daily-companion.git
-cd Daily-companion
+git clone https://github.com/tbrnsb/TBRN-companion.git
+cd TBRN-companion
 flutter pub get
 ```
 
