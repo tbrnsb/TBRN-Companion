@@ -140,17 +140,17 @@ void main() {
   });
 
   group('the phone-visible app name', () {
-    test('the launcher label is TBRN', () {
+    test('the launcher label is TBRN Companion', () {
       final manifest = File('android/app/src/main/AndroidManifest.xml')
           .readAsStringSync();
-      expect(manifest, contains('android:label="TBRN"'));
+      expect(manifest, contains('android:label="TBRN Companion"'));
       // The name used to leak the template name.
       expect(manifest, isNot(contains('flutter_application_1"')));
     });
 
-    test('the recent-apps title is TBRN too', () {
+    test('the recent-apps title is TBRN Companion too', () {
       final main = File('lib/main.dart').readAsStringSync();
-      expect(main, contains("title: 'TBRN'"));
+      expect(main, contains("title: 'TBRN Companion'"));
     });
   });
 }

@@ -51,9 +51,9 @@ class TripSnapshotExport {
     await SharePlus.instance.share(
       ShareParams(
         files: [XFile(file.path)],
-        subject: 'TBRN trip — ${snapshot.journey.title}',
+        subject: 'TBRN Companion trip — ${snapshot.journey.title}',
         text:
-            'Trip costs from ${snapshot.exportedBy}. Import it in TBRN and tell '
+            'Trip costs from ${snapshot.exportedBy}. Import it in TBRN Companion and tell '
             'it which one you are.',
       ),
     );

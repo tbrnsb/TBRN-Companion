@@ -101,7 +101,7 @@ class TripSnapshot {
     // would otherwise be applied as if it were a trip.
     if (map['kind'] != 'tbrn-trip-snapshot') {
       return const TripSnapshotParseResult.invalid(
-        'That file is not a TBRN trip.',
+        'That file is not a TBRN Companion trip.',
       );
     }
 
