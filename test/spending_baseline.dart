@@ -4,7 +4,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:daily_companion/models/index.dart';
 import 'package:daily_companion/providers/journey_provider.dart';
 import 'package:daily_companion/providers/transaction_provider.dart';
-import 'package:daily_companion/services/demo_data_service.dart';
+
+import 'seed_fixture.dart';
+
 import 'package:daily_companion/services/storage_service.dart';
 
 import 'visual_smoke_test.dart' show initTestStorage;
@@ -26,7 +28,7 @@ Future<void> main() async {
   await initTestStorage();
   SharedPreferences.setMockInitialValues({});
   await StorageService().clear();
-  await DemoDataService.seedAll();
+  await SeedFixture.seed();
 
   final provider = TransactionProvider();
   await provider.initialize();
@@ -35,11 +37,11 @@ Future<void> main() async {
 
   final all = await StorageService().getAllTransactions();
 
-  // Every month that holds data, not just the current one. On the 1st of a month
-  // the demo set's trip expenses fall into the PREVIOUS month — a consequence of
-  // the demo data being dated on "now", which is Phase B item 2's bug — so a
-  // current-month-only baseline would report a trip comparison with nothing to
-  // compare against.
+  // Every month that holds data, not just the current one. On the 1st of a
+  // month the fixture's trip expenses fall into the PREVIOUS month — a
+  // consequence of the data being dated on "now", which is Phase B item 2's bug
+  // — so a current-month-only baseline would report a trip comparison with
+  // nothing to compare against.
   final monthKeys = <String>{
     for (final t in all)
       '${t.date.year}-${t.date.month.toString().padLeft(2, '0')}',

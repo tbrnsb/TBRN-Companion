@@ -14,7 +14,6 @@ Notable changes to this project. The format follows
 - Packing checklists, with suggestions based on where you are going.
 - Local storage with Hive. No account, no server, no sync.
 - CSV export, from Settings.
-- Demo data, so there is something to look at before you type anything.
 
 ### Fixed
 

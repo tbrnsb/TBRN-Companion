@@ -5,14 +5,18 @@ import 'package:daily_companion/models/index.dart';
 import 'package:daily_companion/providers/budget_provider.dart';
 import 'package:daily_companion/providers/journey_provider.dart';
 import 'package:daily_companion/providers/transaction_provider.dart';
-import 'package:daily_companion/services/demo_data_service.dart';
+
+import 'seed_fixture.dart';
+
 import 'package:daily_companion/services/storage_service.dart';
 
 import 'visual_smoke_test.dart' show initTestStorage;
 
-const String _me = 'demo-you';
-const String _sita = 'demo-sita';
-const String _raj = 'demo-raj';
+// Taken from the fixture rather than hardcoded, so a test that reads a seeded
+// trip and a test that builds its own agree on who is who.
+const String _me = '${SeedFixture.idPrefix}you';
+const String _sita = '${SeedFixture.idPrefix}sita';
+const String _raj = '${SeedFixture.idPrefix}raj';
 
 /// An expense on the shared trip, paid by [payer].
 Expense _tripExpense(
@@ -326,7 +330,7 @@ void main() {
     // for one month, on one screen, with a budget card next to the total it
     // contradicted.
     test('totalExpenses and spendIndex().total agree', () async {
-      await DemoDataService.seedAll();
+      await SeedFixture.seed();
       final provider = TransactionProvider();
       await provider.initialize();
 
@@ -341,7 +345,7 @@ void main() {
     });
 
     test('and they agree per category too', () async {
-      await DemoDataService.seedAll();
+      await SeedFixture.seed();
       final provider = TransactionProvider();
       await provider.initialize();
 
@@ -354,7 +358,7 @@ void main() {
     });
 
     test('and the day view is that day\'s slice of the ledger', () async {
-      await DemoDataService.seedAll();
+      await SeedFixture.seed();
       final provider = TransactionProvider();
       await provider.initialize();
 
@@ -487,7 +491,7 @@ void main() {
     // deliberately unfiltered, so deleting or hiding a trip expense from my
     // ledger cannot move what I owe Raj.
     test('the settlement still sees the whole trip', () async {
-      await DemoDataService.seedAll();
+      await SeedFixture.seed();
       final journeys = JourneyProvider();
       addTearDown(journeys.dispose);
       await journeys.initialize();

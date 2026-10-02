@@ -106,7 +106,6 @@ The gear in the app bar, not a fifth tab.
 - **Stored on this device**: a count of everything held, plus CSV export and
   import
 - **Deleted**: trashed transactions, which can be put back
-- **Demo data**: add a month of labelled sample records, or clear them again
 
 ## Installation
 
