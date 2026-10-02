@@ -1,4 +1,4 @@
-# TBRN
+# TBRN Companion
 
 ![Verify](https://github.com/tbrnsb/TBRN-companion/actions/workflows/verify.yml/badge.svg)
 
