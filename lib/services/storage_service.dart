@@ -1,6 +1,6 @@
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:flutter_application_1/services/location_insight_service.dart';
-import 'package:flutter_application_1/models/index.dart';
+import 'package:daily_companion/services/location_insight_service.dart';
+import 'package:daily_companion/models/index.dart';
 
 class StorageService {
   static const String checklistsBox = 'checklists';
@@ -407,18 +407,106 @@ class StorageService {
     await _journeysBox.delete(id);
   }
 
+  /// Every custom category, as full records.
+  ///
+  /// THE SAME BOX, holding richer values. A category used to be a bare name in a
+  /// `Box<String>`, and a category now carries a kind, a colour and an emoji. A
+  /// new box would have meant a migration that copies every user's categories
+  /// across and a window where the two disagree; keeping one box means a legacy
+  /// value and a new one are read by the same line of code, with
+  /// [CustomCategory.fromStored] recognising which is which.
+  ///
+  /// Unreadable values are DROPPED rather than thrown on, and never deleted: a
+  /// value this build cannot parse might be perfectly readable by the next one,
+  /// so it is left where it is and simply not shown.
+  Future<List<CustomCategory>> getCustomCategories() async {
+    final out = <CustomCategory>[];
+    for (final stored in _expenseCategoriesBox.values) {
+      final parsed = CustomCategory.fromStored(stored);
+      if (parsed != null) out.add(parsed);
+    }
+    return out;
+  }
+
+  /// The custom category NAMES, which is what the old accessor returned and what
+  /// the pickers and CSV import still want.
   Future<List<String>> getExpenseCategories() async {
-    return _expenseCategoriesBox.values.toList();
+    final out = <String>[];
+    for (final category in await getCustomCategories()) {
+      out.add(category.name);
+    }
+    return out;
+  }
+
+  /// Creates a category, or does nothing if one of that name already exists.
+  ///
+  /// Matched case-INSENSITIVELY, because "Coffee" and "coffee" are one category
+  /// to a person and two rows in the picker without it. [CustomCategory.id] is
+  /// lowercased for the same reason, so the two spellings cannot end up stored
+  /// under different ids and split a budget.
+  Future<bool> addCustomCategory(CustomCategory category) async {
+    final cleaned = category.name.trim();
+    if (cleaned.isEmpty) {
+      return false;
+    }
+    final existing = await getCustomCategories();
+    final wanted = cleaned.toLowerCase();
+    if (existing.any((c) => c.name.trim().toLowerCase() == wanted)) {
+      return false;
+    }
+    await _expenseCategoriesBox.add(category.copyWith(name: cleaned).encode());
+    return true;
   }
 
   Future<void> addExpenseCategory(String categoryName) async {
-    final cleaned = categoryName.trim();
-    if (cleaned.isEmpty) return;
-    final existing = _expenseCategoriesBox.values.toList();
-    if (existing.contains(cleaned)) {
-      return;
+    await addCustomCategory(CustomCategory(name: categoryName));
+  }
+
+  /// Replaces a stored category, matched on its current name.
+  ///
+  /// Rename is expressed as a replace rather than an in-place edit because the
+  /// name is part of the id, so a rename has to rewrite the id. Anything already
+  /// filed under the old id keeps pointing at it — the record is matched on the
+  /// OLD name and written with the new one, so a rename here changes what the
+  /// category is called without silently re-filing past transactions. Migrating
+  /// those is a separate, deliberate operation.
+  Future<void> updateCustomCategory({
+    required String currentName,
+    required CustomCategory updated,
+  }) async {
+    final wanted = currentName.trim().toLowerCase();
+    final all = await getCustomCategories();
+    final index = all.indexWhere((c) => c.name.trim().toLowerCase() == wanted);
+    if (index < 0) return;
+
+    // Hive's `put` needs a key, and this box is keyed by an auto-increment. The
+    // record is therefore replaced in place by rewriting the value at the key
+    // the OLD record sits under, found by matching the stored string.
+    for (final key in _expenseCategoriesBox.keys) {
+      final stored = _expenseCategoriesBox.get(key);
+      if (stored is! String) continue;
+      final parsed = CustomCategory.fromStored(stored);
+      if (parsed == null) continue;
+      if (parsed.name.trim().toLowerCase() == wanted) {
+        await _expenseCategoriesBox.put(key, updated.encode());
+        return;
+      }
     }
-    await _expenseCategoriesBox.add(cleaned);
+  }
+
+  /// Removes a custom category by name, if it is there.
+  Future<void> deleteCustomCategory(String name) async {
+    final wanted = name.trim().toLowerCase();
+    for (final key in _expenseCategoriesBox.keys.toList()) {
+      final stored = _expenseCategoriesBox.get(key);
+      if (stored is! String) continue;
+      final parsed = CustomCategory.fromStored(stored);
+      if (parsed == null) continue;
+      if (parsed.name.trim().toLowerCase() == wanted) {
+        await _expenseCategoriesBox.delete(key);
+        return;
+      }
+    }
   }
 
   Future<void> clear() async {

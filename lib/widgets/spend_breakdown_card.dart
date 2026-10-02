@@ -1,9 +1,9 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
-import 'package:flutter_application_1/models/expense_category_meta.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/utils/format.dart';
+import 'package:daily_companion/models/expense_category_meta.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/utils/format.dart';
 
 /// One slice of a [SpendBreakdownCard].
 class BreakdownSegment {

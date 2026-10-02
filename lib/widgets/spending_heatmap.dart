@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import 'package:flutter_application_1/theme/app_chart_colors.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/utils/format.dart';
-import 'package:flutter_application_1/widgets/spend_trend_cards.dart'
-    show DayTotal;
+import 'package:daily_companion/theme/app_chart_colors.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/utils/format.dart';
+import 'package:daily_companion/widgets/spend_trend_cards.dart' show DayTotal;
 
 /// A calendar heatmap: one cell per day, shaded by what was spent.
 ///
@@ -42,7 +41,18 @@ class SpendingHeatmap extends StatelessWidget {
   /// it is given, so a 360dp phone and a wide window both get cells that fill
   /// the row. This is only the upper bound it will not exceed.
   static const double maxCell = 15;
-  static const double _gap = AppSpacing.xxs;
+
+  /// The gutter between cells, on both axes.
+  ///
+  /// Small on purpose. This is the value that decides whether the thing reads as
+  /// a grid or as scattered pixels, and it is the opposite of what `spaceBetween`
+  /// produced by accident.
+  ///
+  /// Four rather than three because three sat close enough to the 1px cell
+  /// outline that a row of days read as a hatched block on the device. A gutter
+  /// has to be visibly CARD between the cells, not merely non-zero, or the
+  /// outline closes the seam back up.
+  static const double _gap = 4;
 
   /// Rows are weekdays, Monday first, matching the grid.
   static const List<String> weekdayInitials = [
@@ -78,101 +88,129 @@ class SpendingHeatmap extends StatelessWidget {
       (max, v) => v > max ? v : max,
     );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // The MONTH, derived from the data rather than written down. The card
-        // said 'Which days you spend' and nothing else, so a grid of red squares
-        // had no month attached to it and could be read as belonging to any.
-        Text(
-          'Which days you spend · ${DateFormat.yMMMM().format(DateTime(year, month))}',
-          style: theme.textTheme.titleSmall,
-        ),
-        const SizedBox(height: AppSpacing.xxs),
-        Row(
+    // ONE measure, resolved once at the top and handed to the grid AND the
+    // legend. Resolving it in two places is how a key ends up a different size
+    // from the thing it explains.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cell = SpendingHeatmap.cellFor(constraints.maxWidth);
+        // THE MONTH decides the shape, and the orientation is a calendar's:
+        // seven day-columns across, week-rows down.
+        final rows = rowsForMonth(year, month);
+        return Column(
+          // `min`, not the default `max`. A Column given a bounded height
+          // otherwise EXPANDS to fill it, so the card silently became as tall as
+          // whatever box it was put in — which is how a page whose content needs
+          // 292 pixels overflowed a 266 pixel pager slot: the card had already
+          // spent the space before its own content asked for it.
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Flexible, because the summary grows with the figures in it and a
-            // five-figure month pushes it past the legend beside it.
-            Flexible(
-              child: Text(
-                _summary(busiest, totalSpend),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
+            // The MONTH, derived from the data rather than written down. The card
+            // said 'Which days you spend' and nothing else, so a grid of red
+            // squares had no month attached to it.
+            Text(
+              'Which days you spend '
+              '${DateFormat.yMMMM().format(DateTime(year, month))}',
+              style: theme.textTheme.titleSmall,
             ),
-            const SizedBox(width: AppSpacing.xs),
-            _Scale(rampLength: AppChartColors.rampLength(scheme)),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            // One row per weekday, seven columns. Sized so the whole grid fits
-            // the measure it was given: a fixed cell width overflows a 360dp
-            // phone and leaves a gap on a wide one.
-            // The same week-column count the weekday labels use, so the letters
-            // line up with the columns they name. Fixed per width rather than
-            // per month: a 5-week month drawn in 6 columns leaves one empty
-            // column, which is how every calendar handles it and reads as a
-            // calendar rather than as a gap in the data.
-            // THE MONTH decides the shape, and the orientation is a calendar's:
-            // seven day-columns across, week-rows down.
-            final rows = rowsForMonth(year, month);
-            final cell = cellFor(constraints.maxWidth);
-
-            return Column(
-              // stretch, not start: with `start` each Row sized to its content
-              // and the leftover width was DISCARDED, so the grid hugged the
-              // left and threw away a third of the card on a wide phone. Cells
-              // now grow to fill the measure.
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            const SizedBox(height: AppSpacing.xxs),
+            Row(
               children: [
-                for (var row = 0; row < rows; row++)
-                  Padding(
-                    padding: EdgeInsets.only(
-                      bottom: row == rows - 1 ? 0 : _gap,
-                    ),
-                    child: Row(
-                      // spaceBetween, NOT content-sized and NOT Expanded.
-                      //
-                      // Item 5 used Expanded, so the cells grew to fill the card
-                      // and became ~45px squares: the grid was 315px tall and
-                      // dominated the screen, which is what forced the pager up to
-                      // 640. Cells are FIXED at [SpendingHeatmapShim.cell], the
-                      // same constant the legend swatches use, so the two cannot
-                      // drift apart.
-                      //
-                      // spaceBetween is NON-NEGOTIABLE and is the original
-                      // left-hug fix: content-sized rows discarded the leftover
-                      // width and the grid hugged the left. With fixed cells and
-                      // spaceBetween the seven cells still SPAN the full card with
-                      // even gutters, and the cell size stays sane.
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        for (var column = 0; column < columnsPerRow; column++)
-                          _Cell(
-                            size: cell,
-                            dayNumber: _dayAt(
-                              row: row,
-                              column: column,
-                              firstWeekday: firstWeekday,
-                              daysInMonth: daysInMonth,
-                            ),
-                            amount: spendByDay,
-                            busiest: busiest,
-                            isHighlighted: _isHighlighted(row, column),
-                          ),
-                      ],
+                // Flexible, because the summary grows with the figures in it and
+                // a five-figure month pushes it past the legend beside it.
+                Flexible(
+                  child: Text(
+                    _summary(busiest, totalSpend),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
                     ),
                   ),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                _Scale(
+                  rampLength: AppChartColors.rampLength(scheme),
+                  cell: cell,
+                ),
               ],
-            );
-          },
-        ),
-      ],
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            // CENTRED, not stretched. Seven columns cannot both fill a 412dp
+            // card and stay small: filling it means 56px cells, which is the
+            // wall of squares item 5 removed. So the grid is a block in the
+            // middle of the card, the way a contribution graph is. The original
+            // defect was HUGGING THE LEFT, and centring fixes that without
+            // bringing the size back.
+            Center(
+              child: Column(
+                // Shrink-wrapped on purpose. With `stretch` the Column took the
+                // full card width, the `Center` around it had nothing left to
+                // centre, and the grid sat hard against the left edge — the very
+                // defect the centring was meant to remove. A content-sized
+                // Column is what makes `Center` do anything.
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var row = 0; row < rows; row++)
+                    Padding(
+                      padding: EdgeInsets.only(
+                        bottom: row == rows - 1 ? 0 : _gap,
+                      ),
+                      child: Row(
+                        // A FIXED gutter, with a cell already sized from the
+                        // measure. This is the arrangement that reads as a grid.
+                        //
+                        // `Expanded` made the cells ~45px and the grid 315px
+                        // tall. `spaceBetween` kept them small but spread seven
+                        // 11px cells across 412dp, leaving ~56dp between them —
+                        // a scatter, not a grid. A measured cell plus a small
+                        // gutter gives tight columns AND a properly sized day.
+                        // `min` is load-bearing. A Row defaults to taking the
+                        // full width, so the cells were laid out at the START of
+                        // a full-width row and the `Center` around them had
+                        // nothing to centre — the grid was still hugging the
+                        // left, which is the whole complaint.
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        children: [
+                          for (
+                            var column = 0;
+                            column < columnsPerRow;
+                            column++
+                          ) ...[
+                            // The SAME gutter the rows use, between columns.
+                            //
+                            // This was missing while `cellFor` had been
+                            // subtracting six of them from the measure: the row
+                            // laid its cells out edge to edge, so every vertical
+                            // seam was two 1px cell borders meeting. On the
+                            // device the month read as one congested hatched
+                            // block rather than a grid of separate days, which
+                            // is the opposite of what the gutter is for.
+                            if (column > 0) const SizedBox(width: _gap),
+                            _Cell(
+                              size: cell,
+                              dayNumber: _dayAt(
+                                row: row,
+                                column: column,
+                                firstWeekday: firstWeekday,
+                                daysInMonth: daysInMonth,
+                              ),
+                              amount: spendByDay,
+                              busiest: busiest,
+                              isHighlighted: _isHighlighted(row, column),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -191,6 +229,16 @@ class SpendingHeatmap extends StatelessWidget {
   /// "Rs 4,200 on your heaviest day" — the one fact a grid cannot show.
   String _summary(double busiest, double total) {
     if (busiest <= 0) return 'Nothing spent this month';
+    // A MONTH TOO SHORT TO HAVE A HEAVIEST DAY.
+    //
+    // On the 2nd of a month every record is on one day, so the busiest day IS
+    // the month's total, and the caption read "Heaviest day Rs. 4,128.35 ·
+    // Rs. 4,128.35 total" -- the same figure twice, which reads as a bug in the
+    // arithmetic rather than a fact about the date. A grid with one lit cell
+    // already says everything there is to say, so the caption just says it.
+    if ((busiest - total).abs() < 0.005) {
+      return 'All ${AppFormat.money(total, symbol: currencySymbol)} on one day';
+    }
     return 'Heaviest day ${AppFormat.money(busiest, symbol: currencySymbol)} · '
         '${AppFormat.money(total, symbol: currencySymbol)} total';
   }
@@ -287,17 +335,34 @@ class SpendingHeatmap extends StatelessWidget {
   /// Divides by the number of columns AND takes off the gaps. Forgetting the
   /// divide is not a subtle bug: it hands back the whole run's width as the
   /// width of one cell, so on a narrow measure every cell would be enormous.
-  /// The cell size: FIXED, from the same constant the legend swatches use.
+  /// The cell size for a given measure: as large as the width allows, capped.
   ///
-  /// No width term. The measure is handled by the row's `spaceBetween`, which
-  /// spaces fixed cells across it -- so the grid SPANS the card (item 5's
-  /// left-hug fix, preserved) while the cells stay small (N1's size fix). Those
-  /// two only conflict through `Expanded`, and there is none here.
+  /// This replaces `spaceBetween`. Seven fixed 11px cells spread across a 412dp
+  /// card put roughly 56dp between them, and a grid whose members are five times
+  /// further apart than they are wide does not read as a grid at all — it reads
+  /// as dots on a background, which is the complaint the device settled. The
+  /// gutters are the defect, not the cell size.
   ///
-  /// [width] is still taken so a degenerate measure is handled rather than handed
-  /// to `SizedBox.square` unchecked.
-  static double cellFor(double width) =>
-      width <= 0 ? SpendingHeatmapShim.cell : SpendingHeatmapShim.cell;
+  /// So the cell now takes the width and the gap comes out of it: the seven
+  /// columns plus six small gaps fill the measure exactly, cells grow, and the
+  /// grid stays a grid at any phone width. [maxCell] is the cap that stops this
+  /// becoming the 45px wall of squares item 5 removed, and [minCell] keeps it
+  /// legible on a narrow phone.
+  static double cellFor(double width) {
+    if (width <= 0) return SpendingHeatmapShim.minCell;
+    final exact = (width - _gap * (columnsPerRow - 1)) / columnsPerRow;
+    if (exact <= SpendingHeatmapShim.minCell) {
+      return SpendingHeatmapShim.minCell;
+    }
+    if (exact >= SpendingHeatmapShim.maxCell) {
+      return SpendingHeatmapShim.maxCell;
+    }
+    return exact;
+  }
+
+  /// The size the legend swatches are drawn at, so the key cannot drift from
+  /// the grid it explains.
+  static double legendCellFor(double width) => cellFor(width);
 }
 
 /// One day. Empty days are still drawn, in the recessed surface, because a
@@ -323,10 +388,25 @@ class _Cell extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
+    // The outline that makes this a GRID rather than a scatter of squares.
+    //
+    // Every cell carries it, including the empty ones, because the empty cells
+    // are what define the shape of the month — an outline is what the eye joins
+    // up into rows and columns. Without it a quiet day and no day at all are
+    // both just background, and the month has no rectangle.
+    //
+    // Derived, not a literal, so a palette edit cannot leave a grid of
+    // hairlines that vanish on one background and shout on another.
+    final outline = Border.all(
+      color: scheme.onSurface.withValues(alpha: 0.14),
+      width: 1,
+    );
+
     if (dayNumber == 0) {
-      // A cell OUTSIDE the month. Dead space, and deliberately a different colour
-      // from an empty day: a calendar with gaps in it is still a calendar, but a
-      // grid whose padding reads as a quiet week is a chart lying about its shape.
+      // A cell OUTSIDE the month. Kept, and clearly de-emphasised: same outline
+      // so the rectangle closes, but a fainter fill so it cannot read as a day.
+      // A grid whose padding reads as a quiet week is a chart lying about its
+      // own shape, and dropping the cell entirely leaves a ragged edge instead.
       return SizedBox.square(
         dimension: size,
         child: DecoratedBox(
@@ -334,6 +414,7 @@ class _Cell extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppChartColors.heatmapDead(scheme),
             borderRadius: BorderRadius.circular(AppSpacing.xxs),
+            border: outline,
           ),
         ),
       );
@@ -363,9 +444,12 @@ class _Cell extends StatelessWidget {
             // ramping toward the primary reads as SELECTED rather than as cost.
             color: AppChartColors.spendStep(scheme, intensity),
             borderRadius: BorderRadius.circular(AppSpacing.xxs),
+            // The highlight REPLACES the outline rather than sitting on top of
+            // it, so a selected day is not drawn with two borders of different
+            // weights at once.
             border: isHighlighted
                 ? Border.all(color: scheme.tertiary, width: 2)
-                : null,
+                : outline,
           ),
         ),
       ),
@@ -375,11 +459,16 @@ class _Cell extends StatelessWidget {
 
 /// "less" and "more", so the shading has a legend.
 class _Scale extends StatelessWidget {
-  const _Scale({required this.rampLength});
+  const _Scale({required this.rampLength, required this.cell});
 
   /// How many swatches, including the empty cell. Passed in rather than read
   /// from a constant so the legend and the grid cannot disagree.
   final int rampLength;
+
+  /// The RESOLVED cell size, so a swatch is the same shape as the day it
+  /// describes. The grid sizes its cells from the measure; a legend still on the
+  /// nominal constant would be a different size from the thing it explains.
+  final double cell;
 
   @override
   Widget build(BuildContext context) {
@@ -400,8 +489,8 @@ class _Scale extends StatelessWidget {
           Padding(
             padding: EdgeInsets.only(right: i == 4 ? 0 : 2),
             child: Container(
-              width: SpendingHeatmapShim.cell,
-              height: SpendingHeatmapShim.cell,
+              width: cell,
+              height: cell,
               decoration: BoxDecoration(
                 // Same ramp as the grid, or the legend lies about it.
                 // Same tokens as the grid, or the legend lies about it: the
@@ -431,5 +520,14 @@ class _Scale extends StatelessWidget {
 /// Shared cell size, so the legend swatches match the grid cells exactly.
 class SpendingHeatmapShim {
   SpendingHeatmapShim._();
-  static const double cell = 11;
+
+  /// The floor. Below this a cell stops being a cell.
+  static const double minCell = 15;
+
+  /// The cap that stops a wide phone turning the grid back into the wall of
+  /// squares item 5 removed.
+  static const double maxCell = 26;
+
+  /// The nominal size, and what a degenerate measure falls back to.
+  static const double cell = minCell;
 }

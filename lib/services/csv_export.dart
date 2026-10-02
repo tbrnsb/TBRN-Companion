@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
-import 'package:flutter_application_1/providers/transaction_provider.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
 
 /// Sharing this month's transactions as a CSV file.
 ///

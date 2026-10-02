@@ -2,8 +2,8 @@ import 'dart:math' as math;
 
 import 'package:uuid/uuid.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/services/storage_service.dart';
 
 /// Seeds and removes the app's sample data.
 ///
@@ -189,35 +189,53 @@ class DemoDataService {
   /// per-day maximum is set by one of them and every other day reads as nothing
   /// happened. A month that looks like that has not been lived in.
   ///
-  /// Two rules, and they are different rules:
+  /// A month lived in is a few big bills and then the SAME small expenses
+  /// repeating, roughly weekly. Ten records could not show that: it was a
+  /// salary, a rent and a shopping list, so every breakdown in the app had one
+  /// fat slice and four hairlines, and the heatmap had a single lit square. The
+  /// repetition is deliberate -- a category that turns up every week is a
+  /// category a person can recognise in a donut at a glance -- so the weeks are
+  /// spelled out with their own amounts rather than generated from one, which
+  /// would have made four weeks of identical numbers and a heatmap that
+  /// normalises against a median of repeats.
   ///
-  /// - Position decides the day: record *i* of *n* lands on roughly
+  /// Every category in the app appears somewhere in here. A demo that never
+  /// shows a category cannot be checked, and a user who finds one of them for
+  /// the first time has to trust that it works.
+  ///
+  /// Two rules for the days, and they are different rules:
+  ///
+  /// - Position decides the day: record *i* of *n* lands on a day derived from
   ///   `monthLength * (i + 1) / n`, so the set covers the month evenly however
   ///   long it is.
   /// - Today caps it: a record cannot be dated in the future, because a month
   ///   with spending on days that have not happened is not a month that has been
   ///   lived in either.
   ///
-  /// The second rule is why this is still bunched on the 1st of a month, and that
-  /// is honest: there is exactly one day to put seven records on. From the 2nd
-  /// onward the spread widens by itself.
+  /// The second rule is why the set is still bunched on the 1st of a month, and
+  /// that is honest: there is exactly one day to put thirty records on. From the
+  /// 2nd onward the spread widens by itself.
   static List<Transaction> _spend(DateTime now) {
+    // Thirty records, in roughly the order a month would run through them. Every
+    // amount is distinct, because the heatmap normalises against the per-day
+    // maximum and a set of identical figures reads as a flat pale block.
+    const total = 30;
+    var slot = 0;
+
     // Built through a function so each record gets its own demo id at
     // construction time. copyWith cannot set an id.
-    Transaction income(double amount, String category, String what, int slot) =>
-        Income(
-          id: newId(),
-          amount: amount,
-          category: category,
-          description: '$label $what',
-          date: _spreadDay(now, slot),
-        );
+    Transaction income(double amount, String category, String what) => Income(
+      id: newId(),
+      amount: amount,
+      category: category,
+      description: '$label $what',
+      date: _spreadDay(now, slot++, total),
+    );
 
     Transaction expense(
       double amount,
       ExpenseCategory category,
-      String what,
-      int slot, {
+      String what, {
       String? customName,
     }) => Expense(
       id: newId(),
@@ -225,41 +243,93 @@ class DemoDataService {
       category: category,
       description: '$label $what',
       customCategoryName: customName,
-      date: _spreadDay(now, slot),
+      date: _spreadDay(now, slot++, total),
     );
 
     return [
-      income(5000, 'salary', 'Monthly salary', 0),
-      expense(184.60, ExpenseCategory.food, 'Grocery shopping', 1),
-      expense(75.50, ExpenseCategory.travel, 'Gas for the weekend trip', 2),
-      income(150.00, 'freelance', 'Freelance project', 3),
-      expense(45.00, ExpenseCategory.entertainment, 'Movie tickets', 4),
-      expense(1200.00, ExpenseCategory.housing, 'Rent, most of it', 5),
-      expense(120.00, ExpenseCategory.utilities, 'Electric bill', 6),
+      // Week one: the bills, and the first ordinary week.
+      income(5000, 'salary', 'Monthly salary'),
+      expense(1200.00, ExpenseCategory.housing, 'Rent, most of it'),
+      expense(186.40, ExpenseCategory.food, 'Grocery shopping'),
+      expense(12.50, ExpenseCategory.travel, 'Bus fare'),
+      expense(64.00, ExpenseCategory.utilities, 'Electric bill'),
+      expense(45.00, ExpenseCategory.entertainment, 'Cinema with a friend'),
       expense(
-        63.25,
+        6.50,
         ExpenseCategory.other,
         'Coffee with the guide',
-        7,
         customName: '$label Coffee',
       ),
-      expense(18.40, ExpenseCategory.food, 'Tea and a bun', 8),
-      expense(2420.00, ExpenseCategory.gear, 'A replacement sole', 9),
+      expense(148.90, ExpenseCategory.shopping, 'New walking shoes'),
+      expense(32.00, ExpenseCategory.health, 'Pharmacy'),
+      expense(22.00, ExpenseCategory.food, 'Lunch out'),
+      income(1500.00, 'freelance', 'Freelance project'),
+
+      // Week two: the same categories, different amounts, as a real month does.
+      expense(1180.00, ExpenseCategory.gear, 'A replacement sole'),
+      expense(74.25, ExpenseCategory.food, 'Groceries for the week'),
+      expense(15.00, ExpenseCategory.travel, 'Shared taxi to the trailhead'),
+      expense(39.00, ExpenseCategory.utilities, 'Internet'),
+      expense(28.00, ExpenseCategory.utilities, 'Phone bill'),
+      expense(11.00, ExpenseCategory.food, 'Tea and a bun'),
+      expense(95.00, ExpenseCategory.entertainment, 'Concert ticket'),
+      expense(54.30, ExpenseCategory.shopping, 'A jacket for cold mornings'),
+      expense(38.00, ExpenseCategory.health, 'Physiotherapy'),
+      expense(9.00, ExpenseCategory.other, 'Tip for the porter'),
+
+      // Week three.
+      expense(210.00, ExpenseCategory.food, 'Groceries plus the weekend'),
+      expense(18.00, ExpenseCategory.travel, 'Bus and a rickshaw'),
+      expense(26.50, ExpenseCategory.food, 'Dinner with the group'),
+      expense(165.00, ExpenseCategory.gear, 'A dry bag and a headtorch'),
+      expense(43.00, ExpenseCategory.utilities, 'Water and waste'),
+      expense(8.75, ExpenseCategory.other, 'Tea, second pot'),
+      expense(132.00, ExpenseCategory.shopping, 'A present for Sita'),
+
+      // Week four, and the tail of the month.
+      expense(88.00, ExpenseCategory.entertainment, 'Museum entry'),
+      expense(176.25, ExpenseCategory.food, 'Final groceries'),
     ];
   }
 
-  /// The day for slot [slot] of the current month's set.
+  /// The day for slot [slot] of a set of [total] records in the current month.
   ///
-  /// [slot] counts from 0. The day is a POSITION in the month, capped at today.
-  static DateTime _spreadDay(DateTime now, int slot) {
-    final monthLength = DateTime(now.year, now.month + 1, 0).day;
-    // Ten slots, so the day is monthLength * (slot + 1) / 10 rounded down and
-    // never less than 1.
-    final target = ((slot + 1) * monthLength / 10).floor().clamp(
+  /// [slot] counts from 0. Two things are true at once, and both are visible in
+  /// the app:
+  ///
+  /// - The records cover about two days in three, not all of them. A month with
+  ///   spending on every single day has not been lived in, and the heatmap's
+  ///   unlit cells are how that reads. Where two records land on the same day
+  ///   they stack, which is also what a real day looks like: a market run is
+  ///   three records on one date, not three dates.
+  /// - Today caps it. There is no day in the future to put a record on.
+  ///
+  /// With only a couple of days elapsed this still bunches, and it has to: a
+  /// month on the 2nd is two days long whatever the data says.
+  static DateTime _spreadDay(DateTime now, int slot, int total) {
+    // Days of the month that have actually happened. Not the month's length:
+    // the 30th of a 30-day month is a day nobody has reached yet.
+    final elapsed = now.day;
+
+    // The days the set intends to occupy, evenly spread over the days elapsed.
+    // At least one, so an empty day list cannot divide by zero.
+    final occupied = math.max(1, (elapsed * 2 / 3).round());
+
+    // Which of those days this record belongs to. The per-day pile is
+    // `total / occupied`, which is 1.4 for a full month and 4.3 on the 10th --
+    // so a month that has barely started has several records on each of the few
+    // days it has, and a month nearly over has one or two on most of them.
+    final perDay = total / occupied;
+    final dayIndex = (slot / perDay).floor().clamp(0, occupied - 1);
+
+    // Even spread of those days across the days elapsed, so a 28-day month and
+    // a 31-day month both fill the space they have.
+    final day = (((dayIndex + 1) * elapsed) / occupied).ceil().clamp(
       1,
-      monthLength,
+      elapsed,
     );
-    return DateTime(now.year, now.month, math.min(target, now.day));
+
+    return DateTime(now.year, now.month, day);
   }
 
   /// Spend in the two months before this one.

@@ -3,21 +3,56 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/location_provider.dart';
-import 'package:flutter_application_1/providers/settings_provider.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/screens/budgets/budgets_screen.dart';
-import 'package:flutter_application_1/screens/transactions/add_transaction_sheet.dart';
-import 'package:flutter_application_1/screens/transactions/expense_detail_screen.dart';
-import 'package:flutter_application_1/screens/transactions/income_detail_screen.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/utils/date_window.dart';
-import 'package:flutter_application_1/utils/format.dart';
-import 'package:flutter_application_1/widgets/widgets.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/location_provider.dart';
+import 'package:daily_companion/providers/settings_provider.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/screens/transactions/add_transaction_sheet.dart';
+import 'package:daily_companion/screens/transactions/expense_detail_screen.dart';
+import 'package:daily_companion/screens/transactions/income_detail_screen.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/utils/date_window.dart';
+import 'package:daily_companion/utils/format.dart';
+import 'package:daily_companion/widgets/widgets.dart';
 
-class TransactionsScreen extends StatelessWidget {
+class TransactionsScreen extends StatefulWidget {
   const TransactionsScreen({super.key});
+
+  @override
+  State<TransactionsScreen> createState() => _TransactionsScreenState();
+}
+
+class _TransactionsScreenState extends State<TransactionsScreen> {
+  /// Whether the "Add" FAB is on screen right now.
+  ///
+  /// A floating action button is painted ON TOP of the list, so it covers
+  /// whatever the user has scrolled underneath it. On the device it sat squarely
+  /// on the heatmap's colour scale and hid two of its five swatches -- a chart
+  /// that cannot be read because of a button that is not even its subject.
+  ///
+  /// Bottom padding cannot fix that. [AppSpacing.screenPaddingWithFab] only
+  /// guarantees the LAST row can be scrolled clear, and the heatmap sits in the
+  /// middle of a long screen. So the button gets out of the way while the user
+  /// is reading, and comes back the moment they scroll up or return to the top.
+  bool _fabVisible = true;
+
+  double _lastScrollPixels = 0;
+
+  /// Hides the FAB on the way down and brings it back on the way up.
+  ///
+  /// Always shown again at the top, so it is never missing from a screen someone
+  /// has just landed on.
+  bool _onScroll(ScrollUpdateNotification note) {
+    final pixels = note.metrics.pixels;
+    final atTop = pixels <= 0;
+    final movingDown = pixels > _lastScrollPixels;
+    _lastScrollPixels = pixels;
+    final shouldShow = atTop || !movingDown;
+    if (shouldShow != _fabVisible) {
+      setState(() => _fabVisible = shouldShow);
+    }
+    return false;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,12 +95,13 @@ class TransactionsScreen extends StatelessWidget {
           final currencySymbol = context.select<SettingsProvider, String>(
             (s) => s.currency.symbol,
           );
-          // Built once: these walk the month's transactions and resolve
-          // metadata for every entry.
-          final expenseSegments = _expenseSegments(provider);
-          final incomeSegments = _incomeSegments(provider);
-          // Feeds the by-day and running-balance charts. Empty when nothing is
-          // recorded, and both cards render nothing rather than an empty frame.
+          // The two category breakdowns, as swipeable pages. Built once: each
+          // walks the month's transactions and resolves metadata for every entry.
+          final breakdownPages = _breakdownPages(
+            provider,
+            currencySymbol: currencySymbol,
+          );
+
           final dailyTotals = [
             for (final total in provider.dailyTotals)
               DayTotal(
@@ -80,190 +116,213 @@ class TransactionsScreen extends StatelessWidget {
               currentMonth.year,
               currentMonth.month,
             ),
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: AppSpacing.screenPadding,
-              children: [
-                _MonthSummaryCard(
-                  month: currentMonth,
-                  totalIncome: totalIncome,
-                  totalExpenses: totalExpenses,
-                  balance: balance,
-                  averageDaily: provider.getAverageDailySpending(),
-                  currencySymbol: currencySymbol,
-                  count: provider.filteredTransactions.length,
-                  onPrevious: provider.previousMonth,
-                  onNext: provider.nextMonth,
-                  // DISABLED, not hidden and not inert. A chevron that is
-                  // present but does nothing is a tap that produces no change,
-                  // which is indistinguishable from a tap that did not register.
-                  // A disabled one says the boundary is reached; a missing one
-                  // would leave a gap that looks like a layout mistake.
-                  canGoPrevious: provider.canGoToPreviousMonth,
-                  canGoNext: provider.canGoToNextMonth,
-                  onPickDay: () => _pickDay(context, provider),
-                  selectedDayLabel: provider.selectedDay == null
-                      ? null
-                      : DateFormat.yMMMMd().format(provider.selectedDay!),
-                  // No await here, so reading `context` is safe.
-                  onClearDay: () => _applyDaySelection(
-                    ScaffoldMessenger.of(context),
-                    provider,
-                    provider.setSelectedDay(null),
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.md),
-                _FilterButtons(
-                  filter: provider.filter,
-                  onFilterChanged: (filter) => provider.filter = filter,
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                // A single quiet row rather than a card. Budgets are read far
-                // less often than transactions are added, so they get one line
-                // here and the full screen behind the link.
-                _BudgetsLink(),
-                const SizedBox(height: AppSpacing.sm),
-                // ONE search UI. The inline field and its summary used to live
-                // here, and the dedicated view was added on top of them, which
-                // meant two fields writing the same query: type in one, watch
-                // the other change. Search now has one home, reached from the
-                // app bar, and this list shows a month.
-                //
-                // Still an app-level affordance rather than nothing: when a
-                // search is active the list IS the result set, and a user who
-                // narrowed something needs to see that they have.
-                if (isSearching)
-                  _ActiveSearchBanner(currencySymbol: currencySymbol),
-
-                // Anything still owed on a shared trip. Renders nothing when
-                // there is none, which is the case on most days.
-                const TripOutstandingCard(),
-                // "Where did it go": the two breakdowns, stacked.
-                //
-                // Stacked, never side by side. At 360dp a row of two donuts is
-                // about 165 pixels each and the donut alone is already 132 —
-                // two of them would be unreadable rather than compact.
-                if (expenseSegments.isNotEmpty ||
-                    incomeSegments.isNotEmpty) ...[
-                  const SizedBox(height: AppSpacing.md),
-                  const SectionHeader('Where did it go'),
-                  const SizedBox(height: AppSpacing.xs),
-                  if (expenseSegments.isNotEmpty &&
-                      provider.filter != TransactionFilter.income) ...[
-                    // SpendBreakdownCard carries its own raised surface, so it
-                    // is not wrapped again here — that would be a card inside a
-                    // card with two borders and two shadows' worth of padding.
-                    SpendBreakdownCard(
-                      title: 'Spending by category',
-                      segments: expenseSegments,
-                      currencySymbol: currencySymbol,
+            child: NotificationListener<ScrollUpdateNotification>(
+              onNotification: _onScroll,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                // Clears the FAB, which otherwise covers the count, the
+                // pager's page label and the last row of the list.
+                padding: AppSpacing.screenPaddingWithFab,
+                children: [
+                  _MonthSummaryCard(
+                    month: currentMonth,
+                    totalIncome: totalIncome,
+                    totalExpenses: totalExpenses,
+                    balance: balance,
+                    averageDaily: provider.getAverageDailySpending(),
+                    currencySymbol: currencySymbol,
+                    count: provider.filteredTransactions.length,
+                    onPrevious: provider.previousMonth,
+                    onNext: provider.nextMonth,
+                    // DISABLED, not hidden and not inert. A chevron that is
+                    // present but does nothing is a tap that produces no change,
+                    // which is indistinguishable from a tap that did not register.
+                    // A disabled one says the boundary is reached; a missing one
+                    // would leave a gap that looks like a layout mistake.
+                    canGoPrevious: provider.canGoToPreviousMonth,
+                    canGoNext: provider.canGoToNextMonth,
+                    onPickDay: () => _pickDay(context, provider),
+                    selectedDayLabel: provider.selectedDay == null
+                        ? null
+                        : DateFormat.yMMMMd().format(provider.selectedDay!),
+                    // No await here, so reading `context` is safe.
+                    onClearDay: () => _applyDaySelection(
+                      ScaffoldMessenger.of(context),
+                      provider,
+                      provider.setSelectedDay(null),
                     ),
-                    const SizedBox(height: AppSpacing.md),
-                  ],
-                  if (incomeSegments.isNotEmpty &&
-                      provider.filter != TransactionFilter.expenses)
-                    SpendBreakdownCard(
-                      title: 'Income by category',
-                      segments: incomeSegments,
-                      currencySymbol: currencySymbol,
-                    ),
-                ],
-                // "When did it change": the three time series, one at a time.
-                if (dailyTotals.isNotEmpty) ...[
-                  const SizedBox(height: AppSpacing.md),
-                  const SectionHeader('When did it change'),
-                  const SizedBox(height: AppSpacing.xs),
-                  // The pager fixes its own page height internally; wrapping it
-                  // in a SizedBox here would duplicate that number and go stale
-                  // the moment a chart's caption changed length.
-                  ChartPager(
-                    labels: const ['Heatmap', 'Daily', 'Balance', 'Weekly'],
-                    pages: [
-                      SpendingHeatmap(
-                        days: dailyTotals,
-                        currencySymbol: currencySymbol,
-                        // The day the filter is on, outlined, so the grid and
-                        // the day filter cannot disagree about what is being
-                        // looked at.
-                        highlightedDate: provider.selectedDay,
-                      ),
-                      DailyTotalsChart(
-                        days: dailyTotals,
-                        currencySymbol: currencySymbol,
-                        // So the chart marks the day the filter is on, instead
-                        // of showing a filtered day at the same weight as the
-                        // rest. On every page that has a day axis.
-                        highlightedDate: provider.selectedDay,
-                      ),
-                      CumulativeBalanceChart(
-                        days: dailyTotals,
-                        currencySymbol: currencySymbol,
-                      ),
-                      WeeklyTotalsChart(
-                        days: dailyTotals,
-                        currencySymbol: currencySymbol,
-                      ),
-                    ],
                   ),
-                ],
-                if (transactions.isEmpty) ...[
-                  const SizedBox(height: AppSpacing.lg),
+                  const SizedBox(height: AppSpacing.md),
+                  _FilterButtons(
+                    filter: provider.filter,
+                    onFilterChanged: (filter) => provider.filter = filter,
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  // ONE search UI. The inline field and its summary used to live
+                  // here, and the dedicated view was added on top of them, which
+                  // meant two fields writing the same query: type in one, watch
+                  // the other change. Search now has one home, reached from the
+                  // app bar, and this list shows a month.
+                  //
+                  // Still an app-level affordance rather than nothing: when a
+                  // search is active the list IS the result set, and a user who
+                  // narrowed something needs to see that they have.
                   if (isSearching)
-                    // A search with no hits is not the same thing as an empty
-                    // month, and the two must not share a message: "log your
-                    // first expense" when the month already has thirty is
-                    // simply wrong, and it is the one place a user looks after
-                    // deciding they HAVE found everything.
+                    _ActiveSearchBanner(currencySymbol: currencySymbol),
+
+                  // Anything still owed on a shared trip. Renders nothing when
+                  // there is none, which is the case on most days.
+                  const TripOutstandingCard(),
+                  // "Where did it go": the two breakdowns, stacked.
+                  //
+                  // Stacked, never side by side. At 360dp a row of two donuts is
+                  // about 165 pixels each and the donut alone is already 132 —
+                  // two of them would be unreadable rather than compact.
+                  if (breakdownPages.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.md),
+                    const SectionHeader('Where did it go'),
+                    const SizedBox(height: AppSpacing.xs),
+                    // ONE card at a time, swiped.
                     //
-                    // No add affordance here, deliberately. The FAB is already on
-                    // screen, and the FAB is the app's one rule for adding —
-                    // see the single-affordance decision in the test below.
-                    EmptyState(
-                      icon: Icons.search_off_rounded,
-                      title: 'Nothing matches',
-                      message:
-                          'No transaction in '
-                          '${DateFormat.yMMMM().format(currentMonth)} '
-                          'matches what you searched for.',
-                    )
-                  else
-                    EmptyState(
-                      icon: Icons.receipt_long_rounded,
-                      title: provider.filter == TransactionFilter.income
-                          ? 'No income recorded'
-                          : 'No transactions yet',
-                      message: provider.filter == TransactionFilter.income
-                          ? 'Add income to see it here.'
-                          : 'Log your first expense for ${DateFormat.yMMMM().format(currentMonth)} — it takes a few seconds.',
-                      // The action always opens the Expense/Income chooser now,
-                      // so the label must not promise a single type.
-                      actionLabel: 'Add transaction',
-                      onAction: () => AddTransactionSheet.show(context),
+                    // Stacked, the two breakdowns ate a screen and a half before
+                    // the ledger began, and the spending chart was pushed far
+                    // enough down that a month with eight spending categories
+                    // never showed one. Side by side is not an option either: at
+                    // 360dp a row of two donuts leaves about 165 pixels each and
+                    // the donut alone is already 132.
+                    //
+                    // A fixed-height pager cannot hold these two either. The card
+                    // measures 216 pixels plus 22 per category, so it needs 260
+                    // for a two-category month and 414 for all nine; one number
+                    // either clips a rich month or pads a poor one with two
+                    // hundred pixels of empty card. `SwipePages` takes its height
+                    // from the page it is showing, so neither can happen.
+                    SwipePages(
+                      labels: [for (final page in breakdownPages) page.$1],
+                      pages: [for (final page in breakdownPages) page.$2],
+                      // THE COUNT LABEL GETS OUT OF THE FAB'S WAY.
+                      //
+                      // The Add button floats bottom-RIGHT on a phone, and so
+                      // did "1 of 2 . Spending". The button comes BACK on a
+                      // scroll-up -- the moment the user is looking at the row --
+                      // and landed on it, hiding which page they were on. On the
+                      // left there is nothing floating.
+                      countOnTheLeft: true,
                     ),
-                ] else ...[
-                  const SizedBox(height: AppSpacing.md),
-                  SectionHeader(
-                    isSearching
-                        ? 'Search results'
-                        : 'Recent ${provider.filter == TransactionFilter.income
-                              ? 'income'
-                              : provider.filter == TransactionFilter.expenses
-                              ? 'expenses'
-                              : 'transactions'}',
-                    trailing: Text(
+                  ],
+                  // "When did it change": the three time series, one at a time.
+                  if (dailyTotals.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.md),
+                    const SectionHeader('When did it change'),
+                    const SizedBox(height: AppSpacing.xs),
+                    // The pager fixes its own page height internally; wrapping it
+                    // in a SizedBox here would duplicate that number and go stale
+                    // the moment a chart's caption changed length.
+                    ChartPager(
+                      labels: const ['Heatmap', 'Daily', 'Balance', 'Weekly'],
+                      pages: [
+                        SpendingHeatmap(
+                          days: dailyTotals,
+                          currencySymbol: currencySymbol,
+                          // The day the filter is on, outlined, so the grid and
+                          // the day filter cannot disagree about what is being
+                          // looked at.
+                          highlightedDate: provider.selectedDay,
+                        ),
+                        DailyTotalsChart(
+                          days: dailyTotals,
+                          currencySymbol: currencySymbol,
+                          // So the chart marks the day the filter is on, instead
+                          // of showing a filtered day at the same weight as the
+                          // rest. On every page that has a day axis.
+                          highlightedDate: provider.selectedDay,
+                        ),
+                        CumulativeBalanceChart(
+                          days: dailyTotals,
+                          currencySymbol: currencySymbol,
+                        ),
+                        WeeklyTotalsChart(
+                          days: dailyTotals,
+                          currencySymbol: currencySymbol,
+                        ),
+                      ],
+                    ),
+                  ],
+                  if (transactions.isEmpty) ...[
+                    const SizedBox(height: AppSpacing.lg),
+                    if (isSearching)
+                      // A search with no hits is not the same thing as an empty
+                      // month, and the two must not share a message: "log your
+                      // first expense" when the month already has thirty is
+                      // simply wrong, and it is the one place a user looks after
+                      // deciding they HAVE found everything.
+                      //
+                      // No add affordance here, deliberately. The FAB is already on
+                      // screen, and the FAB is the app's one rule for adding —
+                      // see the single-affordance decision in the test below.
+                      EmptyState(
+                        icon: Icons.search_off_rounded,
+                        title: 'Nothing matches',
+                        message:
+                            'No transaction in '
+                            '${DateFormat.yMMMM().format(currentMonth)} '
+                            'matches what you searched for.',
+                      )
+                    else
+                      EmptyState(
+                        icon: Icons.receipt_long_rounded,
+                        // A DAY IS A DIFFERENT QUESTION.
+                        //
+                        // The device opened this by tapping a day in the
+                        // calendar, choosing one with nothing on it, and being
+                        // told "No transactions yet — log your first expense for
+                        // October 2026". The user has thirty in that month. The
+                        // day filter chip was right above it saying the same
+                        // thing, so the empty state was arguing with the screen
+                        // it was on: the answer was about a day, not a month.
+                        title: provider.selectedDay != null
+                            ? 'Nothing on ${DateFormat.MMMd().format(provider.selectedDay!)}'
+                            : provider.filter == TransactionFilter.income
+                            ? 'No income recorded'
+                            : 'No transactions yet',
+                        message: provider.selectedDay != null
+                            ? 'That day is clear. Take the filter off to see the rest of ${DateFormat.yMMMM().format(currentMonth)}.'
+                            : provider.filter == TransactionFilter.income
+                            ? 'Add income to see it here.'
+                            : 'Log your first expense for ${DateFormat.yMMMM().format(currentMonth)} — it takes a few seconds.',
+                        // The action always opens the Expense/Income chooser now,
+                        // so the label must not promise a single type.
+                        actionLabel: 'Add transaction',
+                        onAction: () => AddTransactionSheet.show(context),
+                      ),
+                  ] else ...[
+                    const SizedBox(height: AppSpacing.md),
+                    SectionHeader(
                       isSearching
-                          ? '${transactions.length} match'
-                                '${transactions.length == 1 ? '' : 'es'}'
-                          : '${transactions.length} this month',
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ? 'Search results'
+                          : 'Recent ${provider.filter == TransactionFilter.income
+                                ? 'income'
+                                : provider.filter == TransactionFilter.expenses
+                                ? 'expenses'
+                                : 'transactions'}',
+                      trailing: Text(
+                        isSearching
+                            ? '${transactions.length} match'
+                                  '${transactions.length == 1 ? '' : 'es'}'
+                            : '${transactions.length} this month',
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  ..._groupTransactions(transactions),
+                    const SizedBox(height: AppSpacing.xs),
+                    ..._groupTransactions(transactions),
+                  ],
                 ],
-              ],
+              ),
             ),
           );
         },
@@ -277,9 +336,10 @@ class TransactionsScreen extends StatelessWidget {
       // appeared twice in different shapes and the screen read as broken. The
       // FAB returns as soon as there is something to add to.
       floatingActionButton:
-          context.select<TransactionProvider, bool>(
-            (p) => p.transactions.isNotEmpty,
-          )
+          _fabVisible &&
+              context.select<TransactionProvider, bool>(
+                (p) => p.transactions.isNotEmpty,
+              )
           ? FloatingActionButton.extended(
               onPressed: () {
                 HapticFeedback.lightImpact();
@@ -291,6 +351,41 @@ class TransactionsScreen extends StatelessWidget {
           : null,
     );
   }
+
+  /// The breakdown cards worth showing, as (label, card) pairs.
+  ///
+  /// A type the user has filtered OUT is not offered as a page, so the pager
+  /// never has a page that is present but permanently empty — and with one type
+  /// left there is nothing to swipe to, so [SwipePages] simply shows it.
+  ///
+  /// Each card carries its own raised surface and is deliberately NOT wrapped in
+  /// another: that would be a card inside a card, with two borders and two
+  /// shadows' worth of padding.
+  List<(String, Widget)> _breakdownPages(
+    TransactionProvider provider, {
+    required String currencySymbol,
+  }) => [
+    if (_expenseSegments(provider).isNotEmpty &&
+        provider.filter != TransactionFilter.income)
+      (
+        'Spending',
+        SpendBreakdownCard(
+          title: 'Spending by category',
+          segments: _expenseSegments(provider),
+          currencySymbol: currencySymbol,
+        ),
+      ),
+    if (_incomeSegments(provider).isNotEmpty &&
+        provider.filter != TransactionFilter.expenses)
+      (
+        'Income',
+        SpendBreakdownCard(
+          title: 'Income by category',
+          segments: _incomeSegments(provider),
+          currencySymbol: currencySymbol,
+        ),
+      ),
+  ];
 
   /// Expense breakdown, resolved to real expense categories.
   ///
@@ -476,7 +571,7 @@ class TransactionsScreen extends StatelessWidget {
 /// outside it: "jump to the 12th", with the 12th in another month, was
 /// unanswerable, and the build before that drew chevrons that did nothing at
 /// all.
-class _DayPickerSheet extends StatelessWidget {
+class _DayPickerSheet extends StatefulWidget {
   const _DayPickerSheet({
     required this.initialMonth,
     required this.selectedDay,
@@ -491,6 +586,7 @@ class _DayPickerSheet extends StatelessWidget {
   /// would drop them somewhere they were not, which is the same mistake as
   /// scoping the range in the first place.
   final DateTime initialMonth;
+
   final DateTime? selectedDay;
 
   /// Days with something on them, so the picker is not 30 equally plausible
@@ -498,7 +594,23 @@ class _DayPickerSheet extends StatelessWidget {
   final Set<DateTime> daysWithData;
 
   @override
+  State<_DayPickerSheet> createState() => _DayPickerSheetState();
+}
+
+class _DayPickerSheetState extends State<_DayPickerSheet> {
+  /// The day tapped in the grid but not yet committed.
+  ///
+  /// Starts EMPTY rather than at [widget.selectedDay], so opening the sheet to
+  /// change your mind and leaving it alone does not re-apply the filter you were
+  /// trying to clear. The Apply button says which day it will apply, so the held
+  /// value is never a secret.
+  DateTime? _pending;
+
+  @override
   Widget build(BuildContext context) {
+    final initialMonth = widget.initialMonth;
+    final selectedDay = widget.selectedDay;
+    final daysWithData = widget.daysWithData;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final now = DateTime.now();
@@ -565,11 +677,46 @@ class _DayPickerSheet extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
                 child: CalendarDatePicker(
                   key: const ValueKey('day-picker-calendar'),
-                  initialDate: initial,
+                  initialDate: _pending ?? initial,
                   firstDate: first,
                   lastDate: last,
-                  onDateChanged: (day) =>
-                      Navigator.pop(context, DayPick.day(day)),
+                  // SELECTS, DOES NOT CLOSE.
+                  //
+                  // `onDateChanged` used to pop the sheet, so a single tap both
+                  // chose a day and dismissed the thing you choose it in -- and
+                  // one stray tap on a grid of thirty cells silently narrowed
+                  // the whole month. The day is now HELD, shown above, and
+                  // applied by the button, so choosing is a separate act from
+                  // committing and a mis-tap costs nothing.
+                  onDateChanged: (day) {
+                    HapticFeedback.selectionClick();
+                    setState(() => _pending = day);
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.sm,
+                  AppSpacing.lg,
+                  0,
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    key: const ValueKey('day-picker-apply'),
+                    // Nothing chosen, nothing to apply. Disabled rather than
+                    // applying the first of the month, which would be a
+                    // different day from the one the grid is showing.
+                    onPressed: _pending == null
+                        ? null
+                        : () => Navigator.pop(context, DayPick.day(_pending!)),
+                    child: Text(
+                      _pending == null
+                          ? 'Pick a day'
+                          : 'Show ${DateFormat.yMMMMd().format(_pending!)}',
+                    ),
+                  ),
                 ),
               ),
               Padding(
@@ -658,52 +805,6 @@ class _ActiveSearchBanner extends StatelessWidget {
             child: const Text('Clear'),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _BudgetsLink extends StatelessWidget {
-  const _BudgetsLink();
-
-  @override
-  Widget build(BuildContext context) {
-    final transactions = context.watch<TransactionProvider>();
-    final currency = context.select<SettingsProvider, String>(
-      (s) => s.currency.symbol,
-    );
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    final anchor = transactions.currentMonth ?? DateTime.now();
-    final index = transactions.spendIndex(anchor: anchor);
-
-    return InkWell(
-      key: const ValueKey('budgets-link'),
-      borderRadius: AppRadii.smallRadius,
-      onTap: () =>
-          Navigator.of(context)
-              .push(MaterialPageRoute(builder: (_) => const BudgetsScreen())),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxs),
-        child: Row(
-          children: [
-            Icon(Icons.donut_small_rounded, size: 18, color: scheme.primary),
-            const SizedBox(width: AppSpacing.xs),
-            Expanded(
-              child: Text(
-                'Budgets · '
-                '${AppFormat.money(index.total, symbol: currency)} this month',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-            Icon(Icons.chevron_right_rounded, size: 18, color: scheme.primary),
-          ],
-        ),
       ),
     );
   }

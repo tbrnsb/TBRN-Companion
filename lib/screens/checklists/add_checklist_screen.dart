@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/checklist_provider.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/location_provider.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/checklist_provider.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/location_provider.dart';
+import 'package:daily_companion/theme/app_theme.dart';
 
 class AddChecklistScreen extends StatefulWidget {
   final Checklist? checklist;

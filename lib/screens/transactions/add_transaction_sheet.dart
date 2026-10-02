@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:daily_companion/theme/app_theme.dart';
 
 import 'add_expense_sheet.dart';
 import 'income_detail_screen.dart';

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'custom_category.dart';
+
 /// Expense categories.
 ///
 /// MIGRATION SAFETY: a transaction stores its category by *name*
@@ -205,6 +207,42 @@ class CategoryRegistry {
     ),
   ];
 
+  /// The categories the user has added, by id.
+  ///
+  /// HELD HERE, not asked for, because the registry is static and
+  /// [CategoryRegistry.metaFor] / [metaById] are called from a dozen places --
+  /// a breakdown slice, a budget row, a transaction tile, an export -- that have
+  /// no way to reach storage and must not each go and read a box. Loaded once at
+  /// startup and again after any change, the same way `_expenseMetas` is a
+  /// constant.
+  ///
+  /// A record that is not here resolves to the generic custom appearance, which
+  /// is what a category created before icons and colours existed should look
+  /// like.
+  static Map<String, CustomCategory> _customById = const {};
+
+  /// Replaces the held records. Called by the app once storage has been read.
+  static void setCustomCategories(Iterable<CustomCategory> categories) {
+    _customById = {for (final c in categories) c.id: c};
+  }
+
+  /// The record for [id], or null when the user has not added it.
+  static CustomCategory? customById(String id) => _customById[id];
+
+  /// Every category the user has added, in the order they were given.
+  static List<CustomCategory> get customCategories =>
+      List.unmodifiable(_customById.values);
+
+  /// The meta a custom category is drawn with, honouring the user's own colour
+  /// and icon when they have chosen them.
+  static CategoryMeta metaForCustom(CustomCategory custom) => CategoryMeta(
+    id: custom.id,
+    name: custom.name,
+    icon: custom.icon,
+    color: custom.resolvedColor,
+    popularity: _customMeta.popularity,
+  );
+
   static const CategoryMeta _customMeta = CategoryMeta(
     id: 'custom',
     name: 'Custom',
@@ -355,6 +393,11 @@ class CategoryRegistry {
       // breakdown donut and on the detail screen, not as an unnamed other.
       final suggested = suggestedForName(customName);
       if (suggested != null) return suggested;
+      // The user's OWN colour and icon when there are any, so a category they
+      // gave an identity in Settings is recognisable everywhere it appears and
+      // not just on the screen where they set it.
+      final held = _customById['custom:${customName.toLowerCase()}'];
+      if (held != null) return metaForCustom(held);
       return CategoryMeta(
         id: 'custom:${customName.toLowerCase()}',
         name: customName,
@@ -369,6 +412,79 @@ class CategoryRegistry {
     );
   }
 
+  /// The meta for a stored category id, or null when the id is not one the app
+  /// knows.
+  ///
+  /// Needed because a custom category is PERSISTED as an id —
+  /// `custom:coffee` — and a budget, a breakdown slice and a transaction all
+  /// hold that string rather than an enum. Anything reading one back needs a
+  /// lookup by id; without this, every reader had to hand-roll a `firstWhere`
+  /// and fall back to a DIFFERENT category than the one that was stored, which
+  /// is how a Coffee budget quietly became an Other one.
+  ///
+  /// Null rather than a fallback, because a caller showing a picker must be able
+  /// to tell "no such category" from "this category".
+  static CategoryMeta? metaById(String id) {
+    for (final meta in _expenseMetas) {
+      if (meta.id == id) return meta;
+    }
+    // `suggested:` as well as `custom:`. A custom category the user happened to
+    // name after one the app suggests is stored under `suggested:<name>` so it
+    // keeps that icon and colour, so a lookup that only understood `custom:`
+    // resolved those to null — and a null is what a picker reads as "no such
+    // category", so a Coffee budget became unselectable.
+    final isCustom = id.startsWith('custom:');
+    final isSuggested = id.startsWith('suggested:');
+    if (isCustom || isSuggested) {
+      final name = isSuggested
+          ? id.substring('suggested:'.length)
+          : id.substring('custom:'.length);
+      if (name.isEmpty) return null;
+      if (isSuggested) {
+        for (final meta in _suggestedExpenseMetas) {
+          if (meta.id == id) return meta;
+        }
+      }
+      // A suggested type keeps its own icon and colour rather than collapsing to
+      // the generic custom sparkle, exactly as [metaFor] does.
+      final suggested = suggestedForName(name);
+      if (suggested != null) return suggested;
+
+      // AND THE RECORD THE USER ACTUALLY SAVED, if it is loaded.
+      //
+      // This is the difference between a chosen icon existing and a chosen icon
+      // being seen. Everything that renders a category by its stored id -- a
+      // transaction tile, a budget row, a breakdown segment -- comes through
+      // here, and this branch used to hand every one of them the generic
+      // sparkle. So the icon and the colour could be set in Settings, stored
+      // correctly, survive a restart, and still not be drawn anywhere outside
+      // the two screens that happened to hold the record. The name is the
+      // stored one too, so a category the user has since RENAMED is drawn under
+      // the new name rather than the id it was filed under.
+      final stored = _customById[id];
+      if (stored != null) return metaForCustom(stored);
+
+      // No record loaded: the id is all there is, so a category named after one
+      // the app suggests is recognisable and everything else is generic.
+      return CategoryMeta(
+        id: id,
+        name: _titleCase(name),
+        icon: _customMeta.icon,
+        color: _customMeta.color,
+        popularity: _customMeta.popularity,
+      );
+    }
+    return null;
+  }
+
+  /// "coffee beans" -> "Coffee Beans", because a stored id is lower-cased and
+  /// the label is what the user typed.
+  static String _titleCase(String lower) => lower
+      .split(RegExp(r'[\s_-]+'))
+      .where((w) => w.isNotEmpty)
+      .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
+      .join(' ');
+
   static CategoryMeta metaForIncome(String categoryName) {
     return _incomeMetas.firstWhere(
       (m) => m.id == categoryName,
@@ -381,6 +497,43 @@ class CategoryRegistry {
 
   static List<CategoryMeta> expenseCategories() =>
       List.unmodifiable(_expenseMetas);
+
+  /// The id of the bucket that leads somewhere else rather than naming a thing.
+  static const String otherId = 'other';
+
+  /// [items] in the order a person should choose from them: `other` LAST.
+  ///
+  /// THE ONE RULE, applied everywhere a list of categories is put in front of
+  /// somebody, because the alternative is a rule per screen and one of them
+  /// eventually forgets. `other` is not a category in the way Food is: tapping it
+  /// opens another screen to name the real one, so sitting it between Housing
+  /// and Travel puts a two-step action in the middle of a list of one-step ones
+  /// and makes the list longer to scan for no reason.
+  ///
+  /// It cannot be left to the order the metas happen to be declared in, because
+  /// the lists that reach the user are not the declared list: the expense picker
+  /// re-sorts by popularity, the budget rows sort by label, and a custom
+  /// category read back from storage arrives in whatever order the box gave it.
+  /// Any of those can put `other` in the middle.
+  ///
+  /// STABLE. Everything else keeps the order it arrived in, so a screen that
+  /// sorted deliberately has not had its sort undone -- only `other` has been
+  /// moved, and it moves to the end rather than to a position of its own.
+  static List<T> othersLast<T>(
+    Iterable<T> items, {
+    required bool Function(T) isOther,
+  }) {
+    final rest = <T>[];
+    final others = <T>[];
+    for (final item in items) {
+      (isOther(item) ? others : rest).add(item);
+    }
+    return [...rest, ...others];
+  }
+
+  /// [CategoryMeta.othersLast] with the predicate already supplied.
+  static List<CategoryMeta> metasOthersLast(Iterable<CategoryMeta> metas) =>
+      othersLast(metas, isOther: (m) => m.id == otherId);
 }
 
 extension ExpenseCategoryX on ExpenseCategory {

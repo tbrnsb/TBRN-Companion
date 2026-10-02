@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/theme/app_theme.dart';
 
 /// The part of search that is not the text field: an amount range and a category
 /// multi-select.

@@ -5,14 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/settings_provider.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/services/csv_document.dart';
-import 'package:flutter_application_1/services/csv_import.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/utils/format.dart';
-import 'package:flutter_application_1/widgets/widgets.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/settings_provider.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/services/csv_document.dart';
+import 'package:daily_companion/services/csv_import.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/utils/format.dart';
+import 'package:daily_companion/widgets/widgets.dart';
 
 /// Importing a CSV of transactions, as the reverse of the export.
 ///

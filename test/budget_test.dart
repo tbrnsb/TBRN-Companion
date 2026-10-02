@@ -3,15 +3,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/budget_provider.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/settings_provider.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/screens/budgets/budgets_screen.dart';
-import 'package:flutter_application_1/services/demo_data_service.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/budget_provider.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/settings_provider.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/screens/budgets/budgets_screen.dart';
+import 'package:daily_companion/services/demo_data_service.dart';
+import 'package:daily_companion/services/storage_service.dart';
+import 'package:daily_companion/theme/app_theme.dart';
 
 import 'test_viewports.dart';
 import 'visual_smoke_test.dart' show initTestStorage;
@@ -43,15 +43,62 @@ Expense _expense(
   String description = 'Test expense',
   String? journeyId,
   String? paidByParticipantId,
+  String? customCategoryName,
 }) {
   return Expense(
     amount: amount,
     category: category,
+    customCategoryName: customCategoryName,
     description: description,
     date: date ?? DateTime.now(),
     journeyId: journeyId,
     paidByParticipantId: paidByParticipantId,
   );
+}
+
+/// Picks [label] in the budgets category dropdown.
+///
+/// The default subject is now "All", so a test about a SPECIFIC category has to
+/// choose it — which is the real flow anyway, and means these tests exercise the
+/// selector instead of assuming a default.
+/// The storage-key middle segment for the all-categories budget.
+const allKey = allCategoriesKey;
+
+/// The category labels the budgets dropdown is offering, in order.
+/// The `(id, label)` pairs the budgets dropdown is offering, in order.
+List<(String, String)> _categoryValues(WidgetTester tester) => tester
+    .widget<DropdownButton<String>>(
+      find
+          .descendant(
+            of: find.byKey(const ValueKey('budget-category-select')),
+            matching: find.byType(DropdownButton<String>),
+          )
+          .first,
+    )
+    .items!
+    .whereType<DropdownMenuItem<String>>()
+    .map((item) => (item.value!, (item.child as Text).data!))
+    .toList();
+
+List<String> _categoryLabels(WidgetTester tester) => tester
+    .widget<DropdownButton<String>>(
+      find
+          .descendant(
+            of: find.byKey(const ValueKey('budget-category-select')),
+            matching: find.byType(DropdownButton<String>),
+          )
+          .first,
+    )
+    .items!
+    .whereType<DropdownMenuItem<String>>()
+    .map((item) => (item.child as Text).data!)
+    .toList();
+
+Future<void> selectCategory(WidgetTester tester, String label) async {
+  await tester.tap(find.byKey(const ValueKey('budget-category-select')));
+  await settleUi(tester);
+  await tester.tap(find.text(label).last);
+  await settleUi(tester);
 }
 
 void main() {
@@ -561,9 +608,29 @@ void main() {
         anchor: provider.currentMonth ?? DateTime.now(),
       );
 
+      // EVERY key, not just the nine enum values.
+      //
+      // Summing only the enum categories used to equal the total, because every
+      // custom category was filed under `other` and was therefore inside the
+      // sum. Now each custom category has its own key — which is the point, so
+      // "Coffee" can be budgeted — and the enum-only sum legitimately falls
+      // SHORT by exactly the custom spend. The invariant that matters is that no
+      // money is unaccounted for, and that is the full sum below.
+      var customSum = 0.0;
+      for (final key in index.byCategory.keys) {
+        if (key.startsWith('custom:')) {
+          customSum += index.byCategory[key]!;
+        }
+      }
+      expect(
+        customSum,
+        greaterThan(0),
+        reason: 'the demo data has custom categories and they must be separate',
+      );
+
       var categorySum = 0.0;
-      for (final category in ExpenseCategory.values) {
-        categorySum += index.forCategory(category);
+      for (final value in index.byCategory.values) {
+        categorySum += value;
       }
       expect(
         categorySum,
@@ -572,6 +639,21 @@ void main() {
             'a budget that reads one and the month card that reads the '
             'other is exactly the inconsistency this accessor exists to prevent',
       );
+
+      // And the two halves of that sum are genuinely disjoint: no custom money
+      // left inside `other`, which is the bug the split fixed.
+      for (final category in ExpenseCategory.values) {
+        if (category != ExpenseCategory.other) continue;
+        final other = index.forCategory(ExpenseCategory.other);
+        for (final key in index.byCategory.keys) {
+          if (!key.startsWith('custom:')) continue;
+          expect(
+            index.byCategory[key],
+            isNot(equals(other)),
+            reason: '$key is still collapsed into other',
+          );
+        }
+      }
 
       // Every by-journey figure is a subset of the total, never additional to
       // it. A trip's cost is already counted in a category; adding the two pools
@@ -630,12 +712,19 @@ void main() {
       WidgetTester tester, {
       List<Transaction>? items,
       BudgetProvider? budgetProvider,
+      List<String> recentCustomCategories = const [],
     }) async {
       final provider = (await tester.runAsync(() async {
         final p = TransactionProvider();
         await p.initialize();
         for (final item in items ?? <Transaction>[]) {
           await p.addTransaction(item);
+        }
+        // The SECOND source the picker reads. Both have to be present to
+        // reproduce the device, where the same category was filed under two
+        // different ids and listed twice.
+        for (final name in recentCustomCategories) {
+          await p.addCustomCategory(name);
         }
         return p;
       }))!;
@@ -668,17 +757,24 @@ void main() {
     testWidgets('ONE category is the subject, and an unset one says so', (
       tester,
     ) async {
-      // A limit is a question about ONE category. The screen used to list every
+      // A limit is a question about ONE subject. The screen used to list every
       // category with its own bar, which is a dashboard: nine readings and no way
-      // to tell which was the subject. Food is the default subject.
+      // to tell which was the subject.
+      //
+      // The default subject is ALL, not Food. A cap on everything in the period
+      // is what most people mean, and it used to be unreachable — every budget
+      // on this screen was somebody else's single category.
       usePhoneLayout(tester, TestViewports.phonePortrait);
       await pump(tester);
 
-      expect(find.byKey(ValueKey('budget-percent-cat:food:month')), findsOne);
-      // And only that one. If a second category's row is ever rendered, this is
+      expect(
+        find.byKey(ValueKey('budget-percent-cat:$allKey:month')),
+        findsOne,
+      );
+      expect(find.text('All categories'), findsWidgets);
+      // And only that one. If a second subject's row is ever rendered, this is
       // the assertion that catches it.
       for (final category in budgetableCategories()) {
-        if (category == ExpenseCategory.food) continue;
         expect(
           find.byKey(ValueKey('budget-percent-cat:${category.name}:month')),
           findsNothing,
@@ -687,6 +783,118 @@ void main() {
       }
       // An unset limit says so rather than showing a percentage of nothing.
       expect(find.textContaining('no limit set'), findsOne);
+    });
+
+    testWidgets('the category list starts with All, then the built-ins', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      await pump(tester);
+
+      // "All" FIRST. It is the default subject and the thing most people mean by
+      // a budget, and it used to be unreachable: every budget on this screen was
+      // somebody else's single category.
+      //
+      // Read from the widget's `items` rather than the built tree: an open
+      // DropdownButton only builds the SELECTED item until the menu is up, so
+      // asserting on the tree would test the dropdown's laziness, not the list.
+      final labels = _categoryLabels(tester);
+
+      expect(labels.first, 'All categories');
+      expect(labels, contains('Food'));
+      expect(labels, contains('Travel'));
+      // Nothing invented appears when there is no custom spending.
+      expect(labels.any((l) => l == 'Coffee'), isFalse);
+    });
+
+    testWidgets('a category added to an expense is offered as a budget', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      // The app-integration case: a category the user typed into an expense.
+      // Before this it filed under "other" and could not be budgeted at all.
+      await pump(
+        tester,
+        items: [
+          _expense(
+            500,
+            ExpenseCategory.other,
+            customCategoryName: 'Coffee',
+            description: 'Flat white',
+          ),
+        ],
+        // The device had BOTH: spending filed it as `suggested:coffee` and the
+        // recent list as `custom:coffee`, so the dropdown showed Coffee twice.
+        recentCustomCategories: const ['Coffee'],
+      );
+
+      expect(
+        _categoryLabels(tester),
+        contains('Coffee'),
+        reason: 'a category spent on must be budgetable',
+      );
+
+      await tester.tap(find.byKey(const ValueKey('budget-category-select')));
+      await settleUi(tester);
+      await tester.tap(find.text('Coffee').last);
+      await settleUi(tester);
+
+      // And it reads its OWN money, not the whole of `other`.
+      //
+      // The id is read back from the list rather than written here: a custom
+      // category whose name matches one the app suggests is filed under
+      // `suggested:coffee` so it keeps that icon, so hardcoding `custom:` would
+      // be asserting a storage detail the registry is allowed to choose.
+      final coffeeId = _categoryValues(tester).firstWhere(
+        (e) => e.$2 == 'Coffee',
+        orElse: () => throw StateError('Coffee is not in the list'),
+      );
+      expect(
+        find.byKey(ValueKey('budget-percent-cat:${coffeeId.$1}:month')),
+        findsOne,
+      );
+
+      // ONCE. The device showed "Coffee" TWICE: the spending key was
+      // `suggested:coffee` while the recent-name key was `custom:coffee`, and a
+      // set of IDS cannot know they are the same category. Two entries means two
+      // separate budgets for one thing.
+      expect(
+        _categoryLabels(tester).where((l) => l == 'Coffee').length,
+        1,
+        reason: 'a category is identified by its name, so it is listed once',
+      );
+      expect(find.byKey(const ValueKey('budget-row-subtitle')), findsOne);
+      expect(find.text('Your own category'), findsOne);
+    });
+
+    testWidgets('an all-categories limit is a limit on the total', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      final now = DateTime.now();
+      final budgets = (await tester.runAsync(() async {
+        final b = BudgetProvider();
+        await b.load();
+        await b.setLimit(label: allCategoriesKey, amount: 1000);
+        return b;
+      }))!;
+
+      await pump(
+        tester,
+        budgetProvider: budgets,
+        items: [
+          _expense(300, ExpenseCategory.food, date: now),
+          _expense(200, ExpenseCategory.travel, date: now),
+        ],
+      );
+
+      // The default subject, showing the period TOTAL against the cap.
+      expect(
+        find.byKey(const ValueKey('budget-percent-cat:$allKey:month')),
+        findsOne,
+      );
+      // 500 of 1000, which is the sum — not one category's share of it.
+      expect(find.text('50%'), findsWidgets);
     });
 
     testWidgets('there is exactly ONE category control, not two', (
@@ -719,7 +927,7 @@ void main() {
         find.byKey(const ValueKey('budget-period-control')),
       );
       final subject = tester.getTopLeft(
-        find.byKey(ValueKey('budget-percent-cat:food:month')),
+        find.byKey(ValueKey('budget-percent-cat:$allKey:month')),
       );
       expect(
         control.dy,
@@ -749,6 +957,8 @@ void main() {
         budgetProvider: budgets,
         items: [_expense(250, ExpenseCategory.food, date: now)],
       );
+
+      await selectCategory(tester, 'Food');
 
       expect(find.byKey(const ValueKey('budget-bar-cat:food:month')), findsOne);
       expect(
@@ -793,6 +1003,10 @@ void main() {
         ],
       );
 
+      // Food is the subject, so the figures below are food's. The default
+      // subject is "All" and this test is about one category's window.
+      await selectCategory(tester, 'Food');
+
       final monthTotal = _foodTotal(tester, BudgetPeriod.month);
       await tester.tap(find.text('Year'));
       await settleUi(tester);
@@ -828,6 +1042,7 @@ void main() {
 
       // Same subject, different lens: the row key changes with the period, and
       // the category does not.
+      await selectCategory(tester, 'Food');
       expect(find.byKey(ValueKey('budget-percent-cat:food:month')), findsOne);
       await tester.tap(find.text('Week'));
       await settleUi(tester);
@@ -844,7 +1059,7 @@ void main() {
 
       // Below the fold: the primary reading comes first.
       final subject = tester.getTopLeft(
-        find.byKey(ValueKey('budget-percent-cat:food:month')),
+        find.byKey(ValueKey('budget-percent-cat:$allKey:month')),
       );
       final toggle = tester.getTopLeft(
         find.byKey(const ValueKey('budget-trips-toggle')),

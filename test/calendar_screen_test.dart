@@ -4,24 +4,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/checklist_provider.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/location_provider.dart';
-import 'package:flutter_application_1/providers/settings_provider.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/screens/calendar_screen.dart';
-import 'package:flutter_application_1/screens/checklists/checklists_screen.dart';
-import 'package:flutter_application_1/screens/journeys/journeys_screen.dart';
-import 'package:flutter_application_1/screens/locations/locations_screen.dart';
-import 'package:flutter_application_1/screens/transactions/transactions_screen.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/utils/date_window.dart';
-import 'package:flutter_application_1/widgets/app_calendar.dart';
-import 'package:flutter_application_1/widgets/app_gear.dart';
-import 'package:flutter_application_1/widgets/app_search.dart';
-import 'package:flutter_application_1/widgets/chart_pager.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/checklist_provider.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/location_provider.dart';
+import 'package:daily_companion/providers/settings_provider.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/screens/calendar_screen.dart';
+import 'package:daily_companion/screens/checklists/checklists_screen.dart';
+import 'package:daily_companion/screens/journeys/journeys_screen.dart';
+import 'package:daily_companion/screens/locations/locations_screen.dart';
+import 'package:daily_companion/screens/transactions/transactions_screen.dart';
+import 'package:daily_companion/services/storage_service.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/utils/date_window.dart';
+import 'package:daily_companion/widgets/app_calendar.dart';
+import 'package:daily_companion/widgets/app_gear.dart';
+import 'package:daily_companion/widgets/app_search.dart';
 
 import 'test_viewports.dart';
 import 'visual_smoke_test.dart' show initTestStorage;
@@ -450,106 +449,123 @@ void main() {
       picker.onDateChanged(past);
       await settleUi(tester);
 
+      // SELECTING DOES NOT CLOSE. It used to: `onDateChanged` popped the sheet,
+      // so one tap on a grid of thirty cells both chose a day and dismissed the
+      // thing you choose it in, and a stray tap silently narrowed the month.
+      expect(
+        find.byKey(const ValueKey('day-picker-apply')),
+        findsOneWidget,
+        reason: 'the sheet closed on selection',
+      );
+      // The button says WHICH day it will apply, so the held value is never a
+      // secret and a mis-tap is visible before it costs anything.
+      expect(find.textContaining('Show'), findsOneWidget);
+
+      // Now commit it.
+      await tester.tap(find.byKey(const ValueKey('day-picker-apply')));
+      await settleUi(tester);
+
       expect(transactions.currentMonth?.year, past.year);
       expect(transactions.currentMonth?.month, past.month);
       expect(transactions.selectedDay?.day, past.day);
     });
   });
 
-  group('the chart pager has no hole in it', () {
-    testWidgets('the pager is as tall as its tallest page, not a constant', (
+  group('choosing a day does not LEAVE', () {
+    // THE DEVICE REPORT: "clicking on a day on calendar shouldnt immediately
+    // close the calendar section". It did, on both surfaces: a tap loaded the
+    // month, narrowed the ledger and popped, all in one gesture. A month grid is
+    // thirty targets, and one stray touch silently ended the screen you were
+    // browsing. Choosing is now one act and committing is a second, named one.
+    testWidgets('a tap holds the day, and the sheet stays open', (
       tester,
     ) async {
       usePhoneLayout(tester, TestViewports.phonePortrait);
-
-      // A short page and a tall page. If the pager reserved a fixed height the
-      // box would be far taller than the tallest page, which is exactly the
-      // hole that used to sit under every chart.
-      final tall = SizedBox(
-        height: 320,
-        child: ColoredBox(color: const Color(0xFF123456), child: Text('tall')),
-      );
-      final short = SizedBox(
-        height: 90,
-        child: ColoredBox(color: const Color(0xFF654321), child: Text('short')),
-      );
+      final transactions = await _transactions(tester);
+      final journeys = await _journeys(tester);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SingleChildScrollView(
-              child: ChartPager(
-                pages: [tall, short],
-                labels: const ['Tall', 'Short'],
-              ),
-            ),
-          ),
-        ),
+        _app(transactions: transactions, journeys: journeys),
       );
       await settleUi(tester);
-
-      final height = tester.getSize(find.byType(ChartPager)).height;
-      // The tallest page, plus the indicator row beneath it. Generously bounded
-      // on both sides so this asserts the SHAPE, not a magic number.
-      expect(height, greaterThan(320));
-      expect(height, lessThan(420));
-    });
-
-    testWidgets('no fixed height constant survives', (tester) async {
-      usePhoneLayout(tester, TestViewports.phonePortrait);
-
-      final short = SizedBox(
-        height: 90,
-        child: ColoredBox(color: const Color(0xFF654321), child: Text('a')),
-      );
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SingleChildScrollView(
-              child: ChartPager(pages: [short, short, short]),
-            ),
-          ),
-        ),
-      );
+      await tester.tap(find.byIcon(Icons.calendar_today_rounded).first);
       await settleUi(tester);
 
-      // The old 640 reserve made this 640 for ninety pixels of chart.
-      expect(tester.getSize(find.byType(ChartPager)).height, lessThan(200));
+      final picker = tester.widget<CalendarDatePicker>(
+        find.byKey(const ValueKey('day-picker-calendar')),
+      );
+      final past = DateTime.now().subtract(const Duration(days: 9));
+
+      picker.onDateChanged(past);
+      await settleUi(tester);
+
+      // Still here.
+      expect(
+        find.byKey(const ValueKey('day-picker-calendar')),
+        findsOneWidget,
+        reason: 'the sheet closed just from choosing a day',
+      );
+      // It says which day it will apply, so the held value is never a secret and
+      // a mis-tap is visible before it costs anything.
+      final apply = tester.widget<FilledButton>(
+        find.byKey(const ValueKey('day-picker-apply')),
+      );
+      expect(apply.onPressed, isNotNull);
+      expect(find.textContaining('Show'), findsOneWidget);
+
+      // Choosing a DIFFERENT day replaces the held one rather than stacking.
+      picker.onDateChanged(past.subtract(const Duration(days: 3)));
+      await settleUi(tester);
+      expect(find.textContaining('Show'), findsOneWidget);
+
+      // Committing is what closes it.
+      await tester.tap(find.byKey(const ValueKey('day-picker-apply')));
+      await settleUi(tester);
+      expect(
+        find.byKey(const ValueKey('day-picker-calendar')),
+        findsNothing,
+        reason: 'applying the day did not close the sheet',
+      );
     });
 
-    testWidgets('the height does not change when the page changes', (
+    testWidgets('the Calendar screen holds a tapped day behind an Open button', (
       tester,
     ) async {
-      usePhoneLayout(tester, TestViewports.phonePortrait);
+      // A TALL viewport so the whole month is laid out at once. A `ListView`
+      // builds only what is near the viewport, and the grid is far enough down
+      // that at phone height the day cells are simply not in the tree -- a test
+      // that scrolled to them would be testing the scroll.
+      usePhoneLayout(tester, const Size(412, 2600));
+      final transactions = await _transactions(tester);
+      final journeys = await _journeys(tester);
 
-      final tall = SizedBox(
-        height: 300,
-        child: ColoredBox(color: const Color(0xFF123456), child: Text('t')),
-      );
-      final short = SizedBox(
-        height: 100,
-        child: ColoredBox(color: const Color(0xFF654321), child: Text('s')),
-      );
-
+      // The full-screen Calendar itself. On Transactions the calendar button
+      // opens the day-picker SHEET, which is a different screen and is covered
+      // by the test above.
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SingleChildScrollView(
-              child: ChartPager(pages: [tall, short]),
-            ),
-          ),
+        _app(
+          transactions: transactions,
+          journeys: journeys,
+          home: const CalendarScreen(),
         ),
       );
       await settleUi(tester);
 
-      final before = tester.getSize(find.byType(ChartPager)).height;
-      await tester.tap(find.byKey(const ValueKey('chart-dot-1')));
-      await settleUi(tester);
-      final after = tester.getSize(find.byType(ChartPager)).height;
+      // No day held yet, so there is nothing to open.
+      expect(
+        find.byKey(const ValueKey('calendar-open-selected-day')),
+        findsNothing,
+      );
 
-      // One height for every page: nothing moves under the user's finger.
-      expect(after, moreOrLessEquals(before, epsilon: 0.5));
+      await tester.tap(find.byKey(CalendarScreen.dayKey(2)));
+      await settleUi(tester);
+
+      // Still on the calendar, with the day named and a way out that is explicit.
+      expect(
+        find.byKey(const ValueKey('calendar-open-selected-day')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('selected'), findsOneWidget);
     });
   });
 

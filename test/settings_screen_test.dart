@@ -1,18 +1,23 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/checklist_provider.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/location_provider.dart';
-import 'package:flutter_application_1/providers/settings_provider.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/screens/settings_screen.dart';
-import 'package:flutter_application_1/theme/app_palettes.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:daily_companion/providers/checklist_provider.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/location_provider.dart';
+import 'package:daily_companion/providers/budget_provider.dart';
+import 'package:daily_companion/providers/settings_provider.dart';
+import 'package:daily_companion/screens/budgets/budgets_screen.dart';
+import 'package:daily_companion/screens/locations/locations_screen.dart';
+import 'package:daily_companion/widgets/app_gear.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/screens/settings_screen.dart';
+import 'package:daily_companion/services/storage_service.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/widgets/settings_controls.dart';
 
 import 'test_viewports.dart';
 import 'visual_smoke_test.dart' show initTestStorage;
@@ -51,7 +56,7 @@ Future<void> scrollToAndTap(WidgetTester tester, Finder finder) async {
   await settleUi(tester);
 }
 
-Widget _app() {
+Widget _app([Widget? home]) {
   return MultiProvider(
     providers: [
       ChangeNotifierProvider(create: (_) => ChecklistProvider()),
@@ -59,12 +64,16 @@ Widget _app() {
       ChangeNotifierProvider(create: (_) => LocationProvider()),
       ChangeNotifierProvider(create: (_) => TransactionProvider()),
       ChangeNotifierProvider(create: (_) => SettingsProvider()),
+      // The Budgets row reads the provider to summarise what is set, and
+      // BudgetsScreen needs it to open. The app provides it at the root, so a
+      // harness that omits it is not a screen the app can actually show.
+      ChangeNotifierProvider(create: (_) => BudgetProvider()),
     ],
     child: MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
-      home: const SettingsScreen(),
+      home: home ?? const SettingsScreen(),
     ),
   );
 }
@@ -79,362 +88,273 @@ void main() {
     await StorageService().clear();
   });
 
-  group('the themes picker is family then variant', () {
-    testWidgets('every family is listed, with its own description', (
-      tester,
-    ) async {
-      usePhoneLayout(tester, TestViewports.phonePortrait);
+  group('the screen is organised, not a list of options', () {
+    // The complaint the redesign answers: the page was as long as the
+    // implementation. Four theme families with a tagline and a swatch strip
+    // each, then a variant control, then three currency rows -- and nine
+    // currencies as rows would have been worse. One row per setting means the
+    // page stops being a list of how many options it has.
+    testWidgets('every setting is ONE row, whatever it offers', (tester) async {
+      usePhoneLayout(tester, const Size(412, 2600));
       await tester.pumpWidget(_app());
       await settleUi(tester);
 
-      for (final family in AppPalette.values) {
-        final row = find.byKey(ValueKey('family-${family.name}'));
-        await scrollToAndTap(tester, row);
-        // The tagline comes from the palette's own identity, not from copy
-        // invented per screen, so the two cannot drift apart.
-        expect(find.text(family.description), findsWidgets);
-      }
-    });
-
-    testWidgets('Light is ABSENT for a dark-only family, not disabled', (
-      tester,
-    ) async {
-      usePhoneLayout(tester, TestViewports.phonePortrait);
-      await tester.pumpWidget(_app());
-      await settleUi(tester);
-
-      // TBRN is selected by default, so it shows all three.
-      expect(find.byKey(const ValueKey('variant-tbrn-light')), findsOneWidget);
-
-      for (final family in AppPalette.values.where((p) => !p.supportsLight)) {
-        await scrollToAndTap(
-          tester,
-          find.byKey(ValueKey('family-${family.name}')),
-        );
+      for (final key in [
+        'settings-row-theme',
+        'settings-row-brightness',
+        'settings-row-number-style',
+        'settings-row-currency',
+      ]) {
         expect(
-          find.byKey(ValueKey('variant-${family.name}-light')),
-          findsNothing,
-          reason:
-              '${family.name} has no Light, so it must not offer one — a '
-              'disabled option is a promise the app cannot keep',
-        );
-        expect(
-          find.byKey(ValueKey('variant-${family.name}-dark')),
+          find.byKey(ValueKey(key)),
           findsOneWidget,
+          reason: '$key is not on the screen as a single row',
         );
       }
     });
 
-    testWidgets("Catppuccin's variants are labelled Mocha and Latte", (
-      tester,
-    ) async {
+    testWidgets('a dropdown opens a sheet listing the choices', (tester) async {
       usePhoneLayout(tester, TestViewports.phonePortrait);
       await tester.pumpWidget(_app());
       await settleUi(tester);
 
-      await scrollToAndTap(
-        tester,
-        find.byKey(const ValueKey('family-catppuccin')),
-      );
-      expect(find.text('Mocha'), findsOneWidget);
-      expect(find.text('Latte'), findsOneWidget);
-      // And NOT "Catppuccin dark", which is a name nobody recognises.
-      expect(find.text('Dark'), findsNothing);
-    });
-
-    testWidgets('choosing a family then a variant re-themes immediately', (
-      tester,
-    ) async {
-      usePhoneLayout(tester, TestViewports.phonePortrait);
-      await tester.pumpWidget(_app());
+      await tester.tap(find.byKey(const ValueKey('settings-row-currency')));
       await settleUi(tester);
 
-      await scrollToAndTap(
-        tester,
-        find.byKey(const ValueKey('family-catppuccin')),
-      );
-      await scrollToAndTap(
-        tester,
-        find.byKey(const ValueKey('variant-catppuccin-light')),
-      );
-
-      // Asserted on the SELECTED CHIP, which is the observable consequence of the
-      // tap reaching the provider: the choice stuck. This harness builds a fixed
-      // AppTheme.light() app, so the provider's theme does not paint here — a
-      // limitation of the harness, not the app, and why the assertion is on state
-      // rather than on pixels. The real theme resolution is covered in
-      // palette_migration_test.dart and palettes_test.dart.
-      final latte = tester.widget<ChoiceChip>(
-        find.byKey(const ValueKey('variant-catppuccin-light')),
-      );
-      expect(latte.selected, isTrue);
-      final mocha = tester.widget<ChoiceChip>(
-        find.byKey(const ValueKey('variant-catppuccin-dark')),
-      );
-      expect(mocha.selected, isFalse);
-    });
-
-    testWidgets('there is no "Colours" group any more', (tester) async {
-      usePhoneLayout(tester, TestViewports.phonePortrait);
-      await tester.pumpWidget(_app());
-      await settleUi(tester);
-
-      expect(find.text('Themes'), findsOneWidget);
-      // The old second group. Its name is gone, not renamed somewhere else.
-      expect(find.text('Colours'), findsNothing);
-    });
-
-    testWidgets('every control the old screen had still exists', (
-      tester,
-    ) async {
-      // A restructure, not a feature change. Nothing may be lost.
-      usePhoneLayout(tester, TestViewports.phonePortrait);
-      await tester.pumpWidget(_app());
-      await settleUi(tester);
-
-      for (final label in ['TBRN', 'Catppuccin', 'Solitude', 'Gruvbox']) {
-        await scrollTo(tester, find.text(label));
+      // Nine currencies, all reachable, and none of them a row on the page.
+      for (final currency in Currency.values) {
+        expect(
+          find.textContaining(currency.title),
+          findsWidgets,
+          reason: '${currency.title} is not offered',
+        );
       }
-      // Currency still has all three, and the data and demo sections survive.
-      for (final label in ['Rs.', 'Add demo data']) {
-        await scrollTo(tester, find.text(label));
-      }
+      expect(find.text('2,350.00'), findsNothing);
+    });
+
+    testWidgets('choosing a currency applies it immediately', (tester) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      await tester.pumpWidget(_app());
+      await settleUi(tester);
+
+      await tester.tap(find.byKey(const ValueKey('settings-row-currency')));
+      await settleUi(tester);
+      // Tapped by its visible text rather than by the row's composed key, so the
+      // test does not break when a label gains a space or a currency is added.
+      await tester.tap(find.text('₹  Indian Rupee'));
+      await settleUi(tester);
+
+      // The row now reports the choice, which is the whole point of the row: you
+      // can see what is selected without opening the sheet again. The row shows
+      // the SHORT mark -- the full name lives in the sheet, and a row that
+      // spelled out "₹ Indian Rupee" would be a paragraph.
+      expect(find.text('₹'), findsOneWidget);
+    });
+
+    testWidgets('a dark-only family does not offer Light', (tester) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      await tester.pumpWidget(_app());
+      await settleUi(tester);
+
+      await tester.tap(find.byKey(const ValueKey('settings-row-theme')));
+      await settleUi(tester);
+      await tester.tap(find.byKey(const ValueKey('settings-option-Gruvbox')));
+      await settleUi(tester);
+
+      await tester.tap(find.byKey(const ValueKey('settings-row-brightness')));
+      await settleUi(tester);
+
+      // ABSENT, not disabled. A "Light" a dark-only family cannot honour is a
+      // promise the app cannot keep, and being snapped back to dark is worse
+      // than never offering it.
+      expect(find.text('Light'), findsNothing);
+      expect(find.text('Dark'), findsWidgets);
     });
   });
 
-  group('the demo buttons fit their labels', () {
-    /// How many lines [label] is actually laid out on.
-    ///
-    /// Measured from the rendered box, not read back off the widget. A `Text`
-    /// carrying `maxLines: 1` will happily ellipsise when squeezed, so reading
-    /// `maxLines` back would pass whether or not the label fit — and the whole
-    /// point is whether it fits. A single line is a bit over one font size tall;
-    /// two lines is a bit over two, so 1.6 separates them.
-    double labelLines(WidgetTester tester, String label) {
-      final text = tester.widget<Text>(find.text(label));
-      final fontSize = text.style?.fontSize ?? 14;
-      return tester.getSize(find.text(label)).height / fontSize;
-    }
-
-    testWidgets('neither label wraps at 360dp', (tester) async {
-      usePhoneLayout(tester, TestViewports.phoneSmall);
-
-      await tester.pumpWidget(_app());
-      await settleUi(tester);
-      await scrollTo(tester, find.text('Clear demo data'));
-
-      // Side by side at this width, the labels used to break onto two lines and
-      // the pair looked broken.
-      expect(find.text('Clear demo data'), findsOneWidget);
-      expect(find.text('Add demo data'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('the labels are laid out on a single line at 360dp', (
+  group('the two things that open a SCREEN say so with a chevron', () {
+    testWidgets('categories and budgets are rows, not dropdowns', (
       tester,
     ) async {
-      usePhoneLayout(tester, TestViewports.phoneSmall);
-
+      usePhoneLayout(tester, const Size(412, 2600));
       await tester.pumpWidget(_app());
       await settleUi(tester);
-      await scrollTo(tester, find.text('Clear demo data'));
 
-      // Each button is given the full width once they stack, so the label has
-      // room and must not be the two-line button that was reported.
-      final clear = tester.getRect(find.text('Clear demo data'));
-      final add = tester.getRect(find.text('Add demo data'));
-      // Stacked, not side by side: the second sits below the first.
-      expect(clear.top, greaterThan(add.top));
-      // One line, not two. This is the assertion that would have failed before.
-      expect(
-        labelLines(tester, 'Clear demo data'),
-        lessThan(1.6),
-        reason: 'the label wrapped onto a second line',
-      );
-      expect(
-        labelLines(tester, 'Add demo data'),
-        lessThan(1.6),
-        reason: 'the label wrapped onto a second line',
-      );
+      // A chevron and a sheet are different promises: a chevron says "there is
+      // more here", a dropdown says "pick one of these". Categories and budgets
+      // both open a screen's worth of behaviour, so they must not look like a
+      // choice from a list.
+      expect(find.byIcon(Icons.chevron_right_rounded), findsNWidgets(2));
+      expect(find.byIcon(Icons.expand_more_rounded), findsNWidgets(4));
     });
 
-    testWidgets('they still sit side by side when there is room', (
-      tester,
-    ) async {
-      usePhoneLayout(tester, const Size(500, 900));
-
-      await tester.pumpWidget(_app());
-      await settleUi(tester);
-      await scrollTo(tester, find.text('Clear demo data'));
-
-      final clear = tester.getRect(find.text('Clear demo data'));
-      final add = tester.getRect(find.text('Add demo data'));
-      // Side by side, so their tops line up.
-      expect((clear.top - add.top).abs(), lessThan(2));
-    });
-
-    testWidgets('the labels are not shortened to make them fit', (
-      tester,
-    ) async {
-      usePhoneLayout(tester, TestViewports.phoneSmall);
-
-      await tester.pumpWidget(_app());
-      await settleUi(tester);
-      await scrollTo(tester, find.text('Clear demo data'));
-
-      // Truncating the one button that deletes things would be the wrong trade.
-      expect(find.text('Clear demo data'), findsOneWidget);
-      expect(find.textContaining('Clear demo…'), findsNothing);
-    });
-  });
-
-  group('the two destructive actions are separate and honestly labelled', () {
-    testWidgets('both are present and the demo one is not a wipe', (
+    testWidgets('categories opens its own screen with a way back', (
       tester,
     ) async {
       usePhoneLayout(tester, TestViewports.phonePortrait);
-
       await tester.pumpWidget(_app());
       await settleUi(tester);
 
+      await scrollToAndTap(
+        tester,
+        find.byKey(const ValueKey('settings-nav-Categories')),
+      );
+
+      expect(find.text('Categories'), findsWidgets);
+      expect(find.byType(BackButton), findsOneWidget);
+    });
+
+    testWidgets('budgets opens the budgets screen', (tester) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      await tester.pumpWidget(_app());
+      await settleUi(tester);
+
+      await scrollToAndTap(
+        tester,
+        find.byKey(const ValueKey('settings-nav-Budgets')),
+      );
+
+      expect(find.byType(BudgetsScreen), findsOneWidget);
+    });
+  });
+
+  group('the gear is not offered on the screen it opens', () {
+    testWidgets('the gear is gone inside Settings', (tester) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      // PUSHED, the way the app reaches it. Asked from the route rather than a
+      // flag, so the answer is a property of WHERE the screen is and not
+      // something a screen has to remember to set -- and so it is still true for
+      // a screen opened from Settings.
+      await tester.pumpWidget(_app(const LocationsScreen()));
+      await settleUi(tester);
+      expect(
+        AppGearButton.isSettingsOpen(
+          tester.element(find.byType(LocationsScreen)),
+        ),
+        isFalse,
+        reason: 'the gear must be there on an ordinary screen',
+      );
+
+      // NOT awaited: `open` resolves when the pushed route is POPPED, so
+      // awaiting it here would wait forever.
+      unawaited(
+        AppGearButton.open(tester.element(find.byType(LocationsScreen))),
+      );
+      await settleUi(tester);
+
+      expect(
+        AppGearButton.isSettingsOpen(tester.element(find.text('Settings'))),
+        isTrue,
+      );
+    });
+  });
+
+  group('the destructive actions live in a menu', () {
+    // A full-width button each put "Remove all data" on screen at the same
+    // weight and size as "Export this month as CSV", and the destructive one is
+    // the one a thumb reaches for by accident.
+    testWidgets('they are not on the page at all', (tester) async {
+      usePhoneLayout(tester, const Size(412, 2600));
+      await tester.pumpWidget(_app());
+      await settleUi(tester);
+
+      expect(find.text('Remove all data'), findsNothing);
+      expect(find.text('Export this month as CSV'), findsNothing);
+      expect(find.byKey(const ValueKey('settings-data-menu')), findsOneWidget);
+    });
+
+    testWidgets('the menu offers all three, export before import', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, const Size(412, 2600));
+      await tester.pumpWidget(_app());
+      await settleUi(tester);
+
+      await tester.tap(find.byKey(const ValueKey('settings-data-menu')));
+      await settleUi(tester);
+
+      expect(find.text('Export this month as CSV'), findsOneWidget);
+      expect(find.text('Import transactions from CSV'), findsOneWidget);
       expect(find.text('Remove all data'), findsOneWidget);
+    });
 
-      // The Demo section is the list's last child and is not built until the
-      // list is scrolled down.
-      await scrollTo(tester, find.text('Clear demo data'));
+    testWidgets('the demo actions are a menu too', (tester) async {
+      usePhoneLayout(tester, const Size(412, 2600));
+      await tester.pumpWidget(_app());
+      await settleUi(tester);
+
+      expect(find.text('Add demo data'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('settings-demo-menu')));
+      await settleUi(tester);
+
       expect(find.text('Add demo data'), findsOneWidget);
-
-      // The old single button said "Clear Data" while its dialog claimed
-      // "Clear All Data", which misdescribed it in both directions.
-      expect(find.text('Clear Data'), findsNothing);
-      expect(find.text('Clear All Data?'), findsNothing);
-    });
-
-    testWidgets('the wipe dialog states what it deletes, with real counts', (
-      tester,
-    ) async {
-      usePhoneLayout(tester, TestViewports.phonePortrait);
-
-      await tester.runAsync(() async {
-        await StorageService().addTransaction(
-          Expense(
-            amount: 10,
-            category: ExpenseCategory.food,
-            description: 'Lunch',
-          ),
-        );
-        await StorageService().addTransaction(
-          Expense(
-            amount: 20,
-            category: ExpenseCategory.travel,
-            description: 'Bus',
-          ),
-        );
-        await StorageService().addJourney(
-          Journey(destination: 'Pokhara', origin: 'Kathmandu'),
-        );
-      });
-
-      await tester.pumpWidget(_app());
-      await settleUi(tester);
-
-      // The counts are on screen before anything is confirmed.
-      expect(find.text('Transactions'), findsOneWidget);
-      expect(find.text('Journeys'), findsOneWidget);
-
-      await scrollToAndTap(tester, find.text('Remove all data'));
-
-      expect(find.text('Remove all data?'), findsOneWidget);
-      // The actual numbers, not a vague warning.
-      expect(find.textContaining('2 transactions'), findsOneWidget);
-      expect(find.textContaining('1 journeys'), findsOneWidget);
-      expect(find.textContaining('cannot be undone'), findsOneWidget);
-      expect(find.text('Remove everything'), findsOneWidget);
-    });
-
-    testWidgets('the demo dialog promises demo records only', (tester) async {
-      usePhoneLayout(tester, TestViewports.phoneSmall);
-
-      await tester.pumpWidget(_app());
-      await settleUi(tester);
-
-      await scrollToAndTap(tester, find.text('Clear demo data'));
-
-      expect(find.text('Clear demo data?'), findsOneWidget);
-      expect(
-        find.textContaining('only the records created by'),
-        findsOneWidget,
-      );
-      expect(
-        find.textContaining('Anything you added yourself is left alone'),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('the wipe is disabled when there is nothing stored', (
-      tester,
-    ) async {
-      usePhoneLayout(tester, TestViewports.phonePortrait);
-
-      await tester.pumpWidget(_app());
-      await settleUi(tester);
-
-      final button = tester.widget<OutlinedButton>(
-        find.widgetWithText(OutlinedButton, 'Remove all data'),
-      );
-      // An empty install has nothing to lose, so offering a wipe that does
-      // nothing is just a way to be nervous for no reason.
-      expect(button.onPressed, isNull);
+      expect(find.text('Clear demo data'), findsOneWidget);
     });
   });
 
-  group('storage counts reflect what is actually stored', () {
-    // NOT TESTED HERE: that the counts refresh after a demo action. Both demo
-    // dialogs write to Hive from an async callback, and a Hive write begun in
-    // the fake-async zone of a testWidgets body never completes and leaves the
-    // box write lock held, which deadlocks the file. The seeding and clearing
-    // themselves are covered in demo_data_test.dart, where they run in real
-    // async via runAsync. What is verified here is that the counts the screen
-    // shows, and the disabled state derived from them, follow real storage.
-
-    testWidgets('the counts show real seeded records and enable the wipe', (
+  group('no Settings row text wraps', () {
+    // THE DEVICE: "Manage categories" wrapped onto two lines, as did "Grouping
+    // and decimals" and "Name, colour and icon", so the Appearance and Money
+    // groups had rows of three different heights in a list that is otherwise
+    // uniform -- and a page of uneven rows reads as broken even when every row
+    // is correct.
+    //
+    // Asserted on the RENDERED height rather than on a row height, because a row
+    // height comparison fails for reasons that have nothing to do with wrapping:
+    // an option row and a nav row are different heights to begin with, so no two
+    // of them are ever equal to each other.
+    testWidgets('no text in a settings row is more than one line tall', (
       tester,
     ) async {
       usePhoneLayout(tester, TestViewports.phonePortrait);
-
-      await tester.runAsync(() async {
-        final checklist = Checklist(name: 'Pack', description: '');
-        await StorageService().addChecklist(checklist);
-        await StorageService().addChecklistItem(
-          ChecklistItem(name: 'Boots', checklistId: checklist.id),
-        );
-        await StorageService().addTransaction(
-          Expense(
-            amount: 10,
-            category: ExpenseCategory.food,
-            description: 'Lunch',
-          ),
-        );
-      });
-
       await tester.pumpWidget(_app());
       await settleUi(tester);
 
-      // Counts arrive asynchronously in initState, so give them a moment.
-      await tester.pump();
-      await settleUi(tester);
+      final texts = <({String text, double height, double fontSize})>[];
+      for (final rowType in [SettingsNavRow, SettingsOptionRow]) {
+        final finder = find.descendant(
+          of: find.byType(rowType),
+          matching: find.byType(Text),
+        );
+        // The widget and its OWN element, paired by index.
+        //
+        // Re-finding by the text -- `find.text(data).first` -- measures whichever
+        // matching Text comes first in the whole tree, and "Categories" is both a
+        // row label and the group header above it. That reported the header's
+        // height against the row's font size and called a one-line row two-line.
+        final widgets = tester.widgetList<Text>(finder).toList();
+        final elements = finder.evaluate().toList();
+        expect(widgets.length, elements.length);
 
-      expect(find.text('Checklists'), findsOneWidget);
-      expect(find.text('Transactions'), findsOneWidget);
-      expect(
-        tester
-            .widget<OutlinedButton>(
-              find.widgetWithText(OutlinedButton, 'Remove all data'),
-            )
-            .onPressed,
-        isNotNull,
-        reason: 'storage is not empty, so the wipe must be offered',
-      );
+        for (var i = 0; i < widgets.length; i++) {
+          final text = widgets[i];
+          final size = text.style?.fontSize;
+          if (size == null || size == 0 || text.data == null) continue;
+          texts.add((
+            text: text.data!,
+            height: tester
+                .getSize(find.byElementPredicate((e) => e == elements[i]))
+                .height,
+            fontSize: size,
+          ));
+        }
+      }
+
+      expect(texts, isNotEmpty, reason: 'the page rendered no row text');
+
+      for (final t in texts) {
+        // A single line is the font size times its height multiplier, which is
+        // at most about 1.3 in this theme. A second line roughly doubles it, so
+        // 1.75x separates the two cases with room to spare.
+        expect(
+          t.height,
+          lessThan(t.fontSize * 1.75),
+          reason:
+              '"${t.text}" is ${t.height.toStringAsFixed(1)}px tall at a '
+              '${t.fontSize.toStringAsFixed(1)}px font, so it is on two lines -- '
+              'and that is what makes this row taller than the rows around it',
+        );
+      }
     });
   });
 }

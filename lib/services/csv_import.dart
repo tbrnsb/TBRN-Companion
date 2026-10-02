@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/services/csv_document.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/services/csv_document.dart';
 
 /// The result of reading a CSV, before anything has been written.
 ///

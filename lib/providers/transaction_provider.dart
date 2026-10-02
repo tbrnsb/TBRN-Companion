@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/services/csv_document.dart';
-import 'package:flutter_application_1/services/demo_data_service.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
-import 'package:flutter_application_1/utils/date_window.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/services/csv_document.dart';
+import 'package:daily_companion/services/demo_data_service.dart';
+import 'package:daily_companion/services/storage_service.dart';
+import 'package:daily_companion/utils/date_window.dart';
 
 enum TransactionFilter { all, expenses, income }
 
@@ -434,9 +434,24 @@ class TransactionProvider extends ChangeNotifier {
     await loadTransactionsForMonth(_currentMonth!.year, _currentMonth!.month);
   }
 
+  /// Re-reads the user's own categories from storage.
+  ///
+  /// ALSO republishes them to [CategoryRegistry], which is what makes a colour
+  /// or icon chosen in Settings show up in a breakdown, a budget row and a
+  /// transaction tile. The registry is static and every one of those readers has
+  /// no way to reach storage, so this is the one place the two are joined.
+  ///
+  /// PUBLIC and re-callable on purpose. It used to run once in [initialize], so a
+  /// category added later -- from Settings, say -- was written to storage and
+  /// never reached the pickers: the "Other" screen said "None saved yet" while
+  /// Settings listed it. A cache that is only ever filled at startup is a cache
+  /// that lies after the first write.
   Future<void> loadRecentCustomCategories() async {
     try {
-      _recentCustomCategories = await _storageService.getExpenseCategories();
+      final stored = await _storageService.getCustomCategories();
+      _recentCustomCategories = [for (final category in stored) category.name];
+      CategoryRegistry.setCustomCategories(stored);
+      notifyListeners();
     } catch (e) {
       _error = 'Failed to load custom categories: $e';
     }
@@ -447,6 +462,9 @@ class TransactionProvider extends ChangeNotifier {
     if (cleaned.isEmpty) return;
     try {
       await _storageService.addExpenseCategory(cleaned);
+      // Re-read rather than patch the cache: the name is now in storage, and the
+      // record that came back carries the colour and icon too.
+      await loadRecentCustomCategories();
       if (!_recentCustomCategories.contains(cleaned)) {
         _recentCustomCategories.insert(0, cleaned);
       }
@@ -1046,8 +1064,16 @@ class TransactionProvider extends ChangeNotifier {
       }
 
       total += t.amount;
-      final category = (t as Expense).category;
-      byCategory[category.name] = (byCategory[category.name] ?? 0) + t.amount;
+      // Keyed by the category's META id, not the enum name.
+      //
+      // The enum name put every custom category under "other", because they all
+      // ARE `ExpenseCategory.other` with a different `customCategoryName`. So a
+      // "Coffee" expense landed in the other budget, no budget could be set for
+      // Coffee, and the money was unfalsifiably attributed. This is the same key
+      // the spending breakdown uses, so a slice and a budget are the same thing.
+      final expense = t as Expense;
+      final key = expense.categoryMeta.id;
+      byCategory[key] = (byCategory[key] ?? 0) + expense.amount;
       final journeyId = t.journeyId;
       if (journeyId != null) {
         byJourney[journeyId] = (byJourney[journeyId] ?? 0) + t.amount;

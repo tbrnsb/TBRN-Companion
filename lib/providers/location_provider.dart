@@ -1,8 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/services/storage_service.dart';
 import 'package:geolocator/geolocator.dart';
 
 /// Why a position is or is not available.

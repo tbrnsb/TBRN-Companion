@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:flutter_application_1/providers/settings_provider.dart';
-import 'package:flutter_application_1/theme/app_palettes.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:daily_companion/providers/settings_provider.dart';
+import 'package:daily_companion/theme/app_palettes.dart';
+import 'package:daily_companion/theme/app_theme.dart';
 
 /// THE MIGRATION IS THE POINT OF THIS FILE.
 ///

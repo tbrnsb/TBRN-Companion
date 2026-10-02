@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_application_1/models/trip_settlement.dart';
+import 'package:daily_companion/models/trip_settlement.dart';
 
 ParticipantTotal _p(String id, String name, double paidRupees) {
   return ParticipantTotal.fromRupees(

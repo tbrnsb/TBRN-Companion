@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/services/packing_suggestions.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
-import 'package:flutter_application_1/utils/iterable_ext.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/services/packing_suggestions.dart';
+import 'package:daily_companion/services/storage_service.dart';
+import 'package:daily_companion/utils/iterable_ext.dart';
 
 class ChecklistProvider extends ChangeNotifier {
   final StorageService _storageService = StorageService();

@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
-import 'package:flutter_application_1/utils/format.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/services/storage_service.dart';
+import 'package:daily_companion/utils/format.dart';
 
 import 'visual_smoke_test.dart' show initTestStorage;
 

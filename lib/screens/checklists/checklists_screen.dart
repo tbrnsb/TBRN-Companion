@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/checklist_provider.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/location_provider.dart';
-import 'package:flutter_application_1/services/packing_suggestions.dart';
-import 'package:flutter_application_1/screens/checklists/checklist_detail_screen.dart';
-import 'package:flutter_application_1/screens/checklists/add_checklist_screen.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/widgets/widgets.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/checklist_provider.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/location_provider.dart';
+import 'package:daily_companion/services/packing_suggestions.dart';
+import 'package:daily_companion/screens/checklists/checklist_detail_screen.dart';
+import 'package:daily_companion/screens/checklists/add_checklist_screen.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/widgets/widgets.dart';
 
 class ChecklistsScreen extends StatefulWidget {
   const ChecklistsScreen({super.key});
@@ -62,7 +62,8 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
               final isEmpty = checklistProvider.checklists.isEmpty;
 
               return ListView(
-                padding: AppSpacing.screenPadding,
+                // Clears the FAB; see AppSpacing.screenPaddingWithFab.
+                padding: AppSpacing.screenPaddingWithFab,
                 children: [
                   if (suggestions.isNotEmpty)
                     _buildTripSuggestionCard(

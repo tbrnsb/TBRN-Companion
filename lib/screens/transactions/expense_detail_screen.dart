@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/location_provider.dart';
-import 'package:flutter_application_1/providers/settings_provider.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/utils/format.dart';
-import 'package:flutter_application_1/utils/iterable_ext.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/location_provider.dart';
+import 'package:daily_companion/providers/settings_provider.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/utils/format.dart';
+import 'package:daily_companion/utils/iterable_ext.dart';
 
 import 'add_expense_sheet.dart';
 
@@ -42,18 +42,13 @@ class ExpenseDetailScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(meta.name),
-        actions: [
-          IconButton(
-            tooltip: 'Edit expense',
-            icon: const Icon(Icons.edit_rounded),
-            onPressed: () => AddExpenseSheet.show(context, existing: current),
-          ),
-          IconButton(
-            tooltip: 'Delete expense',
-            icon: Icon(Icons.delete_outline_rounded, color: colorScheme.error),
-            onPressed: () => _confirmDelete(context, current),
-          ),
-        ],
+        // No edit or delete in the app bar.
+        //
+        // The device showed FOUR controls for TWO actions: an edit pencil and a
+        // bin up here, and a labelled "Edit expense" and "Delete expense" in the
+        // body below. The body pair is the one that says what it does, so the
+        // app bar copies were the duplicates and they are gone — one affordance
+        // per action, which is the same rule the empty states follow.
       ),
       body: ListView(
         padding: AppSpacing.screenPadding,

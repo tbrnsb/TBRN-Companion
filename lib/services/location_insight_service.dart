@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:flutter_application_1/models/index.dart';
+import 'package:daily_companion/models/index.dart';
 
 /// A geographic cluster of expense coordinates, treated as evidence of
 /// repeated visits to the same unnamed place.

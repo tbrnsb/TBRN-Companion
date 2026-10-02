@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/settings_provider.dart';
-import 'package:flutter_application_1/screens/journeys/trip_summary_screen.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/utils/format.dart';
-import 'package:flutter_application_1/widgets/widgets.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/settings_provider.dart';
+import 'package:daily_companion/screens/journeys/trip_summary_screen.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/utils/format.dart';
+import 'package:daily_companion/widgets/widgets.dart';
 
 /// The "Shared" block on journey detail.
 ///
@@ -79,8 +79,6 @@ class TripSharedSection extends StatelessWidget {
               ],
               _AddParticipantField(journey: journey),
               if (journey.isShared) ...[
-                const SizedBox(height: AppSpacing.md),
-                _TripCodeRow(journey: journey),
                 const SizedBox(height: AppSpacing.md),
                 SizedBox(
                   width: double.infinity,
@@ -412,73 +410,6 @@ class _AddParticipantFieldState extends State<_AddParticipantField> {
           tooltip: 'Add',
           onPressed: _busy ? null : _add,
           icon: const Icon(Icons.person_add_alt_rounded, size: 20),
-        ),
-      ],
-    );
-  }
-}
-
-/// The trip code, prominent and copyable.
-///
-/// The copy is the whole point of a code you read aloud: confirming with a
-/// friend is one tap rather than three. It identifies the trip and does nothing
-/// else, so nothing here implies that matching codes connect two phones.
-class _TripCodeRow extends StatelessWidget {
-  const _TripCodeRow({required this.journey});
-
-  final Journey journey;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final code = journey.tripCode;
-
-    if (code == null || code.isEmpty) {
-      return OutlinedButton.icon(
-        onPressed: () =>
-            context.read<JourneyProvider>().ensureTripCode(journey.id),
-        icon: const Icon(Icons.tag_rounded, size: 18),
-        label: const Text('Make a trip code'),
-      );
-    }
-
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Trip code', style: theme.textTheme.labelMedium),
-              Text(
-                code,
-                key: const ValueKey('trip-code'),
-                style: theme.textTheme.titleLarge?.copyWith(
-                  letterSpacing: 3,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              Text(
-                'Read this out so you are both looking at the same trip. It '
-                'sends nothing — your data stays on each phone.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-        IconButton(
-          key: const ValueKey('copy-trip-code'),
-          tooltip: 'Copy code',
-          icon: const Icon(Icons.copy_rounded, size: 20),
-          onPressed: () async {
-            await Clipboard.setData(ClipboardData(text: code));
-            if (!context.mounted) return;
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(const SnackBar(content: Text('Trip code copied')));
-          },
         ),
       ],
     );

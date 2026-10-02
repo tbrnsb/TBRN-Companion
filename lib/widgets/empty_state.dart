@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:daily_companion/theme/app_theme.dart';
 
 /// Standard empty state: tonal icon circle, title, hint, optional action.
 class EmptyState extends StatelessWidget {

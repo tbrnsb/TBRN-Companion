@@ -1,7 +1,7 @@
-name: flutter_application_1
-description: "A new Flutter project."
+name: daily_companion
+description: "A pocket companion for money and trips. Log expenses, track packing, and settle shared costs. Everything stays on your phone."
 publish_to: 'none'
-version: 0.1.0+1
+version: 1.0.0+1
 
 environment:
   sdk: ^3.13.0
@@ -30,11 +30,13 @@ dependencies:
   flutter_local_notifications: ^19.4.0
   shared_preferences: ^2.2.2
   file_picker: ^10.3.10
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  url_launcher_platform_interface: ^2.3.2
 
 flutter:
   uses-material-design: true

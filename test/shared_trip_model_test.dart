@@ -2,13 +2,13 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
-import 'package:flutter_application_1/services/trip_importer.dart';
-import 'package:flutter_application_1/services/trip_snapshot.dart';
-import 'package:flutter_application_1/services/trip_snapshot_export.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/services/storage_service.dart';
+import 'package:daily_companion/services/trip_importer.dart';
+import 'package:daily_companion/services/trip_snapshot.dart';
+import 'package:daily_companion/services/trip_snapshot_export.dart';
 
 import 'visual_smoke_test.dart' show initTestStorage;
 
@@ -335,23 +335,30 @@ void main() {
   });
 
   group('trip codes', () {
-    test('are six characters with nothing confusable', () {
-      final code = generateTripCode();
-
-      expect(code, hasLength(6));
-      expect(
-        RegExp('[0O1IL]').hasMatch(code),
-        isFalse,
-        reason: 'a code read aloud must not contain a glyph that gets misheard',
-      );
-      expect(isPlausibleTripCode(code), isTrue);
+    // The codes are GONE as a feature, but the field is not.
+    //
+    // Removal was of GENERATION, not of storage: a trip that already has a code
+    // still round-trips through export, import and the model, because a code
+    // written by an older build is data the user has and dropping it would
+    // quietly change a trip they already exported. What cannot be done any more
+    // is making a new one.
+    test('an existing code still round-trips', () {
+      expect(_sharedJourney(tripCode: 'BK4J8Q').tripCode, 'BK4J8Q');
     });
 
-    test('a plausible check rejects short, long and impossible codes', () {
-      expect(isPlausibleTripCode('ABC'), isFalse);
-      expect(isPlausibleTripCode('ABCDEFG'), isFalse);
-      expect(isPlausibleTripCode('ABC0EF'), isFalse);
-      expect(isPlausibleTripCode('ABCDEF'), isTrue);
+    test('a trip simply has no code unless one was already there', () {
+      expect(_sharedJourney(tripCode: null).tripCode, isNull);
+    });
+
+    test('a malformed stored value is read as text, not trusted', () {
+      // This is what is left of the old validation: whatever is in the file is
+      // kept as a string, because the importer is reading a user's data rather
+      // than generating something.
+      final restored = Journey.fromJson({
+        ..._sharedJourney().toJson(),
+        'tripCode': 5,
+      });
+      expect(restored.tripCode, '5');
     });
   });
 

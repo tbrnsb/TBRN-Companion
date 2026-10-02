@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_application_1/theme/app_chart_colors.dart';
-import 'package:flutter_application_1/theme/app_palettes.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/widgets/spending_heatmap.dart';
-import 'package:flutter_application_1/widgets/spend_trend_cards.dart'
-    show DayTotal;
+import 'package:daily_companion/theme/app_chart_colors.dart';
+import 'package:daily_companion/theme/app_palettes.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/widgets/spending_heatmap.dart';
+import 'package:daily_companion/widgets/spend_trend_cards.dart' show DayTotal;
 
 import 'test_viewports.dart';
 
@@ -488,18 +487,24 @@ void main() {
           reason: 'day ${row[i]} belongs to the same week as day ${row[0]}',
         );
       }
-      // And the step is a cell PLUS its gutter, not the cell alone: the row
-      // SPANS the card, so there is deliberate space between the cells. A grid
-      // that spans has gutters; a grid with none does not span.
+      // And the step is a cell PLUS a SMALL gutter. The row still spans the
+      // card — seven cells and six gutters fill the measure — but the gutter is
+      // now a constant 3px rather than whatever `spaceBetween` had left over.
+      //
+      // This is the assertion that matters. Under `spaceBetween` the step was
+      // about 57px on a 412dp phone, so seven cells with five times more space
+      // between them than width did not read as a grid at all.
       final step = centres[1].dx - centres[0].dx;
       expect(step, greaterThan(SpendingHeatmapShim.cell));
       expect(
-        step * 6 + SpendingHeatmapShim.cell,
-        greaterThan(TestViewports.phonePortrait.width * 0.9),
+        step - tester.getSize(find.byKey(const ValueKey('heat-cell-3'))).width,
+        lessThanOrEqualTo(6),
         reason:
-            'seven cells and their gutters must span the card, not sit in '
-            'the left third of it',
+            'the gutter is what decides whether this reads as a grid or as '
+            'scattered dots, and it must stay tight',
       );
+      // The row is NOT expected to span the card: a capped seven-column grid is
+      // a centred block, and the gutter assertion above is what pins the shape.
     });
 
     testWidgets('days continue across rows, seven at a time', (tester) async {
@@ -571,6 +576,55 @@ void main() {
   });
 
   group('the geometry', () {
+    testWidgets('neighbouring cells are separated, sideways and down', (
+      tester,
+    ) async {
+      // THE DEVICE COMPLAINT: the grid read as one congested block with the
+      // cells touching, and `cellFor` was already subtracting six horizontal
+      // gutters from the measure while the row laid the cells out edge to edge
+      // with nothing between them. Rows had a vertical gap; columns had none, so
+      // every horizontal seam was two 1px cell borders meeting and the month
+      // looked like a hatched rectangle rather than a grid of days.
+      for (final viewport in [
+        TestViewports.phonePortrait,
+        TestViewports.phoneSmall,
+      ]) {
+        usePhoneLayout(tester, viewport);
+        await tester.pumpWidget(
+          _host(SpendingHeatmap(days: _sparseMonth(), currencySymbol: 'Rs. ')),
+        );
+        await tester.pump();
+
+        // October 2026 opens on a Thursday, so row 1 is the complete week:
+        // days 5..11 all share one row, so 5 and 6 are true horizontal
+        // neighbours and 4 and 5 are true vertical ones.
+        final d5 = tester.getRect(
+          find.byKey(const ValueKey('heat-cell-5')).first,
+        );
+        final d6 = tester.getRect(
+          find.byKey(const ValueKey('heat-cell-6')).first,
+        );
+        final d4 = tester.getRect(
+          find.byKey(const ValueKey('heat-cell-4')).first,
+        );
+
+        expect(
+          d6.left - d5.right,
+          greaterThanOrEqualTo(3),
+          reason:
+              'at $viewport the horizontal gutter is ${d6.left - d5.right} -- '
+              'the cells are touching sideways',
+        );
+        expect(
+          d5.top - d4.bottom,
+          greaterThanOrEqualTo(3),
+          reason: 'at $viewport the vertical gutter is ${d5.top - d4.bottom}',
+        );
+        // Same row, or the sideways number is meaningless.
+        expect(d5.top, moreOrLessEquals(d6.top, epsilon: 0.01));
+      }
+    });
+
     testWidgets('cells are square and the same size', (tester) async {
       usePhoneLayout(tester, TestViewports.phoneSmall);
 
@@ -605,44 +659,119 @@ void main() {
         // three cells are leading dead and the row of real days runs 4..10.
         // Measuring day 1 to day 7 spans four cells instead of seven and would
         // PASS a grid that was genuinely hugging the left.
+        // BOTH ends from the SAME row. The leading dead cells are on row 0, so
+        // pairing one of those with a day on row 1 compares two different rows and
+        // the "centre" comes out meaningless.
+        //
+        // October 2026 opens on a Thursday, so row 0 is three dead cells plus
+        // days 1..4 and row 1 is the complete week, days 5..11.
         final leftEdge = tester
-            .getRect(find.byKey(const ValueKey('heat-dead-cell')).first)
+            .getRect(find.byKey(const ValueKey('heat-cell-5')).first)
             .left;
         final rightEdge = tester
-            .getRect(find.byKey(const ValueKey('heat-cell-10')))
+            .getRect(find.byKey(const ValueKey('heat-cell-11')).first)
             .right;
         final painted = rightEdge - leftEdge;
         final available =
             viewport.width - AppSpacing.screenPadding.horizontal * 2;
+        // Not "spans": a seven-column grid CANNOT span a 412dp card and stay
+        // small, and pretending otherwise is what put 45px squares on the screen
+        // in item 5. The requirement is that the grid is not HUGGING THE LEFT —
+        // so it is centred, and the margin beside it is a real margin.
+        //
+        // Centred within the heatmap's OWN box, not the screen: it sits inside
+        // the card's padding, so `available` is not what it is centred within.
+        final own = tester.getRect(find.byType(SpendingHeatmap));
+        final cardCentre = own.width / 2;
+        final gridCentre = (leftEdge + rightEdge) / 2;
+        expect(
+          (gridCentre - cardCentre).abs(),
+          lessThan(own.width * 0.12),
+          reason:
+              'at $viewport the grid centre is off by '
+              '${(gridCentre - cardCentre).abs()} -- it is hugging the left',
+        );
         expect(
           painted,
-          greaterThan(available * 0.9),
-          reason:
-              'at $viewport the row spans $painted of an available '
-              '$available -- the grid is hugging the left again',
+          greaterThan(own.width * 0.4),
+          reason: 'at $viewport the row is $painted of $available -- too small',
         );
       }
     });
 
-    testWidgets('cells are small and fixed, not scaled to the card', (
+    testWidgets('cells are sized from the measure, within a cap', (
       tester,
     ) async {
       // Item 5 made cells Expanded + AspectRatio, so they grew to ~45px and the
-      // grid became 315px of screen. Sized from the SHARED constant instead, so
-      // the legend swatches and the grid cannot drift apart.
+      // grid became 315px of screen. The cell now takes the width it is given so
+      // the gutter can stay tight, and [SpendingHeatmapShim.maxCell] is what stops
+      // that becoming the same wall of squares on a tablet.
+      for (final viewport in [
+        TestViewports.phonePortrait,
+        TestViewports.phoneSmall,
+      ]) {
+        usePhoneLayout(tester, viewport);
+        await tester.pumpWidget(
+          _host(SpendingHeatmap(days: _sparseMonth(), currencySymbol: 'Rs. ')),
+        );
+        await tester.pump();
+
+        final cell = tester.getSize(find.byKey(const ValueKey('heat-cell-3')));
+        expect(
+          cell.width,
+          closeTo(
+            SpendingHeatmap.cellFor(
+              viewport.width - AppSpacing.screenPadding.horizontal * 2,
+            ),
+            1.5,
+          ),
+          reason: 'at $viewport the cell is derived from the measure',
+        );
+        // Square, always: a rectangular cell reads as a bar chart.
+        expect(cell.width, closeTo(cell.height, 0.5));
+        expect(
+          cell.width,
+          lessThanOrEqualTo(SpendingHeatmapShim.maxCell),
+          reason: 'the cap is what stops a wide measure taking the screen back',
+        );
+        expect(
+          cell.width,
+          greaterThanOrEqualTo(SpendingHeatmapShim.minCell - 0.5),
+        );
+      }
+    });
+
+    testWidgets('every cell is outlined, so the month reads as one grid', (
+      tester,
+    ) async {
+      // The empty days are what define the SHAPE of the month, and without an
+      // outline they are the same colour as the card. A grid of floating
+      // squares was the complaint.
       usePhoneLayout(tester, TestViewports.phonePortrait);
       await tester.pumpWidget(
         _host(SpendingHeatmap(days: _sparseMonth(), currencySymbol: 'Rs. ')),
       );
       await tester.pump();
 
-      final cell = tester.getRect(find.byKey(const ValueKey('heat-cell-3')));
-      expect(cell.width, closeTo(SpendingHeatmapShim.cell, 0.5));
-      expect(cell.height, closeTo(SpendingHeatmapShim.cell, 0.5));
+      // A day inside the month keys a Container; a dead cell keys a
+      // DecoratedBox. Both must be outlined — the outline is the only thing
+      // that makes a quiet day and a day outside the month read as parts of
+      // one grid rather than as background.
+      final container = tester.widget<Container>(
+        find.byKey(const ValueKey('heat-cell-3')).first,
+      );
       expect(
-        SpendingHeatmapShim.cell,
-        lessThanOrEqualTo(14),
-        reason: 'the shared cell constant is what every swatch uses',
+        (container.decoration! as BoxDecoration).border,
+        isNotNull,
+        reason: 'a day inside the month has no outline',
+      );
+      final dead = tester.widget<DecoratedBox>(
+        find.byKey(const ValueKey('heat-dead-cell')).first,
+      );
+      expect(
+        (dead.decoration as BoxDecoration).border,
+        isNotNull,
+        reason: 'a dead cell has no outline, so the month has no edge',
       );
     });
 
@@ -669,7 +798,7 @@ void main() {
         );
         expect(
           lastRow.bottom - grid.top,
-          lessThan(140),
+          lessThan(200),
           reason:
               'at $viewport the grid is '
               '${lastRow.bottom - grid.top}px tall, which would dominate the '

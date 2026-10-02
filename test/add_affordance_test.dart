@@ -3,17 +3,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/budget_provider.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/location_provider.dart';
-import 'package:flutter_application_1/providers/settings_provider.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/screens/locations/locations_screen.dart';
-import 'package:flutter_application_1/screens/transactions/transactions_screen.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/widgets/empty_state.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/budget_provider.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/location_provider.dart';
+import 'package:daily_companion/providers/settings_provider.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/screens/locations/locations_screen.dart';
+import 'package:daily_companion/screens/transactions/transactions_screen.dart';
+import 'package:daily_companion/services/storage_service.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/widgets/empty_state.dart';
 
 import 'test_viewports.dart';
 import 'visual_smoke_test.dart' show initTestStorage;
@@ -166,6 +166,56 @@ void main() {
         addAffordanceCount(tester),
         1,
         reason: 'an empty location list must offer exactly one way to add',
+      );
+    });
+  });
+
+  group('the FAB does not sit on top of what you are reading', () {
+    // THE DEVICE COMPLAINT. A FAB is painted OVER the list, so it covers
+    // whatever is under it -- on the phone it landed on the heatmap's colour
+    // scale and hid two of its five swatches. Bottom padding only guarantees
+    // the LAST row can be scrolled clear, and the heatmap is in the middle of a
+    // long screen, so the button itself has to move.
+    testWidgets('transactions: at rest, scrolled down, and back again', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      final provider = (await tester.runAsync(() async {
+        final p = TransactionProvider();
+        await p.initialize();
+        for (var i = 0; i < 24; i++) {
+          await p.addTransaction(
+            _expense(100.0 + i, ExpenseCategory.food, 'Spent number $i'),
+          );
+        }
+        return p;
+      }))!;
+
+      await tester.pumpWidget(_app(const TransactionsScreen(), provider));
+      await settleUi(tester);
+
+      expect(
+        find.byType(FloatingActionButton),
+        findsOneWidget,
+        reason: 'the action must be there when the screen opens',
+      );
+
+      await tester.drag(find.byType(ListView), const Offset(0, -400));
+      await settleUi(tester);
+
+      expect(
+        find.byType(FloatingActionButton),
+        findsNothing,
+        reason: 'the FAB is covering the content underneath it',
+      );
+
+      await tester.drag(find.byType(ListView), const Offset(0, 200));
+      await settleUi(tester);
+
+      expect(
+        find.byType(FloatingActionButton),
+        findsOneWidget,
+        reason: 'scrolling back up must bring the action back',
       );
     });
   });

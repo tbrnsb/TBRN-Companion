@@ -1,25 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'package:flutter_application_1/providers/checklist_provider.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/location_provider.dart';
-import 'package:flutter_application_1/providers/settings_provider.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/services/csv_export.dart';
-import 'package:flutter_application_1/screens/transactions/csv_import_sheet.dart';
-import 'package:flutter_application_1/screens/trash_screen.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
-import 'package:flutter_application_1/theme/app_palettes.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-
-/// The width at which "Add demo data" and "Clear demo data" sit side by side
-/// without either label wrapping.
-///
-/// Measured, not guessed: each button needs its icon, the internal gap, its own
-/// horizontal padding and its label, so two of them plus the gap between them
-/// is what has to fit. Below this they stack.
-const _sideBySideWidth = 380.0;
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/budget_provider.dart';
+import 'package:daily_companion/providers/checklist_provider.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/location_provider.dart';
+import 'package:daily_companion/providers/settings_provider.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/services/csv_export.dart';
+import 'package:daily_companion/screens/transactions/csv_import_sheet.dart';
+import 'package:daily_companion/screens/budgets/budgets_screen.dart';
+import 'package:daily_companion/screens/settings/category_management_screen.dart';
+import 'package:daily_companion/screens/trash_screen.dart';
+import 'package:daily_companion/services/storage_service.dart';
+import 'package:daily_companion/theme/app_palettes.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/utils/number_style.dart';
+import 'package:daily_companion/widgets/app_gear.dart';
+import 'package:daily_companion/widgets/settings_controls.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -35,6 +34,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadCounts();
+  }
+
+  /// Pushes [screen], then re-reads the counts.
+  ///
+  /// The counts are read ONCE in initState, so a category added or deleted on
+  /// the Categories screen left this page saying "1 yours" after the only one
+  /// had been deleted -- the number was true when it was read and wrong by the
+  /// time it was on screen again.
+  ///
+  /// AWAITED and reloaded on the way back, rather than reloading in
+  /// [didChangeDependencies]: that fires on every provider tick, and the count
+  /// only changes when one of the two screens this page pushes has been used.
+  ///
+  /// The route keeps a name under [AppGearButton.settingsRoutePrefix] so the
+  /// gear still knows it is inside Settings and hides itself. A screen opened
+  /// from here is reached by the back arrow, and a gear offering to re-open the
+  /// page you came from is the thing that change exists to prevent.
+  Future<void> _pushThenReload(String name, Widget screen) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        settings: RouteSettings(
+          name: '${AppGearButton.settingsRoutePrefix}/$name',
+        ),
+        builder: (_) => screen,
+      ),
+    );
+    await _loadCounts();
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadCounts() async {
@@ -70,40 +97,111 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: AppSpacing.screenPadding,
         children: [
-          // APPEARANCE FIRST. The old screen led with Currency and had the theme
-          // split across two groups that had to be reconciled with each other, so
-          // it read as a settings dump rather than as something with an order.
-          // One "Themes" group, two levels deep: a family, then a variant of it.
-          _ThemesSection(
-            palette: settings.palette,
-            variant: settings.variant,
-            onPalette: settings.setPalette,
-            onVariant: settings.setVariant,
+          // HOW IT IS ARRANGED, and why.
+          //
+          // One row per setting, whatever the number of options behind it, and
+          // the groups in the order people change things: how the app looks, how
+          // their money is written, what they track money against, and finally
+          // the destructive and rare things at the bottom.
+          //
+          // The screen this replaced led with a theme GALLERY -- four families
+          // with a tagline and a four-swatch preview each, then a variant
+          // control, then three currency rows -- so the page was as long as the
+          // implementation and grew every time a currency was added. Nine
+          // currencies as inline rows would have been worse still. Choosing is
+          // now a sheet behind a row, which is why adding the other six
+          // currencies cost this screen no height at all.
+          SettingsGroup(
+            title: 'Appearance',
+            footnote: 'Number format applies everywhere an amount is shown.',
+            children: [
+              SettingsOptionRow<AppPalette>(
+                key: const ValueKey('settings-row-theme'),
+                label: 'Theme',
+                icon: Icons.palette_rounded,
+                supporting: 'Colours',
+                options: AppPalette.values,
+                value: settings.palette.label,
+                titleOf: (p) => p.label,
+                subtitleOf: (p) =>
+                    '${p.description} · '
+                            '${settings.palette.labelForVariant(settings.palette.variants.first)}'
+                        .trim(),
+                onSelected: settings.setPalette,
+              ),
+              SettingsOptionRow<ThemeVariant>(
+                key: const ValueKey('settings-row-brightness'),
+                label: 'Brightness',
+                icon: Icons.brightness_6_rounded,
+                supporting: 'Light, dark or system',
+                // Only the variants THIS family offers. A dark-only family
+                // offering "Light" is a promise the app cannot keep, and being
+                // snapped back is worse than never offering it.
+                options: settings.palette.variants,
+                value: settings.palette.labelForVariant(settings.variant),
+                titleOf: (v) => settings.palette.labelForVariant(v),
+                onSelected: settings.setVariant,
+              ),
+              SettingsOptionRow<NumberStyle>(
+                key: const ValueKey('settings-row-number-style'),
+                label: 'Number format',
+                icon: Icons.pin_rounded,
+                supporting: 'Grouping',
+                options: NumberStyle.values,
+                value: settings.numberStyle.label,
+                titleOf: (s) => s.label,
+                subtitleOf: (s) => s.title,
+                onSelected: settings.setNumberStyle,
+              ),
+            ],
           ),
 
           const SizedBox(height: AppSpacing.lg),
 
-          _SettingsSection(
-            title: 'Currency',
-            child: Column(
-              children: [
-                _CurrencyOption(
-                  currency: Currency.rs,
-                  selected: settings.currency,
-                  onSelect: (currency) => settings.setCurrency(currency),
+          SettingsGroup(
+            title: 'Money',
+            children: [
+              SettingsOptionRow<Currency>(
+                key: const ValueKey('settings-row-currency'),
+                label: 'Currency',
+                icon: Icons.payments_rounded,
+                supporting: 'The amount symbol',
+                options: Currency.values,
+                value: settings.currency.name,
+                titleOf: (c) => '${c.name}  ${c.title}',
+                subtitleOf: (c) => c.code,
+                onSelected: settings.setCurrency,
+              ),
+              SettingsNavRow(
+                label: 'Budgets',
+                icon: Icons.donut_large_rounded,
+                supporting: 'A limit per category',
+                value: _budgetSummary(context),
+                onTap: () => _pushThenReload('budgets', const BudgetsScreen()),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: AppSpacing.lg),
+
+          SettingsGroup(
+            title: 'Categories',
+            children: [
+              SettingsNavRow(
+                label: 'Categories',
+                icon: Icons.category_rounded,
+                supporting: 'Name, colour, icon',
+                value: _categorySummary(context),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    settings: const RouteSettings(
+                      name: '${AppGearButton.settingsRoutePrefix}/categories',
+                    ),
+                    builder: (_) => const CategoryManagementScreen(),
+                  ),
                 ),
-                _CurrencyOption(
-                  currency: Currency.usd,
-                  selected: settings.currency,
-                  onSelect: (currency) => settings.setCurrency(currency),
-                ),
-                _CurrencyOption(
-                  currency: Currency.eur,
-                  selected: settings.currency,
-                  onSelect: (currency) => settings.setCurrency(currency),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
 
           const SizedBox(height: AppSpacing.lg),
@@ -126,8 +224,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
+
+  /// What the Budgets row says on the right, or a nudge if none is set.
+  String _budgetSummary(BuildContext context) {
+    final budgets = context.watch<BudgetProvider>().budgets.where(
+      (b) => b.limit != null,
+    );
+    final count = budgets.length;
+    if (count == 0) return 'None set';
+    return '$count set';
+  }
+
+  /// How many categories are in play, counting the ones the user added.
+  ///
+  /// From the storage counts rather than from the provider, because the counts
+  /// are already loaded for the Data section and a second read of the box would
+  /// be a second thing that can disagree with the number printed below it.
+  String _categorySummary(BuildContext context) {
+    final builtIn =
+        CategoryRegistry.expenseCategories().length +
+        CategoryRegistry.incomeCategories().length;
+    final custom = _counts?.customCategories;
+    return custom == null
+        ? '$builtIn built in'
+        : '$builtIn built in, $custom yours';
+  }
 }
 
+/// The section wrapper the Data, Trash and Demo groups still use.
+///
+/// Kept rather than folded into `SettingsGroup`, because those three predate it
+/// and each has its own footnote behaviour; the groups on the new screen use
+/// `SettingsGroup` directly.
 class _SettingsSection extends StatelessWidget {
   const _SettingsSection({required this.title, required this.child});
 
@@ -136,191 +264,20 @@ class _SettingsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          title,
-          style: Theme.of(context).textTheme.titleMedium
-              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          title.toUpperCase(),
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.1,
+          ),
         ),
         const SizedBox(height: AppSpacing.xs),
         AppSurface(tier: AppSurfaceTier.raised, child: child),
-      ],
-    );
-  }
-}
-
-class _CurrencyOption extends StatelessWidget {
-  const _CurrencyOption({
-    required this.currency,
-    required this.selected,
-    required this.onSelect,
-  });
-
-  final Currency currency;
-  final Currency selected;
-  final ValueChanged<Currency> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    final isSelected = currency == selected;
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return ListTile(
-      leading: Icon(Icons.money_rounded, color: colorScheme.primary),
-      title: Text(currency.name),
-      trailing: isSelected
-          ? Icon(Icons.check, color: colorScheme.primary)
-          : null,
-      onTap: () => onSelect(currency),
-    );
-  }
-}
-
-/// The "Themes" section: a FAMILY, then a VARIANT of it.
-///
-/// Two levels because that is how a colour scheme is actually chosen — "I want
-/// the warm one", and then "in the dark". The previous screen had a Theme group
-/// and a separate Colours group, and a user who picked Gruvbox still had to work
-/// out which of the two answered their question.
-///
-/// Live preview: choosing a family or a variant re-themes the app immediately,
-/// because the only honest way to choose a colour scheme is to look at it. A
-/// picker that applies on "Save" makes the user memorise swatches and guess.
-class _ThemesSection extends StatelessWidget {
-  const _ThemesSection({
-    required this.palette,
-    required this.variant,
-    required this.onPalette,
-    required this.onVariant,
-  });
-
-  final AppPalette palette;
-  final ThemeVariant variant;
-  final ValueChanged<AppPalette> onPalette;
-  final ValueChanged<ThemeVariant> onVariant;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Themes',
-          style: theme.textTheme.titleMedium?.copyWith(
-            color: scheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        AppSurface(
-          tier: AppSurfaceTier.raised,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final family in AppPalette.values)
-                _FamilyRow(
-                  family: family,
-                  palette: palette,
-                  variant: variant,
-                  onPalette: onPalette,
-                  onVariant: onVariant,
-                ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// One family. Its variants are shown underneath, and ONLY for the family that is
-/// selected.
-///
-/// Collapsed, a family is one row. Expanded, it shows the variants it actually
-/// has — so Light is simply ABSENT for Solitude and Gruvbox rather than present
-/// and greyed out. A disabled option is a promise the app cannot keep, and
-/// tapping it and being snapped back to Dark is worse than never offering it.
-class _FamilyRow extends StatelessWidget {
-  const _FamilyRow({
-    required this.family,
-    required this.palette,
-    required this.variant,
-    required this.onPalette,
-    required this.onVariant,
-  });
-
-  final AppPalette family;
-  final AppPalette palette;
-  final ThemeVariant variant;
-  final ValueChanged<AppPalette> onPalette;
-  final ValueChanged<ThemeVariant> onVariant;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final isSelected = family == palette;
-
-    // The effective variant for THIS family, not the app's. Choosing Gruvbox and
-    // then switching to Catppuccin must land on a variant Catppuccin has, so the
-    // stored variant is checked against the family's own list.
-    final effective = family.hasVariant(variant)
-        ? variant
-        : family.variants.first;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ListTile(
-          key: ValueKey('family-${family.name}'),
-          contentPadding: EdgeInsets.zero,
-          selected: isSelected,
-          onTap: () => onPalette(family),
-          leading: Icon(
-            isSelected
-                ? Icons.radio_button_checked_rounded
-                : Icons.radio_button_unchecked_rounded,
-            color: isSelected ? scheme.primary : scheme.outline,
-          ),
-          title: Text(family.label),
-          subtitle: Text(
-            family.description,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
-          ),
-          // The family's OWN ladder, painted from its real theme rather than from
-          // a hex. A collapsed ladder shows as a flat stripe, so a broken
-          // palette is visible here instead of only on the screens behind.
-          trailing: _SwatchStrip(
-            themes: [
-              for (final v in family.variants) AppTheme.forVariant(family, v),
-            ],
-          ),
-        ),
-        if (isSelected)
-          Padding(
-            padding: const EdgeInsets.only(
-              left: AppSpacing.lg,
-              bottom: AppSpacing.xs,
-            ),
-            child: Wrap(
-              spacing: AppSpacing.xs,
-              children: [
-                for (final v in family.variants)
-                  ChoiceChip(
-                    key: ValueKey('variant-${family.name}-${v.name}'),
-                    label: Text(family.labelForVariant(v)),
-                    selected: v == effective,
-                    onSelected: (_) => onVariant(v),
-                  ),
-              ],
-            ),
-          ),
       ],
     );
   }
@@ -365,43 +322,6 @@ class _TrashSection extends StatelessWidget {
 /// hex, so what a user taps is exactly what they will get — and a palette whose
 /// ladder is broken is visible as a broken strip in Settings instead of only on
 /// the screens behind it.
-class _SwatchStrip extends StatelessWidget {
-  const _SwatchStrip({required this.themes});
-
-  final List<ThemeData> themes;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: AppSpacing.xl + AppSpacing.sm,
-      height: AppSpacing.xs + AppSpacing.xxs,
-      child: Row(
-        children: [
-          for (final themeData in themes)
-            for (final colour in _ladderOf(themeData))
-              Expanded(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(color: colour),
-                  child: const SizedBox.expand(),
-                ),
-              ),
-        ],
-      ),
-    );
-  }
-
-  static List<Color> _ladderOf(ThemeData themeData) {
-    final scheme = themeData.colorScheme;
-    return [
-      scheme.surfaceContainerLowest,
-      scheme.surfaceContainerLow,
-      scheme.surfaceContainer,
-      scheme.surfaceContainerHigh,
-      scheme.surfaceContainerHighest,
-    ];
-  }
-}
-
 class _DataSection extends StatefulWidget {
   const _DataSection({required this.counts, required this.onReload});
 
@@ -586,50 +506,69 @@ class _DataSectionState extends State<_DataSection> {
                 ),
               ],
               const SizedBox(height: AppSpacing.sm),
-              // Export and import sit together and in that order, because they are
-              // the same format in opposite directions. Separating them across the
-              // screen would invite somebody to change one and not the other, and
-              // the round trip is the thing that has to keep working.
+              // The three actions are a MENU, not three buttons.
+              //
+              // A full-width button each put "Remove all data" on the screen at
+              // the same weight and the same size as "Export this month as CSV",
+              // and the destructive one is the one a thumb reaches for by
+              // accident. Behind a menu the wipe is one deliberate tap further
+              // away than the other two, which is the whole difference between
+              // an action and a hazard.
+              //
+              // Export and import stay adjacent and in that order, because they
+              // are the same format in opposite directions: separating them
+              // invites somebody to change one and not the other, and the round
+              // trip is the thing that has to keep working.
               SizedBox(
                 width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: _busy ? null : _exportCsv,
-                  icon: const Icon(Icons.ios_share_rounded),
-                  label: const Text('Export this month as CSV'),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  key: const ValueKey('settings-import-csv'),
-                  onPressed: _busy ? null : _importCsv,
-                  icon: const Icon(Icons.upload_file_rounded),
-                  label: const Text('Import transactions from CSV'),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  // Disabled when nothing is stored, rather than offering a
-                  // wipe that has nothing to do.
-                  onPressed: _busy || nothingStored ? null : _confirmRemoveAll,
-                  icon: Icon(
-                    Icons.delete_forever_rounded,
-                    color: _busy || nothingStored ? null : colorScheme.error,
+                child: MenuAnchor(
+                  builder: (menuContext, controller, _) => OutlinedButton.icon(
+                    key: const ValueKey('settings-data-menu'),
+                    onPressed: _busy
+                        ? null
+                        : () => controller.isOpen
+                              ? controller.close()
+                              : controller.open(),
+                    icon: const Icon(Icons.more_horiz_rounded),
+                    label: const Text('Data actions'),
                   ),
-                  label: Text(
-                    'Remove all data',
-                    style: TextStyle(
-                      color: _busy || nothingStored ? null : colorScheme.error,
+                  menuChildren: [
+                    MenuItemButton(
+                      key: const ValueKey('settings-export-csv'),
+                      onPressed: _busy ? null : _exportCsv,
+                      leadingIcon: const Icon(Icons.ios_share_rounded),
+                      child: const Text('Export this month as CSV'),
                     ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(
-                      color: colorScheme.error.withValues(alpha: 0.4),
+                    MenuItemButton(
+                      key: const ValueKey('settings-import-csv'),
+                      onPressed: _busy ? null : _importCsv,
+                      leadingIcon: const Icon(Icons.upload_file_rounded),
+                      child: const Text('Import transactions from CSV'),
                     ),
-                  ),
+                    const PopupMenuDivider(),
+                    MenuItemButton(
+                      key: const ValueKey('settings-remove-all'),
+                      // Disabled when nothing is stored, rather than offering a
+                      // wipe that has nothing to do.
+                      onPressed: _busy || nothingStored
+                          ? null
+                          : _confirmRemoveAll,
+                      leadingIcon: Icon(
+                        Icons.delete_forever_rounded,
+                        color: _busy || nothingStored
+                            ? null
+                            : colorScheme.error,
+                      ),
+                      child: Text(
+                        'Remove all data',
+                        style: TextStyle(
+                          color: _busy || nothingStored
+                              ? null
+                              : colorScheme.error,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -727,52 +666,41 @@ class _DemoSectionState extends State<_DemoSection> {
                 'labelled "[Demo]" so you can tell them apart from your own.',
               ),
               const SizedBox(height: AppSpacing.sm),
-              // Side by side, these two labels plus their icons need more room
-              // than a 360dp phone has, so each one wrapped onto two lines and
-              // the pair looked broken. Below the width where they genuinely
-              // fit, they stack instead. The labels are not shortened: "Clear
-              // demo data" says what it does, and truncating it to "Clear demo…"
-              // on the one button that deletes things is the wrong trade.
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final sideBySide = constraints.maxWidth >= _sideBySideWidth;
-                  final add = OutlinedButton.icon(
-                    onPressed: _loading ? null : _addDemo,
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text(
-                      'Add demo data',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+              // A MENU, for the same reason the Data actions are one.
+              //
+              // Two side-by-side buttons needed a measured 380dp before either
+              // label stopped wrapping, so most phones stacked them and the pair
+              // looked broken. One row plus a menu has no width to get wrong,
+              // and the destructive action stops being a button a thumb lands on
+              // while looking for the other one.
+              SizedBox(
+                width: double.infinity,
+                child: MenuAnchor(
+                  builder: (menuContext, controller, _) => OutlinedButton.icon(
+                    key: const ValueKey('settings-demo-menu'),
+                    onPressed: _loading
+                        ? null
+                        : () => controller.isOpen
+                              ? controller.close()
+                              : controller.open(),
+                    icon: const Icon(Icons.science_outlined),
+                    label: const Text('Demo data actions'),
+                  ),
+                  menuChildren: [
+                    MenuItemButton(
+                      key: const ValueKey('settings-add-demo'),
+                      onPressed: _loading ? null : _addDemo,
+                      leadingIcon: const Icon(Icons.add_rounded),
+                      child: const Text('Add demo data'),
                     ),
-                  );
-                  final clear = OutlinedButton.icon(
-                    onPressed: _loading ? null : _clearDemo,
-                    icon: const Icon(Icons.delete_outline_rounded),
-                    label: const Text(
-                      'Clear demo data',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    MenuItemButton(
+                      key: const ValueKey('settings-clear-demo'),
+                      onPressed: _loading ? null : _clearDemo,
+                      leadingIcon: const Icon(Icons.delete_outline_rounded),
+                      child: const Text('Clear demo data'),
                     ),
-                  );
-
-                  if (!sideBySide) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        add,
-                        const SizedBox(height: AppSpacing.sm),
-                        clear,
-                      ],
-                    );
-                  }
-                  return Row(
-                    children: [
-                      Expanded(child: add),
-                      const SizedBox(width: AppSpacing.sm),
-                      Expanded(child: clear),
-                    ],
-                  );
-                },
+                  ],
+                ),
               ),
             ],
           ),

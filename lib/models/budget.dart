@@ -322,7 +322,14 @@ class BudgetSpendIndex {
   /// Total expense spend in the period, my trip expenses included.
   final double total;
 
-  /// Expense spend keyed by `ExpenseCategory.name`.
+  /// Expense spend keyed by [CategoryMeta.id].
+  ///
+  /// The meta id, NOT the enum name. A custom category IS
+  /// `ExpenseCategory.other` with a different name, so keying by the enum put
+  /// "Coffee", "Fruits" and "Petrol" all in one bucket called "other": no budget
+  /// could be set for any of them and the money was unfalsifiably attributed.
+  /// `meta.id` is `food` for Food and `custom:coffee` for Coffee, which is also
+  /// what the spending breakdown uses, so a slice and a budget are one thing.
   final Map<String, double> byCategory;
 
   /// Expense spend keyed by `journeyId`. A separate pool from [byCategory]: a
@@ -334,8 +341,13 @@ class BudgetSpendIndex {
   double forJourney(String journeyId) => byJourney[journeyId] ?? 0;
 
   /// Total for a category, or 0.
-  double forCategory(ExpenseCategory category) =>
-      byCategory[category.name] ?? 0;
+  double forCategory(ExpenseCategory category) => forCategoryId(category.name);
+
+  /// Total for a category named by its meta id, or 0.
+  ///
+  /// Custom categories are addressed by `custom:<name>`, so a caller holding one
+  /// cannot go through [forCategory] and has to come here.
+  double forCategoryId(String metaId) => byCategory[metaId] ?? 0;
 
   /// Total for a category named by its enum `name`, or 0.
   ///
@@ -348,6 +360,20 @@ class BudgetSpendIndex {
 
 /// Every category, in the order a budget list should show them.
 List<ExpenseCategory> budgetableCategories() => ExpenseCategory.values;
+
+/// The budget key meaning "every category at once", rather than one of them.
+///
+/// A limit on this is a limit on total spending in the period, which is the
+/// thing most people actually want to cap, and it was unreachable because the
+/// screen only offered one category at a time with no way to say "the lot".
+///
+/// A star, because it cannot collide with a meta id: real ones are `food`,
+/// `travel` or `custom:<name>`. Kept here rather than in the screen so the
+/// writer, the reader and the storage key can never drift apart.
+const String allCategoriesKey = '*';
+
+/// Whether [label] is the "all categories" budget rather than one category.
+bool isAllCategories(String label) => label == allCategoriesKey;
 
 /// The integer a rupee amount is stored as, and back.
 ///

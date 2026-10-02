@@ -3,15 +3,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/location_provider.dart';
-import 'package:flutter_application_1/providers/settings_provider.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/screens/transactions/transactions_screen.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/widgets/chart_pager.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/location_provider.dart';
+import 'package:daily_companion/providers/settings_provider.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/screens/transactions/transactions_screen.dart';
+import 'package:daily_companion/services/storage_service.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/widgets/chart_pager.dart';
 
 import 'test_viewports.dart';
 import 'visual_smoke_test.dart' show initTestStorage;
@@ -289,7 +289,15 @@ void main() {
 
   group('charts do not jump when the day filter toggles', () {
     testWidgets('the pager keeps its height across the toggle', (tester) async {
-      usePhoneLayout(tester, TestViewports.phonePortrait);
+      // A TALL viewport, so the whole screen is laid out at once.
+      //
+      // `find.byType` only finds children a `ListView` has actually BUILT, and a
+      // ListView disposes rows scrolled past. At the phone height the chart
+      // pager sits below the fold once the breakdowns became one swipeable card,
+      // so it was found before the day filter and not found after it -- a change
+      // in what was on screen, not in the pager's height. Overflow at the real
+      // viewports is asserted in chart_pager_test and spend_screen_test.
+      usePhoneLayout(tester, const Size(412, 2600));
       final provider = await pumpSpend(tester);
 
       final pager = find.byType(ChartPager);

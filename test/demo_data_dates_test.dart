@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/services/demo_data_service.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/services/demo_data_service.dart';
+import 'package:daily_companion/services/storage_service.dart';
 
 import 'visual_smoke_test.dart' show initTestStorage;
 
@@ -176,6 +176,101 @@ void main() {
       // which is invisible in storage and obvious in the month list.
       final months = past.map((t) => t.date.day).where((d) => d > 28).toSet();
       expect(months.every((d) => d <= 31), isTrue);
+    });
+  });
+
+  group('the current month looks LIVED IN', () {
+    // Ten records in the current month was the complaint: every breakdown in
+    // the app had one fat slice and a few hairlines, and the heatmap had a
+    // single lit square, so neither could be judged by looking at it. These are
+    // the properties that make the month look like a month.
+
+    /// The current month's own expenses, with the shared trip's left out: the
+    /// trip is dated in the past, so it would only pad the counts.
+    Future<List<Expense>> currentMonth() async {
+      final now = DateTime.now();
+      return (await StorageService().getAllTransactions())
+          .whereType<Expense>()
+          .where(
+            (e) =>
+                e.journeyId == null &&
+                e.date.year == now.year &&
+                e.date.month == now.month,
+          )
+          .toList();
+    }
+
+    test('there are enough records to judge anything by', () async {
+      await DemoDataService.seedAll();
+
+      final expenses = await currentMonth();
+
+      expect(
+        expenses.length,
+        greaterThanOrEqualTo(20),
+        reason: 'too few records in the current month to judge a breakdown',
+      );
+    });
+
+    test('every expense category in the app is on show', () async {
+      await DemoDataService.seedAll();
+
+      final seen = (await currentMonth()).map((e) => e.category).toSet();
+
+      for (final category in ExpenseCategory.values) {
+        expect(
+          seen,
+          contains(category),
+          reason:
+              '${category.name} never appears in the demo, so it cannot '
+              'be checked by looking at it',
+        );
+      }
+    });
+
+    test('a market day stacks several records on ONE date', () async {
+      // Stacked days are what give the heatmap its range: two records on a day
+      // means that day's square is brighter than its neighbours, which is the
+      // only reason a heatmap is worth drawing at all.
+      await DemoDataService.seedAll();
+
+      final byDay = <int, int>{};
+      for (final e in await currentMonth()) {
+        byDay[e.date.day] = (byDay[e.date.day] ?? 0) + 1;
+      }
+
+      expect(
+        byDay.values.any((n) => n > 1),
+        isTrue,
+        reason:
+            'no day has more than one record, so every lit square is the '
+            'same brightness: $byDay',
+      );
+    });
+
+    test('once the month has started, it has both lit and unlit days', () async {
+      // The counterpart to the stacking above, and the reason the spread covers
+      // two days in three rather than all of them. Gated on the month being
+      // far enough along for the question to mean anything -- on the 1st a
+      // month genuinely has one day and asserting otherwise would be a test that
+      // lies.
+      await DemoDataService.seedAll();
+
+      final now = DateTime.now();
+      if (now.day < 10) return;
+
+      final days = (await currentMonth()).map((e) => e.date.day).toSet();
+
+      expect(
+        days.length,
+        greaterThanOrEqualTo(6),
+        reason: 'only ${days.length} days have any spending on them',
+      );
+      expect(
+        days.length,
+        lessThan(now.day),
+        reason: 'every single day has spending, which is not how a month goes',
+      );
     });
   });
 }

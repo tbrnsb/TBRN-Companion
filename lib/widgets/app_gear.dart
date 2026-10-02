@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_application_1/screens/settings_screen.dart';
+import 'package:daily_companion/screens/settings_screen.dart';
 
 /// The gear that opens Settings.
 ///
@@ -27,12 +27,21 @@ class AppGearButton extends StatelessWidget {
   /// user was on. Deep links, CSV export, the wipe and demo data all keep
   /// working exactly as before — only the way in changed.
   static Future<void> open(BuildContext context) {
-    return Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: routeName),
+        builder: (_) => const SettingsScreen(),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    // A gear that opens the screen you are already on. The back arrow in the
+    // corner already does the leaving, so the button had exactly one possible
+    // effect -- push Settings on top of Settings -- and offered it.
+    if (AppGearButton.isSettingsOpen(context)) return const SizedBox.shrink();
+
     return IconButton(
       key: buttonKey,
       tooltip: 'Settings',
@@ -40,4 +49,24 @@ class AppGearButton extends StatelessWidget {
       onPressed: () => open(context),
     );
   }
+
+  /// Whether the current screen is Settings, or one reached from it.
+  ///
+  /// MATCHED ON THE ROUTE NAME, with a prefix rather than an equality, so a
+  /// screen opened from Settings -- Budgets, Categories -- also counts as being
+  /// inside it. Comparing route names rather than a flag is what makes this
+  /// correct without every screen having to remember to set one: a flag would be
+  /// wrong the moment a screen forgot, and the failure is a gear that opens the
+  /// screen you are already on.
+  static bool isSettingsOpen(BuildContext context) {
+    final route = ModalRoute.of<Object?>(context);
+    final name = route?.settings.name;
+    return name != null && name.startsWith(settingsRoutePrefix);
+  }
+
+  /// The prefix every route inside Settings carries.
+  static const String settingsRoutePrefix = '/settings';
+
+  /// The route Settings itself pushes.
+  static const String routeName = settingsRoutePrefix;
 }

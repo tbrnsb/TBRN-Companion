@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:daily_companion/theme/app_theme.dart';
 
 /// The launcher icon is drawn in `tool/icon/*.svg` and rasterised into
 /// `android/app/src/main/res/mipmap-*/`.
