@@ -112,6 +112,21 @@ The gear in the app bar, not a fifth tab.
 Android only. Built and tested against Flutter 3.47.0 on the stable channel and
 Dart 3.13.0.
 
+### Install the app
+
+Download [TBRN-Companion.apk](https://github.com/tbrnsb/TBRN-Companion/releases/latest/download/TBRN-Companion.apk)
+and open it. Android will warn that the file came from outside the Play Store,
+which is what happens for any sideloaded app.
+
+The APK is signed with the release key, so it installs as
+`com.tbrnsb.daily_companion` and every later release updates it in place.
+
+The same file is also committed at
+[`android/TBRN-Companion.apk`](android/TBRN-Companion.apk), pinned to the commit
+it was built from.
+
+### Build from source
+
 ```bash
 git clone https://github.com/tbrnsb/TBRN-Companion.git
 cd TBRN-Companion
