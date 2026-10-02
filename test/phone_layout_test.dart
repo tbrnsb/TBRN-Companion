@@ -8,25 +8,26 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/checklist_provider.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/location_provider.dart';
-import 'package:flutter_application_1/providers/settings_provider.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/screens/checklists/checklists_screen.dart';
-import 'package:flutter_application_1/screens/home_screen.dart';
-import 'package:flutter_application_1/screens/journeys/journey_detail_screen.dart';
-import 'package:flutter_application_1/screens/journeys/journeys_screen.dart';
-import 'package:flutter_application_1/screens/locations/locations_screen.dart';
-import 'package:flutter_application_1/screens/settings_screen.dart';
-import 'package:flutter_application_1/screens/transactions/add_expense_sheet.dart';
-import 'package:flutter_application_1/screens/transactions/transactions_screen.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/widgets/app_gear.dart';
-import 'package:flutter_application_1/widgets/app_stat_tile.dart';
-import 'package:flutter_application_1/widgets/spend_breakdown_card.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/checklist_provider.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/location_provider.dart';
+import 'package:daily_companion/providers/budget_provider.dart';
+import 'package:daily_companion/providers/settings_provider.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/screens/checklists/checklists_screen.dart';
+import 'package:daily_companion/screens/home_screen.dart';
+import 'package:daily_companion/screens/journeys/journey_detail_screen.dart';
+import 'package:daily_companion/screens/journeys/journeys_screen.dart';
+import 'package:daily_companion/screens/locations/locations_screen.dart';
+import 'package:daily_companion/screens/settings_screen.dart';
+import 'package:daily_companion/screens/transactions/add_expense_sheet.dart';
+import 'package:daily_companion/screens/transactions/transactions_screen.dart';
+import 'package:daily_companion/services/storage_service.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/widgets/app_gear.dart';
+import 'package:daily_companion/widgets/app_stat_tile.dart';
+import 'package:daily_companion/widgets/spend_breakdown_card.dart';
 
 import 'test_viewports.dart';
 import 'visual_smoke_test.dart' show initTestStorage;
@@ -132,6 +133,9 @@ Widget _app(SeededProviders p, Widget home) {
       ChangeNotifierProvider<LocationProvider>.value(value: p.locations),
       ChangeNotifierProvider<TransactionProvider>.value(value: p.transactions),
       ChangeNotifierProvider<SettingsProvider>.value(value: p.settings),
+      // The Budgets row on Settings reads this, so a harness without it throws
+      // while building the screen and the AppBar never finishes.
+      ChangeNotifierProvider<BudgetProvider>(create: (_) => BudgetProvider()),
     ],
     child: MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -660,10 +664,24 @@ void main() {
       await tester.tap(find.byKey(AppGearButton.buttonKey));
       await settleUi(tester);
 
-      // The sections the drawer is actually for. If the route stopped building
+      // The settings the drawer is actually for. If the route stopped building
       // them this test fails instead of a user finding an empty screen.
-      expect(find.text('Currency'), findsOneWidget);
-      expect(find.text('Themes'), findsOneWidget);
+      //
+      // Asserted by their ROW KEYS rather than their labels: a label is a thing
+      // a copy edit may change, and "Themes" became "Theme" and a bare "Themes"
+      // section became "Appearance" when the options moved behind a dropdown.
+      for (final key in [
+        'settings-row-theme',
+        'settings-row-brightness',
+        'settings-row-number-style',
+        'settings-row-currency',
+      ]) {
+        expect(
+          find.byKey(ValueKey(key)),
+          findsOneWidget,
+          reason: '$key is missing, so Settings is an empty shell',
+        );
+      }
     });
 
     testWidgets('a very long tab title does not squeeze the gear out', (
@@ -699,6 +717,7 @@ Widget _navApp() {
       ChangeNotifierProvider(create: (_) => ChecklistProvider()),
       ChangeNotifierProvider(create: (_) => JourneyProvider()),
       ChangeNotifierProvider(create: (_) => LocationProvider()),
+      ChangeNotifierProvider(create: (_) => BudgetProvider()),
       ChangeNotifierProvider(create: (_) => TransactionProvider()),
       ChangeNotifierProvider(create: (_) => SettingsProvider()),
     ],

@@ -1,37 +1,106 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:flutter_application_1/theme/app_palettes.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:daily_companion/theme/app_palettes.dart';
+import 'package:daily_companion/utils/format.dart';
+import 'package:daily_companion/utils/number_style.dart';
+import 'package:daily_companion/theme/app_theme.dart';
 
-enum Currency { rs, usd, eur }
+/// A currency the app can display amounts in.
+///
+/// STORED BY NAME, never by index. An earlier build persisted an enum INDEX, and
+/// growing this list is exactly the case that breaks: inserting GBP at index 2
+/// would silently turn every saved US Dollar into Pounds, with no crash and
+/// nothing to notice. [name] is the persisted value and the list may grow in any
+/// order.
+///
+/// ORDER IS THE DISPLAY ORDER and nothing more. [rs] leads because this is a
+/// Nepali app and the rupee is what nearly everybody here wants; the rest follow
+/// the order they were asked for.
+enum Currency { rs, usd, gbp, jpy, eur, cny, cad, aud, inr }
 
 extension CurrencyX on Currency {
-  String get symbol {
-    switch (this) {
-      case Currency.rs:
-        return 'Rs. ';
-      case Currency.usd:
-        return '\$';
-      case Currency.eur:
-        return '€ ';
-    }
-  }
+  /// The glyph placed BEFORE the amount, including its trailing space.
+  ///
+  /// A SPACE, not none, because every one of these is a word-shaped mark rather
+  /// than a mathematical operator: "Rs. 1,200" and "$1,200" both read, while
+  /// "€1,200" runs the glyph into the digits. Yen and rupee are the two that
+  /// look like operators and still want the gap, because the amounts they
+  /// precede are usually long.
+  ///
+  /// [yenRenminbi] rather than a bare yen sign for China: ￥ and ¥ are different
+  /// characters, and a Chinese amount written with the Japanese glyph is wrong in
+  /// a way a user reads immediately even if they cannot say why.
+  String get symbol => switch (this) {
+    Currency.rs => 'Rs. ',
+    Currency.usd => '\$',
+    Currency.gbp => '£',
+    Currency.jpy => '¥',
+    Currency.eur => '€ ',
+    Currency.cny => 'CN¥',
+    Currency.cad => 'C\$',
+    Currency.aud => 'A\$',
+    Currency.inr => '₹',
+  };
 
-  String get name {
-    switch (this) {
-      case Currency.rs:
-        return 'Rs.';
-      case Currency.usd:
-        return '\$';
-      case Currency.eur:
-        return '€';
-    }
-  }
+  /// The short label shown in the picker.
+  ///
+  /// [symbol] for the marks that ARE the label, and a code for the two that are
+  /// not: "C$" and "A$" are how Canadians and Australians write their own
+  /// currencies at home, but in a list next to a bare "$" they are ambiguous, so
+  /// the picker shows the ISO code and the amounts show the mark.
+  String get name => switch (this) {
+    Currency.rs => 'Rs.',
+    Currency.usd => '\$',
+    Currency.gbp => '£',
+    Currency.jpy => '¥',
+    Currency.eur => '€',
+    Currency.cny => 'CN¥',
+    Currency.cad => 'CAD',
+    Currency.aud => 'AUD',
+    Currency.inr => '₹',
+  };
+
+  /// The full name, for the picker's supporting line.
+  String get title => switch (this) {
+    Currency.rs => 'Nepalese Rupee',
+    Currency.usd => 'US Dollar',
+    Currency.gbp => 'Pound Sterling',
+    Currency.jpy => 'Japanese Yen',
+    Currency.eur => 'Euro',
+    Currency.cny => 'Chinese Yuan',
+    Currency.cad => 'Canadian Dollar',
+    Currency.aud => 'Australian Dollar',
+    Currency.inr => 'Indian Rupee',
+  };
+
+  /// The ISO code, which is what [name] falls back to and what makes the
+  /// persisted value readable rather than opaque.
+  String get code => switch (this) {
+    Currency.rs => 'NPR',
+    Currency.usd => 'USD',
+    Currency.gbp => 'GBP',
+    Currency.jpy => 'JPY',
+    Currency.eur => 'EUR',
+    Currency.cny => 'CNY',
+    Currency.cad => 'CAD',
+    Currency.aud => 'AUD',
+    Currency.inr => 'INR',
+  };
 }
 
 class SettingsProvider extends ChangeNotifier {
-  static const _currencyKey = 'currency';
+  /// The currency, stored BY NAME under this key.
+  ///
+  /// See [Currency]: the list is about to grow, and an index would silently
+  /// re-point every saved user's money at a different currency.
+  static const _currencyNameKey = 'currency_name';
+
+  /// Where the currency USED to be stored, as an enum index.
+  ///
+  /// Read once, for a migration, then left alone. Not deleted: a downgrade would
+  /// find it, and it costs nothing to keep.
+  static const _legacyCurrencyIndexKey = 'currency';
   static const _themeKey = 'theme_mode';
 
   /// The palette, stored BY NAME.
@@ -41,6 +110,10 @@ class SettingsProvider extends ChangeNotifier {
   /// everything after it shifts down, so a user whose saved index was 2 came back
   /// in Gruvbox, one whose index was 3 came back in Catppuccin, and none of it
   /// threw or logged. The app just came up in a palette nobody chose.
+  /// The number shape, stored BY NAME (see [NumberStyle] and [Currency] for why
+  /// an index is not safe here).
+  static const _numberStyleKey = 'number_style';
+
   static const _paletteNameKey = 'theme_palette_name';
 
   /// The pre-name key. Read once, translated, and REMOVED.
@@ -89,6 +162,12 @@ class SettingsProvider extends ChangeNotifier {
   bool _migratedPalette = false;
 
   Currency get currency => _currency;
+
+  /// The number shape the user chose. See [AppFormat.numberStyle] for why the
+  /// value is also held statically.
+  NumberStyle _numberStyle = NumberStyle.commaDot;
+
+  NumberStyle get numberStyle => _numberStyle;
   ThemeMode get themeMode => _themeMode;
   AppPalette get palette => _palette;
 
@@ -133,7 +212,10 @@ class SettingsProvider extends ChangeNotifier {
   /// as a launch flash. `main()` awaits it, so no listener is missed.
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
-    final currencyIndex = prefs.getInt(_currencyKey) ?? 0;
+    // Not a stored-index fallback of 0: 0 was `rs` under the old enum AND is
+    // `rs` under the new one, so the first entry is the same either way and the
+    // index is only consulted when a real legacy value is present.
+    final legacyCurrencyIndex = prefs.getInt(_legacyCurrencyIndexKey);
     // `ThemeMode.system`, NOT the number 2.
     //
     // `ThemeMode.values` is [system, light, dark], so a `?? 2` fallback resolved
@@ -147,12 +229,14 @@ class SettingsProvider extends ChangeNotifier {
     // meaning dark, and this fix is about the absent case only.
     final themeIndex = prefs.getInt(_themeKey) ?? ThemeMode.system.index;
 
-    _currency =
-        Currency.values[currencyIndex.clamp(0, Currency.values.length - 1)];
-    // Currency and ThemeMode are STILL stored as indices, deliberately. Their
-    // enums are not changing, nothing is being removed from them, and rewriting
-    // working persistence for no benefit is scope this was not asked for. The
-    // palette was different because the palette's enum DID change.
+    _currency = _readCurrency(prefs, legacyCurrencyIndex);
+    _numberStyle = _readNumberStyle(prefs);
+    // Pushed into the formatter HERE, once, rather than at each call site.
+    AppFormat.setNumberStyle(_numberStyle);
+    // ThemeMode is STILL stored as an index, deliberately. Its enum is not
+    // changing, nothing is being removed from it, and rewriting working
+    // persistence for no benefit is scope this was not asked for. Currency and
+    // the palette were different because THEIR enums did change.
     _themeMode =
         ThemeMode.values[themeIndex.clamp(0, ThemeMode.values.length - 1)];
     _palette = await _readPalette(prefs);
@@ -189,10 +273,61 @@ class SettingsProvider extends ChangeNotifier {
     return null;
   }
 
+  /// The persisted currency, by name, with the old index honoured once.
+  ///
+  /// An unrecognised name falls back to the rupee rather than throwing: a
+  /// corrupt or hand-edited value should cost a user their currency preference,
+  /// not the ability to open the app.
+  static Currency _readCurrency(SharedPreferences prefs, int? legacyIndex) {
+    final stored = prefs.getString(_currencyNameKey);
+    if (stored != null) {
+      for (final currency in Currency.values) {
+        if (currency.code == stored) return currency;
+      }
+    }
+    // A legacy index is only meaningful against the OLD three-value enum, whose
+    // order was [rs, usd, eur] -- and those three are the first, second and
+    // fifth values now. Read against the CURRENT list it would turn a saved
+    // Euro into Pounds, so the old meaning is stated here rather than inferred.
+    if (legacyIndex != null && legacyIndex >= 0 && legacyIndex < 3) {
+      return switch (legacyIndex) {
+        0 => Currency.rs,
+        1 => Currency.usd,
+        _ => Currency.eur,
+      };
+    }
+    return Currency.rs;
+  }
+
+  /// The persisted number shape, by name, defaulting when absent or unreadable.
+  static NumberStyle _readNumberStyle(SharedPreferences prefs) {
+    final stored = prefs.getString(_numberStyleKey);
+    if (stored == null) return NumberStyle.commaDot;
+    for (final style in NumberStyle.values) {
+      if (style.name == stored) return style;
+    }
+    // A corrupt value costs a preference, not the ability to open the app.
+    return NumberStyle.commaDot;
+  }
+
+  /// Chooses the number shape.
+  Future<void> setNumberStyle(NumberStyle style) async {
+    if (style == _numberStyle) return;
+    _numberStyle = style;
+    AppFormat.setNumberStyle(style);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_numberStyleKey, style.name);
+    notifyListeners();
+  }
+
   Future<void> setCurrency(Currency currency) async {
     _currency = currency;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_currencyKey, currency.index);
+    // BY NAME, and the legacy index is REMOVED rather than left behind. Leaving
+    // it means a user who somehow ended up holding both has two sources of truth
+    // for one setting, and the one that wins is whichever is read first.
+    await prefs.setString(_currencyNameKey, currency.code);
+    await prefs.remove(_legacyCurrencyIndexKey);
     notifyListeners();
   }
 

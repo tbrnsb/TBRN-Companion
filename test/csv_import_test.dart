@@ -3,12 +3,12 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/services/csv_document.dart';
-import 'package:flutter_application_1/services/csv_import.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/services/csv_document.dart';
+import 'package:daily_companion/services/csv_import.dart';
+import 'package:daily_companion/services/storage_service.dart';
 
 import 'visual_smoke_test.dart' show initTestStorage;
 

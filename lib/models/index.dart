@@ -1,11 +1,13 @@
 export 'checklist.dart';
 export 'journey.dart';
 export 'trip_participant.dart';
-export 'trip_code.dart';
 export 'trip_settlement.dart';
 export 'location.dart';
 export 'location_log.dart';
 export 'transaction.dart';
+export 'category_icons.dart';
+export 'custom_category.dart';
+export 'place_link.dart';
 export 'expense_category_meta.dart';
 export 'shared_trip_visibility.dart';
 export 'transaction_search.dart';

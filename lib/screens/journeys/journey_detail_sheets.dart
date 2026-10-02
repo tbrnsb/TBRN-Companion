@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/settings_provider.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/screens/journeys/journey_detail_screen.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/utils/format.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/settings_provider.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/screens/journeys/journey_detail_screen.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/utils/format.dart';
 
 /// What happened on one day, gathered from every section.
 ///

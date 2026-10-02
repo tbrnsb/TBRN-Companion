@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/settings_provider.dart';
-import 'package:flutter_application_1/screens/journeys/trip_summary_screen.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/utils/format.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/settings_provider.dart';
+import 'package:daily_companion/screens/journeys/trip_summary_screen.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/utils/format.dart';
 
 /// "On Pokhara — you're owed Rs 867".
 ///

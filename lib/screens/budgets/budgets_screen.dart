@@ -3,14 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/budget_provider.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/settings_provider.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/utils/format.dart';
-import 'package:flutter_application_1/widgets/widgets.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/budget_provider.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/settings_provider.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/utils/format.dart';
+import 'package:daily_companion/widgets/widgets.dart';
 
 /// Budgets, in two scopes that never mix: an app-level limit per expense
 /// category, and one optional limit per trip.
@@ -25,6 +25,24 @@ class BudgetsScreen extends StatefulWidget {
   State<BudgetsScreen> createState() => _BudgetsScreenState();
 }
 
+/// The ids of the built-in expense categories.
+///
+/// "Is this the user's own category?" has to have ONE answer in this file. The
+/// list and the row's subtitle each decided it separately and disagreed, so a
+/// Coffee budget appeared in the picker and then described itself as a stock
+/// category.
+///
+/// NOT a `custom:` prefix test: a name the user happens to match to one the app
+/// suggests is stored as `suggested:<name>`, so a prefix check silently treated
+/// the user's own category as a built-in one.
+Set<String> get _builtInCategoryIds => {
+  for (final category in budgetableCategories())
+    CategoryRegistry.metaFor(category).id,
+};
+
+/// Whether [id] is one of the app's own categories rather than the user's.
+bool isBuiltInCategory(String id) => _builtInCategoryIds.contains(id);
+
 class _BudgetsScreenState extends State<BudgetsScreen> {
   /// The primary control. A limit belongs to a period, so the period decides
   /// which limit you are looking at and which spending it is measured against;
@@ -38,7 +56,16 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
   /// questions at once makes the one that matters impossible to find. The earlier
   /// version listed every category with a bar and no way to tell which was the
   /// subject, which is a dashboard, not a budget.
-  ExpenseCategory _category = ExpenseCategory.food;
+  ///
+  /// Held as a [CategoryMeta.id] rather than an [ExpenseCategory], because a
+  /// custom category the user typed into an expense has no enum value at all —
+  /// it is `ExpenseCategory.other` plus a name. Keying the control by the enum
+  /// made those categories unbudgetable and invisible here.
+  ///
+  /// [allCategoriesKey] is the default: "All" is the honest first thing to
+  /// show, because a cap on total spending in the period is what most people
+  /// mean, and it used to be unreachable.
+  String _categoryId = allCategoriesKey;
 
   /// Whether the trip budgets are open. Closed by default: they are secondary,
   /// and a list of trips above the fold pushes the primary reading off it.
@@ -49,6 +76,92 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
   /// Held here rather than in the provider because only the screen can see that
   /// a notification has gone out, and re-notifying on every rebuild would make
   /// the app nag the same overspend every time the user scrolled.
+  /// The built-in expense categories, in the app's own order.
+  List<CategoryMeta> get _builtInMetas => [
+    for (final category in budgetableCategories())
+      CategoryRegistry.metaFor(category),
+  ];
+
+  /// The custom categories worth offering, and where they come from.
+  ///
+  /// TWO sources, because either alone is wrong:
+  ///
+  ///  - What has been SPENT in this period, so a category with money in it can
+  ///    never be missing from the list. This is the integration the user asked
+  ///    for: anything added as a category on an expense appears here.
+  ///  - What the user has RECENTLY typed, so a category they use but have not
+  ///    spent this period is still reachable. Offered because it was named, not
+  ///    because it has a figure, and it will read zero.
+  ///
+  /// Deduplicated by NAME, not by id — and it has to be. The two sources
+  /// disagree about the id for the same category: spending keys it as
+  /// `suggested:coffee` because the registry gives a recognised name its own
+  /// icon, while the recent-typed list holds the bare name. A set of ids
+  /// therefore held BOTH, and the device showed "Coffee" twice in the dropdown —
+  /// two entries, two different budgets, one category.
+  ///
+  /// Sorted by name so the list does not reshuffle as amounts change; a control
+  /// that reorders itself under the user's thumb gets tapped by accident.
+  List<CategoryMeta> _customMetas(
+    BudgetSpendIndex index,
+    TransactionProvider transactions,
+  ) {
+    final byName = <String, String>{};
+
+    // Spending first: a category with money in it is the one that must appear,
+    // and its id is the one the figures are already filed under.
+    for (final key in index.byCategory.keys) {
+      if (isBuiltInCategory(key)) continue;
+      final name = CategoryRegistry.metaById(key)?.name;
+      if (name == null || name.trim().isEmpty) continue;
+      byName.putIfAbsent(name.toLowerCase(), () => key);
+    }
+    // Then the recent names, only filling gaps.
+    for (final raw in transactions.recentCustomCategories) {
+      final name = raw.trim();
+      if (name.isEmpty || isBuiltInCategory(name)) continue;
+      if (byName.containsKey(name.toLowerCase())) continue;
+      byName[name.toLowerCase()] = 'custom:${name.toLowerCase()}';
+    }
+
+    final metas = <CategoryMeta>[
+      for (final id in byName.values) ?CategoryRegistry.metaById(id),
+    ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return metas;
+  }
+
+  /// Every budgetable category, in the order the dropdown shows them.
+  ///
+  /// The user's own categories are in the list because a category typed into an
+  /// expense has to be budgetable, or the money is real and unaccountable. And
+  /// [CategoryRegistry.othersLast] is applied to the COMBINED list, so Other is
+  /// last overall rather than merely last among the built-ins.
+  List<CategoryMeta> _orderedCategories(
+    BudgetSpendIndex index,
+    TransactionProvider transactions,
+  ) => CategoryRegistry.othersLast([
+    ..._builtInMetas,
+    ..._customMetas(index, transactions),
+  ], isOther: (m) => m.id == CategoryRegistry.otherId);
+
+  /// The meta for a stored category id, including the "all" sentinel.
+  ///
+  /// Falls back to a neutral "all" meta rather than the last enum entry, so a
+  /// limit saved against a category the app no longer offers still READS as
+  /// something rather than silently becoming a different category's budget.
+  CategoryMeta _metaFor(String id) {
+    if (isAllCategories(id)) return _allCategoriesMeta;
+    return CategoryRegistry.metaById(id) ?? _allCategoriesMeta;
+  }
+
+  static const CategoryMeta _allCategoriesMeta = CategoryMeta(
+    id: allCategoriesKey,
+    name: 'All categories',
+    icon: Icons.pie_chart_outline_rounded,
+    color: Color(0xFF8A7A66),
+    popularity: 0,
+  );
+
   @override
   Widget build(BuildContext context) {
     final transactions = context.watch<TransactionProvider>();
@@ -109,37 +222,60 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
           ),
           const SizedBox(height: AppSpacing.md),
 
+          // The label is its OWN line, not a floating `labelText`.
+          //
+          // A floating label rides the field's border, and with a prefix icon in
+          // this decoration the device showed "Category" half-buried under the
+          // top edge. A label above the control cannot collide with it at any
+          // width, and it reads the same way the period range above does.
+          Text(
+            'Category',
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xxs),
           // THE ONE SECONDARY SELECTOR. A dropdown, not chips AND not a list of
           // every category: two category controls is one too many, and a chip
           // row for ~18 categories wraps to three lines and buries the reading.
-          DropdownButtonFormField<ExpenseCategory>(
+          DropdownButtonFormField<String>(
             key: const ValueKey('budget-category-select'),
-            initialValue: _category,
+            initialValue: _categoryId,
             decoration: InputDecoration(
-              labelText: 'Category',
-              prefixIcon: Icon(
-                CategoryRegistry.metaFor(_category).icon,
-                size: 18,
-              ),
+              prefixIcon: Icon(_metaFor(_categoryId).icon, size: 18),
             ),
             items: [
-              for (final category in budgetableCategories())
-                DropdownMenuItem<ExpenseCategory>(
-                  value: category,
-                  child: Text(CategoryRegistry.metaFor(category).name),
+              // "All" first, because a limit on the period's TOTAL is the
+              // honest default and a list that starts with Food is not.
+              DropdownMenuItem<String>(
+                value: allCategoriesKey,
+                child: Text('All categories'),
+              ),
+              // Then ONE list, not two, so `othersLast` can do its job.
+              //
+              // Built-ins and the user's own categories were appended as separate
+              // groups, so the Other bucket -- last of the built-ins -- ended up
+              // in the MIDDLE of the whole list with a custom category after it.
+              // That is the one row which leads somewhere else rather than naming
+              // a thing, and it has to be the last thing in every list.
+              for (final meta in _orderedCategories(index, transactions))
+                DropdownMenuItem<String>(
+                  value: meta.id,
+                  child: Text(meta.name),
                 ),
             ],
-            onChanged: (category) {
-              if (category == null) return;
-              setState(() => _category = category);
+            onChanged: (id) {
+              if (id == null) return;
+              setState(() => _categoryId = id);
             },
           ),
           const SizedBox(height: AppSpacing.sm),
           _CategoryBudget(
             index: index,
             period: _period,
-            category: _category,
+            categoryId: _categoryId,
             currencySymbol: currency,
+            meta: _metaFor(_categoryId),
           ),
           const SizedBox(height: AppSpacing.sm),
           // The total stays, because it is the context for the one reading above
@@ -195,34 +331,52 @@ class _CategoryBudget extends StatelessWidget {
   const _CategoryBudget({
     required this.index,
     required this.period,
-    required this.category,
+    required this.categoryId,
     required this.currencySymbol,
+    required this.meta,
   });
 
   final BudgetSpendIndex index;
   final BudgetPeriod period;
-  final ExpenseCategory category;
+
+  /// A [CategoryMeta.id], or [allCategoriesKey].
+  final String categoryId;
   final String currencySymbol;
+
+  /// Resolved by the caller, so the dropdown's icon and the row's icon cannot be
+  /// two different categories.
+  final CategoryMeta meta;
 
   @override
   Widget build(BuildContext context) {
     final budgets = context.watch<BudgetProvider>();
-    final meta = CategoryRegistry.metaFor(category);
-    final key = BudgetKey.forCategory(category.name, period).raw;
+
+    // "All" is a limit on the period's TOTAL, not a slice of it — the same
+    // number the card above reports, which is what makes it the honest default.
+    final all = isAllCategories(categoryId);
+    final spent = all ? index.total : index.forCategoryId(categoryId);
 
     return _BudgetRow(
-      storageKey: key,
+      storageKey: BudgetKey.forCategory(categoryId, period).raw,
       icon: meta.icon,
       colour: meta.color,
       title: meta.name,
-      limit: budgets.limitFor(label: category.name, period: period),
-      hasLimit: budgets.hasLimit(label: category.name, period: period),
-      spent: index.forCategory(category),
+      limit: budgets.limitFor(label: categoryId, period: period),
+      hasLimit: budgets.hasLimit(label: categoryId, period: period),
+      spent: spent,
       period: period,
       currencySymbol: currencySymbol,
+      // "Your own category" for anything that is not a built-in, decided the
+      // same way the list decides it. Testing the `custom:` prefix here missed
+      // every suggested one, which is the same mistake the list had.
+      subtitle: all
+          ? 'Everything, every category'
+          : !isBuiltInCategory(meta.id)
+          ? 'Your own category'
+          : null,
       onChanged: (amount) async {
         await budgets.setLimit(
-          label: category.name,
+          label: categoryId,
           amount: amount,
           period: period,
         );
@@ -367,7 +521,13 @@ class _BudgetRow extends StatelessWidget {
     required this.period,
     required this.currencySymbol,
     required this.onChanged,
+    this.subtitle,
   });
+
+  /// An optional line under the title, for the two cases where a budget is not
+  /// simply "a category": the all-categories total, and a category the user
+  /// invented. Both are worth saying out loud, because neither is a stock one.
+  final String? subtitle;
 
   final String storageKey;
   final IconData icon;
@@ -414,11 +574,26 @@ class _BudgetRow extends StatelessWidget {
                 Icon(icon, size: 18, color: colour),
                 const SizedBox(width: AppSpacing.xs),
                 Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleSmall,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall,
+                      ),
+                      if (subtitle != null)
+                        Text(
+                          subtitle!,
+                          key: const ValueKey('budget-row-subtitle'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 Text(

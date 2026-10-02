@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:daily_companion/theme/app_theme.dart';
 
 /// Tonal context/alert card (replaces the old gradient info cards).
 /// Uses ColorScheme containers so it is dark-mode safe.

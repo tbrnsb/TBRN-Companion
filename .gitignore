@@ -68,3 +68,18 @@ backup/
 .rewrite/
 .verify-tmp/
 .gate-out.log
+
+# Session state and editor/agent handoff notes. These describe how the work was
+# driven, not what the app is, and they carry absolute paths from one machine.
+# They stay on disk for recovery and never travel with a clone.
+.planning/
+.continue/
+HANDOFF.md
+session-ses_*.md
+
+# Android release signing. The keystore must never be pushed anywhere: whoever
+# holds this key can sign updates that Android accepts as yours. Losing it means
+# the app can never be updated again, so back the file up somewhere safe.
+*.jks
+*.keystore
+android/key.properties

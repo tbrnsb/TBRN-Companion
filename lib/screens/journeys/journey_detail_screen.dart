@@ -2,21 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/checklist_provider.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/location_provider.dart';
-import 'package:flutter_application_1/providers/settings_provider.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/screens/checklists/add_checklist_screen.dart';
-import 'package:flutter_application_1/screens/checklists/checklist_detail_screen.dart';
-import 'package:flutter_application_1/screens/journeys/trip_shared_section.dart';
-import 'package:flutter_application_1/screens/transactions/add_transaction_sheet.dart';
-import 'package:flutter_application_1/services/packing_suggestions.dart';
-import 'package:flutter_application_1/screens/transactions/expense_detail_screen.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/utils/format.dart';
-import 'package:flutter_application_1/widgets/widgets.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/checklist_provider.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/location_provider.dart';
+import 'package:daily_companion/providers/settings_provider.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/screens/checklists/add_checklist_screen.dart';
+import 'package:daily_companion/screens/checklists/checklist_detail_screen.dart';
+import 'package:daily_companion/screens/journeys/trip_shared_section.dart';
+import 'package:daily_companion/screens/transactions/add_transaction_sheet.dart';
+import 'package:daily_companion/services/packing_suggestions.dart';
+import 'package:daily_companion/screens/transactions/expense_detail_screen.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/utils/format.dart';
+import 'package:daily_companion/widgets/widgets.dart';
 
 /// Journey detail — the hub that connects packing, places, and spending
 /// for one journey.

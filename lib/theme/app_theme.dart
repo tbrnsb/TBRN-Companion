@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'app_accents.dart';
 import 'app_palettes.dart';
 
 /// V2 visual identity for Daily Context Companion.
@@ -72,6 +73,22 @@ class AppSpacing {
   static const double xl = 32;
 
   static const EdgeInsets screenPadding = EdgeInsets.all(md);
+
+  /// [screenPadding] with room at the BOTTOM for a floating action button.
+  ///
+  /// A FAB floats OVER the list, so with ordinary screen padding the last thing
+  /// in a list sits underneath it: on the device the dock covered the "10 this
+  /// month" count, the pager's page label, and a row's overflow menu. The
+  /// content has to be able to scroll clear of the button, which means the
+  /// padding has to be taller than the button.
+  static const EdgeInsets screenPaddingWithFab = EdgeInsets.only(
+    left: md,
+    top: md,
+    right: md,
+    // An extended FAB is AppSpacing.xl plus its own height; this clears it with
+    // room to spare and still leaves a usable gap when the list is short.
+    bottom: 96,
+  );
 }
 
 /// Motion durations. Nothing here exceeds 250ms: an app that takes half a
@@ -278,7 +295,7 @@ class AppTheme {
     return _base(
       _schemeFor(spec, brightness),
       scaffold: spec.background,
-      palette: palette,
+      spec: spec,
     );
   }
 
@@ -306,7 +323,7 @@ class AppTheme {
         ? AppPalettes.darkFor(palette)
         : (AppPalettes.lightFor(palette) ?? AppPalettes.darkFor(palette));
     final scheme = _schemeFor(spec, brightness);
-    return _base(scheme, scaffold: spec.background, palette: palette);
+    return _base(scheme, scaffold: spec.background, spec: spec);
   }
 
   /// The [ColorScheme] for a palette's tokens.
@@ -531,7 +548,7 @@ class AppTheme {
   static ThemeData _base(
     ColorScheme scheme, {
     required Color scaffold,
-    required AppPalette palette,
+    required AppPaletteSpec spec,
   }) {
     final isDark = scheme.brightness == Brightness.dark;
     final textTheme = _typeScale(scheme);
@@ -541,6 +558,10 @@ class AppTheme {
       colorScheme: scheme,
       scaffoldBackgroundColor: scaffold,
       textTheme: textTheme,
+      // The palette's own second accents, where it declares any. A family with
+      // one hue gets its primary and secondary back, so nothing that reads an
+      // accent sees a colour the palette never had.
+      extensions: <ThemeExtension<dynamic>>[AppAccents.from(scheme, spec)],
       // Checkboxes are one of the app's main "something just changed" signals.
       checkboxTheme: CheckboxThemeData(
         fillColor: WidgetStateProperty.resolveWith(

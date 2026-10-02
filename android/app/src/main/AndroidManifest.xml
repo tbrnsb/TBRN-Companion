@@ -18,9 +18,16 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!--
+      Android backs app data up to the user's Google account by default. This
+      app promises that nothing leaves the phone, and an OS-level copy to a
+      cloud backup service is the one thing that would quietly break that, so
+      backup is off.
+    -->
     <application
         android:label="TBRN"
         android:name="${applicationName}"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"

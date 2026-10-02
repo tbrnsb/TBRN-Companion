@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/checklist_provider.dart';
-import 'package:flutter_application_1/screens/checklists/checklist_detail_screen.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/checklist_provider.dart';
+import 'package:daily_companion/screens/checklists/checklist_detail_screen.dart';
+import 'package:daily_companion/services/storage_service.dart';
+import 'package:daily_companion/theme/app_theme.dart';
 
 import 'test_viewports.dart';
 import 'visual_smoke_test.dart' show initTestStorage;

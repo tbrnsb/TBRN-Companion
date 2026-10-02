@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/checklist_provider.dart';
-import 'package:flutter_application_1/screens/checklists/add_checklist_screen.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/utils/iterable_ext.dart';
-import 'package:flutter_application_1/widgets/widgets.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/checklist_provider.dart';
+import 'package:daily_companion/screens/checklists/add_checklist_screen.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/utils/iterable_ext.dart';
+import 'package:daily_companion/widgets/widgets.dart';
 
 /// One checklist, derived from [ChecklistProvider].
 ///
