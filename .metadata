@@ -18,21 +18,6 @@ migration:
     - platform: android
       create_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
       base_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
-    - platform: ios
-      create_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
-      base_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
-    - platform: linux
-      create_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
-      base_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
-    - platform: macos
-      create_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
-      base_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
-    - platform: web
-      create_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
-      base_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
-    - platform: windows
-      create_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
-      base_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
 
   # User provided section
 
@@ -42,4 +27,3 @@ migration:
   # Files that are not part of the templates will be ignored by default.
   unmanaged_files:
     - 'lib/main.dart'
-    - 'ios/Runner.xcodeproj/project.pbxproj'
