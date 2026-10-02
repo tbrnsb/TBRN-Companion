@@ -1,12 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/services/notification_service.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
-import 'package:flutter_application_1/services/trip_importer.dart';
-import 'package:flutter_application_1/services/trip_snapshot.dart';
-import 'package:flutter_application_1/utils/iterable_ext.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/services/notification_service.dart';
+import 'package:daily_companion/services/storage_service.dart';
+import 'package:daily_companion/services/trip_importer.dart';
+import 'package:daily_companion/services/trip_snapshot.dart';
+import 'package:daily_companion/utils/iterable_ext.dart';
 
 class JourneyProvider extends ChangeNotifier {
   final StorageService _storage = StorageService();
@@ -352,22 +352,6 @@ class JourneyProvider extends ChangeNotifier {
       localParticipantId: participantId,
       clearLocalParticipant: participantId == null,
     );
-  }
-
-  /// Gives the trip a short code friends can read aloud.
-  ///
-  /// Generated only when the trip has none. Re-importing a file must not change
-  /// the code: the code is what two people compare, and a code that silently
-  /// changed would make them look like they are on different trips.
-  Future<String> ensureTripCode(String journeyId) async {
-    final journey = getJourneyById(journeyId);
-    if (journey == null) return '';
-    final existing = journey.tripCode;
-    if (existing != null && existing.isNotEmpty) return existing;
-
-    final code = generateTripCode();
-    await _saveSharedTripFields(journey, tripCode: code);
-    return code;
   }
 
   /// What each participant on [journeyId] paid, from the trip's own expenses.

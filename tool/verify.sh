@@ -42,6 +42,42 @@ BUILD_TIMEOUT="${BUILD_TIMEOUT:-900}"
 export TMPDIR="${FLUTTER_TMPDIR:-$PWD/.verify-tmp}"
 mkdir -p "$TMPDIR"
 
+# ---------------------------------------------------------------------------
+# Reap orphaned testers, on the way in AND on the way out.
+#
+# This is the actual cause of the /tmp problem, and it is worth writing down
+# because it presented as a code bug twice.
+#
+# When a run here is KILLED BY ITS OWN TIMEOUT, `timeout` kills the `flutter`
+# wrapper and leaves `flutter_tester` — the per-file test binary — running. That
+# orphan does not exit on its own. It keeps writing 14MB `.so` scratch files
+# into /tmp forever, hundreds of them, and `flutter_tester` does not honour
+# TMPDIR for them, so redirecting TMPDIR does not save you.
+#
+# Symptom: /tmp (a 3.6G tmpfs) creeps to 80% full, and then EVERY flutter
+# command fails with "Disk quota exceeded" while writing its listener file. That
+# reads as a build break and is not one. Deleting the files does not help
+# because the orphan recreates them within seconds.
+#
+# Measured here: one orphan held 1.2GB open, and killing it took /tmp from
+# 2.9G-used to 152M-used.
+cleanup_testers() {
+  pkill -9 -f 'flutter_tester .*daily_companion' 2>/dev/null
+  return 0
+}
+sweep_tmp() {
+  # Only this machine's 14MB flutter scratch files, and only when it is a
+  # genuine emergency, so this never deletes anything of the user's.
+  if [ "$(df -P /tmp | awk 'NR==2 {print $5}' | tr -d '%')" -ge 70 ]; then
+    rm -f /tmp/.9adb*.so 2>/dev/null
+    rm -rf /tmp/flutter_tools.* 2>/dev/null
+  fi
+  return 0
+}
+trap 'cleanup_testers' EXIT
+cleanup_testers
+sweep_tmp
+
 SKIP_BUILD=0
 [ "${1:-}" = "--no-build" ] && SKIP_BUILD=1
 

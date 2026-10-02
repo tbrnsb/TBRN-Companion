@@ -9,5 +9,7 @@ export 'empty_state.dart';
 export 'section_header.dart';
 export 'spend_breakdown_card.dart';
 export 'spend_trend_cards.dart';
+export 'page_indicator.dart';
 export 'spending_heatmap.dart';
+export 'swipe_pages.dart';
 export 'trip_outstanding_card.dart';

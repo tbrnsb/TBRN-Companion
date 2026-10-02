@@ -3,17 +3,17 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/location_provider.dart';
-import 'package:flutter_application_1/providers/settings_provider.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/services/location_insight_service.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/location_provider.dart';
+import 'package:daily_companion/providers/settings_provider.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/services/location_insight_service.dart';
+import 'package:daily_companion/theme/app_theme.dart';
 
 import 'other_category_screen.dart';
 
-import 'package:flutter_application_1/utils/format.dart';
+import 'package:daily_companion/utils/format.dart';
 
 class AddExpenseSheet extends StatefulWidget {
   const AddExpenseSheet({super.key, this.existing, this.initialJourneyId});
@@ -842,9 +842,14 @@ class _CategoryPicker extends StatelessWidget {
         .where((m) => !recentMetas.any((r) => r.id == m.id))
         .take(4)
         .toList();
-    final allMetas =
-        ExpenseCategory.values.map((c) => CategoryRegistry.metaFor(c)).toList()
-          ..sort((a, b) => a.popularity.compareTo(b.popularity));
+    // Sorted by popularity, then `other` moved back to the end.
+    //
+    // It leaves the sort wherever its popularity puts it, and `other` is a
+    // two-step action sitting in the middle of a list of one-step ones.
+    final allMetas = CategoryRegistry.metasOthersLast(
+      (ExpenseCategory.values.map((c) => CategoryRegistry.metaFor(c)).toList()
+        ..sort((a, b) => a.popularity.compareTo(b.popularity))),
+    );
 
     Widget section(String label, List<CategoryMeta> metas) {
       return Column(

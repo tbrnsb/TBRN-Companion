@@ -4,14 +4,17 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/checklist_provider.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/location_provider.dart';
-import 'package:flutter_application_1/screens/journeys/journey_detail_screen.dart';
-import 'package:flutter_application_1/screens/journeys/journey_detail_sheets.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/widgets/widgets.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/checklist_provider.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/location_provider.dart';
+import 'package:daily_companion/screens/journeys/journey_detail_screen.dart';
+import 'package:daily_companion/screens/journeys/journey_detail_sheets.dart';
+import 'package:daily_companion/theme/app_accents.dart';
+import 'package:daily_companion/theme/app_chart_colors.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/utils/format.dart';
+import 'package:daily_companion/widgets/widgets.dart';
 
 ColorScheme colorSchemeOf(BuildContext context) =>
     Theme.of(context).colorScheme;
@@ -365,7 +368,7 @@ class _SummaryRow extends StatelessWidget {
       ),
       (
         label: 'Avg. time',
-        value: _formatMinutes(provider.averageJourneyMinutes),
+        value: AppFormat.duration(provider.averageJourneyMinutes),
         icon: Icons.timer_rounded,
         stat: JourneyStat.averageTime,
       ),
@@ -420,14 +423,12 @@ class _SummaryRow extends StatelessWidget {
     );
   }
 
-  String _formatMinutes(double minutes) {
-    if (minutes <= 0) return '0m';
-    final whole = minutes.round();
-    final hours = whole ~/ 60;
-    final mins = whole % 60;
-    if (hours == 0) return '${mins}m';
-    return '${hours}h ${mins}m';
-  }
+  /// A duration in the largest unit that says something.
+  ///
+  /// Days-aware, because the device showed a three-day average trip as "72h 0m".
+  /// That is arithmetically right and useless to read: nobody thinks in 72-hour
+  /// units, and "0m" at the end is noise. Only two units, and only as many as
+  /// carry information — a trip of two days is "2d 3h", not "2d 3h 0m".
 }
 
 class _ActiveJourneyCard extends StatelessWidget {
@@ -446,7 +447,19 @@ class _ActiveJourneyCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final started = DateFormat('MMM d, h:mm a').format(journey.startTime);
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final accents = AppAccents.of(context);
+
+    // The card this is drawn on, so both accents can be resolved FOR it rather
+    // than assumed. On Gruvbox the container is `selection` #504945 and both
+    // accents measure about 2.7:1 on it -- under the 3:1 floor for a non-text
+    // mark -- so they are lightened here rather than shipped as authored.
+    final card = AppSurfaces.specFor(AppSurfaceTier.accent, colorScheme).color;
+    final ink = colorScheme.onPrimaryContainer;
+    final quiet = ink.withValues(alpha: 0.72);
+    final supporting = AppCategoryColour.resolve(accents.cool, card);
+    final emphasis = AppCategoryColour.resolve(accents.warm, card);
 
     // The journey in progress is the single most important thing on this
     // screen, so it is the screen's one accent surface.
@@ -455,102 +468,177 @@ class _ActiveJourneyCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // THE EYEBROW, in the second accent.
+          //
+          // Everything on this card used to be one colour, so nothing on it read
+          // as more important than anything else -- which is what "bad in every
+          // theme" looked like. The label is what the card IS, so it is the one
+          // thing that should not be the loudest: small, tracked out, and in the
+          // cool accent rather than the amber everything else competes for.
           Row(
             children: [
-              Icon(
-                Icons.route_rounded,
-                size: 20,
-                color: colorScheme.onPrimaryContainer,
-              ),
-              const SizedBox(width: 8),
+              Icon(Icons.route_rounded, size: 16, color: supporting),
+              const SizedBox(width: AppSpacing.xs),
               Text(
-                'Active journey',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: colorScheme.onPrimaryContainer,
-                  fontWeight: FontWeight.w600,
+                'ACTIVE JOURNEY',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: supporting,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.1,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.xs),
           InkWell(
             onTap: onOpen,
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // The loudest thing on the card, and the only large text.
+                //
+                // Clamped to two lines with an ellipsis: at `titleLarge` a long
+                // origin and destination ran into the open affordance on the
+                // right, and two place names colliding reads as a rendering
+                // fault rather than as a long name.
                 Expanded(
                   child: Text(
-                    '${journey.origin} → ${journey.destination}',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: colorScheme.onPrimaryContainer,
+                    '${journey.origin} \u2192 ${journey.destination}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: ink,
                       fontWeight: FontWeight.w700,
+                      height: 1.2,
                     ),
                   ),
                 ),
-                Icon(
-                  Icons.open_in_new_rounded,
-                  size: 18,
-                  color: colorScheme.onPrimaryContainer,
+                const SizedBox(width: AppSpacing.xs),
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Icon(
+                    Icons.open_in_new_rounded,
+                    size: 16,
+                    color: quiet,
+                  ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: AppSpacing.xxs),
           Text(
-            'Started: $started',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: colorScheme.onPrimaryContainer.withValues(alpha: 0.8),
-            ),
+            'Started $started',
+            style: theme.textTheme.bodySmall?.copyWith(color: quiet),
           ),
           if (journey.items.isNotEmpty) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.md),
+            // The packing list, as a set of supporting things rather than more
+            // headings: a low tint of the second accent, labels still in ink so
+            // they clear the text contrast and not the non-text one.
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: AppSpacing.xs,
+              runSpacing: AppSpacing.xs,
               children: journey.items
                   .map(
-                    (item) => Chip(
-                      label: Text(item),
-                      backgroundColor: colorScheme.surface.withValues(
-                        alpha: 0.6,
+                    (item) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.sm,
+                        vertical: AppSpacing.xxs,
                       ),
-                      side: BorderSide.none,
+                      decoration: BoxDecoration(
+                        color: supporting.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(AppRadii.small),
+                        border: Border.all(
+                          color: supporting.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: Text(
+                        item,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: ink,
+                        ),
+                      ),
                     ),
                   )
                   .toList(),
             ),
           ],
           if (reminderHints.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            ...reminderHints.map(
-              (hint) => Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.notifications_active_rounded,
-                      color: colorScheme.onPrimaryContainer,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
+            const SizedBox(height: AppSpacing.md),
+            // The reminders, as ONE quiet inset block.
+            //
+            // They were two identical bell icons each followed by a paragraph of
+            // generic advice, drawn in the same ink and the same size as
+            // everything else, so the card's loudest content was filler. One
+            // marker, one block, secondary weight: present, and not competing.
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(AppSpacing.sm),
+              decoration: BoxDecoration(
+                color: colorScheme.surface.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(AppRadii.small),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.notifications_active_rounded,
+                        color: quiet,
+                        size: 14,
+                      ),
+                      const SizedBox(width: AppSpacing.xxs),
+                      Expanded(
+                        child: Text(
+                          'While you are out',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: quiet,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.xxs),
+                  for (final hint in reminderHints)
+                    Padding(
+                      padding: const EdgeInsets.only(top: AppSpacing.xxs),
                       child: Text(
                         hint,
-                        style: Theme.of(context).textTheme.bodySmall
-                            ?.copyWith(color: colorScheme.onPrimaryContainer),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: quiet,
+                        ),
                       ),
                     ),
-                  ],
-                ),
+                ],
               ),
             ),
           ],
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.md),
+          // AN OUTLINED BUTTON, not a filled one.
+          //
+          // The trip is in progress: it is the card's subject, and the route
+          // name is the thing being looked at. "Complete journey" is the action
+          // that ENDS all of that, so it should be reachable, not louder than
+          // the name. Filled in the warm accent it was the most saturated thing
+          // on the card and the eye went to the button before the trip.
           SizedBox(
             width: double.infinity,
-            child: FilledButton.icon(
+            child: OutlinedButton.icon(
+              key: const ValueKey('complete-journey'),
+              style: OutlinedButton.styleFrom(
+                // The emphasis accent as the OUTLINE, so the row still reads as
+                // the card's action and is findable, without the slab of fill
+                // that made it the loudest element.
+                foregroundColor: emphasis,
+                side: BorderSide(
+                  color: emphasis.withValues(alpha: 0.7),
+                  width: 1.5,
+                ),
+              ),
               onPressed: onComplete,
-              icon: const Icon(Icons.check_circle_rounded),
+              icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
               label: const Text('Complete journey'),
             ),
           ),

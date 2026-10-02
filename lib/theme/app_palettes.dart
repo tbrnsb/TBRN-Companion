@@ -38,7 +38,7 @@ extension AppPaletteX on AppPalette {
     AppPalette.tbrn => 'Cream and carafe',
     AppPalette.catppuccin => 'Pastel, blue and mint',
     AppPalette.solitude => 'Cold grey, almost black',
-    AppPalette.gruvbox => 'Warm earth and amber',
+    AppPalette.gruvbox => 'Earth, amber and teal',
   };
 
   /// The variants this family actually offers, in the order they are shown.
@@ -109,6 +109,8 @@ class AppPaletteSpec {
     required this.error,
     required this.success,
     required this.warning,
+    this.accentWarm,
+    this.accentCool,
   });
 
   final AppPalette palette;
@@ -146,6 +148,22 @@ class AppPaletteSpec {
   final Color error;
   final Color success;
   final Color warning;
+
+  /// A palette's SECOND accent, warm. Null when the family has only one.
+  ///
+  /// A single accent is why a whole screen can end up with no hierarchy: on
+  /// Gruvbox the Active Journey card had its heading, its chips, its reminders
+  /// and its call to action all in the same amber, and nothing could be read as
+  /// more important than anything else. A second hue gives those elements
+  /// something to be different FROM.
+  ///
+  /// Deliberately OPTIONAL rather than derived. These are hand-picked additions
+  /// to a specific family, and inventing a second hue for a family that has not
+  /// asked for one is how a palette quietly stops being itself.
+  final Color? accentWarm;
+
+  /// A palette's second accent, cool. See [accentWarm].
+  final Color? accentCool;
 
   /// The full ladder as a list, in Material's own order.
   List<Color> get ladder => [
@@ -227,25 +245,71 @@ class AppPalettes {
     warning: Color(0xFFC0A16B),
   );
 
+  /// Gruvbox, the dark original.
+  ///
+  /// Taken from the palette as Gruvbox publishes it -- the values the Omarchy
+  /// Gruvbox theme ships -- rather than eyeballed, so `background`, `container`,
+  /// `outline`, `primary` and the ladder are the real names of real colours:
+  /// `background`, `selection`, `muted`, `yellow`, `dark_background`,
+  /// `darker_background` and `lighter_background`.
+  ///
+  /// [accentWarm] and [accentCool] are additions rather than palette values.
+  /// Gruvbox's own second accent is its blue (`#7DAEA3`), which is what
+  /// [secondary] already carries as cyan-family; these two are warmer and
+  /// quieter siblings of the amber so a card can have hierarchy without
+  /// introducing a hue that fights the family.
   static const AppPaletteSpec gruvboxDark = AppPaletteSpec(
     palette: AppPalette.gruvbox,
-    background: Color(0xFF282828),
-    container: Color(0xFF504945),
-    outline: Color(0xFF665C54),
-    primary: Color(0xFFD8A657),
-    secondary: Color(0xFF89B482),
-    onSurface: Color(0xFFD4BE98),
-    surfaceLowest: Color(0xFF1E1E1E),
+    background: Color(0xFF282828), // background
+    container: Color(0xFF504945), // selection
+    outline: Color(0xFF665C54), // muted
+    primary: Color(0xFFD8A657), // yellow
+    secondary: Color(0xFF89B482), // cyan
+    onSurface: Color(0xFFD4BE98), // foreground
+    surfaceLowest: Color(0xFF1E1E1E), // dark_background
     surfaceLow: Color(0xFF232323),
     surfaceMid: Color(0xFF282828),
-    surfaceHigh: Color(0xFF3C3836),
+    surfaceHigh: Color(0xFF3C3836), // lighter_background
     surfaceHighest: Color(0xFF5E564F),
-    surfaceRecessed: Color(0xFF1A1A1A),
+    surfaceRecessed: Color(0xFF161616), // darker_background
     outlineSoft: Color(0xFF4A4A4A),
-    error: Color(0xFFCC241D),
-    success: Color(0xFF98971A),
+    error: Color(0xFFEA6962), // red -- was the 256-colour #CC241D
+    success: Color(
+      0xFF98971A,
+    ), // green is #A9B665, but this is the "neutral ok"
     warning: Color(0xFFD79921),
+    accentWarm: Color(0xFFDE741D),
+    accentCool: Color(0xFF779488),
   );
+
+  /// The colours Gruvbox publishes, by name.
+  ///
+  /// Not theme tokens -- the spec above is what the app paints with. This is the
+  /// palette's own vocabulary, kept so a chart or an illustration that needs a
+  /// hue the spec does not carry can take it from the family rather than
+  /// inventing one, and so the exact hexes are written down somewhere instead of
+  /// being recalled from memory.
+  static const Map<String, Color> gruvboxNamed = {
+    'accent': Color(0xFF7DAEA3),
+    'selection': Color(0xFF504945),
+    'muted': Color(0xFF665C54),
+    'background': Color(0xFF282828),
+    'dark_background': Color(0xFF1E1E1E),
+    'darker_background': Color(0xFF161616),
+    'lighter_background': Color(0xFF3C3836),
+    'foreground': Color(0xFFD4BE98),
+    'dark_foreground': Color(0xFF7C6F64),
+    'light_foreground': Color(0xFFBDAE93),
+    'bright_foreground': Color(0xFFD4BE98),
+    'red': Color(0xFFEA6962),
+    'yellow': Color(0xFFD8A657),
+    'orange': Color(0xFFE1875C),
+    'green': Color(0xFFA9B665),
+    'cyan': Color(0xFF89B482),
+    'blue': Color(0xFF7DAEA3),
+    'magenta': Color(0xFFD3869B),
+    'brown': Color(0xFF70432E),
+  };
 
   static const AppPaletteSpec catppuccinMocha = AppPaletteSpec(
     palette: AppPalette.catppuccin,

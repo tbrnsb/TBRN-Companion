@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_application_1/screens/transactions/transaction_search_view.dart';
+import 'package:daily_companion/screens/transactions/transaction_search_view.dart';
 
 /// The search affordance for an app bar.
 ///

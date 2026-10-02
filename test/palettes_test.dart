@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/theme/app_chart_colors.dart';
-import 'package:flutter_application_1/theme/app_palettes.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/theme/app_chart_colors.dart';
+import 'package:daily_companion/theme/app_palettes.dart';
+import 'package:daily_companion/theme/app_theme.dart';
 
 /// Every palette in every mode it can actually produce.
 List<({String name, ThemeData theme})> _matrix() {

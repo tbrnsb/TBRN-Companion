@@ -1,6 +1,6 @@
 import 'package:intl/intl.dart';
 
-import 'package:flutter_application_1/models/index.dart';
+import 'package:daily_companion/models/index.dart';
 
 /// THE CSV format, defined once, in one place.
 ///

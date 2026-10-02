@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/screens/journeys/journey_detail_sheets.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/utils/date_window.dart';
-import 'package:flutter_application_1/widgets/section_header.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/screens/journeys/journey_detail_sheets.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/utils/date_window.dart';
+import 'package:daily_companion/widgets/section_header.dart';
 import 'package:provider/provider.dart';
 
 /// Every day in one month, reachable from every tab.
@@ -53,6 +53,9 @@ class CalendarScreen extends StatefulWidget {
 
 class _CalendarScreenState extends State<CalendarScreen> {
   late DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
+
+  /// The day tapped but not yet opened. Null until one is.
+  DateTime? _selected;
 
   /// Days with the user's own spending on them, month-first keys.
   Set<DateTime> _spendDays = const {};
@@ -143,18 +146,34 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _load();
   }
 
-  /// Takes the user to that day in the ledger, which is the whole point.
-  Future<void> _openDay(DateTime day) async {
-    HapticFeedback.lightImpact();
+  /// Holds the day the user tapped, without leaving.
+  ///
+  /// The tap used to load, narrow AND pop, so a single touch on a month grid
+  /// ended the screen. That is a cheap way to throw away a browse: the day is
+  /// marked, the sheet stays, and the journey out is a deliberate second act
+  /// with a button that names the day it will open.
+  Future<void> _selectDay(DateTime day) async {
+    HapticFeedback.selectionClick();
     final transactions = context.read<TransactionProvider>();
-    final navigator = Navigator.of(context);
 
     // Load FIRST, then narrow: the day belongs to the month that has to be in
     // memory before the filter can mean anything.
     await transactions.loadTransactionsForMonth(day.year, day.month);
-    transactions.setSelectedDay(day);
     if (!mounted) return;
-    navigator.pop();
+    setState(() {
+      _selected = day;
+      // The month is reloaded above, so the list has to be asked for again.
+      _load();
+    });
+  }
+
+  /// Commits the held day: narrows the ledger to it and leaves.
+  Future<void> _openSelectedDay() async {
+    final day = _selected;
+    if (day == null || !mounted) return;
+    HapticFeedback.lightImpact();
+    context.read<TransactionProvider>().setSelectedDay(day);
+    Navigator.of(context).pop();
   }
 
   @override
@@ -257,7 +276,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 date: date,
                 hasSpending: _spendDays.contains(date),
                 hasJourney: _journeyDays.contains(date),
-                onTap: () => _openDay(date),
+                selected: _selected == date,
+                onTap: () => _selectDay(date),
               );
             },
           ),
@@ -270,12 +290,34 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
-          Text(
-            'Tap a day to open it in Transactions.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: scheme.onSurfaceVariant,
+          // CHOOSING IS NOT LEAVING. The hint changes to name the day that is
+          // held and the button that commits it, so the two are never confused:
+          // tapping a day marks it, and only the button opens it.
+          if (_selected == null)
+            Text(
+              'Tap a day to choose it, then open it in Transactions.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${DateFormat.yMMMMd().format(_selected!)} selected',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                FilledButton(
+                  key: const ValueKey('calendar-open-selected-day'),
+                  onPressed: _openSelectedDay,
+                  child: const Text('Open day'),
+                ),
+              ],
             ),
-          ),
           if (_loading) ...[
             const SizedBox(height: AppSpacing.sm),
             const LinearProgressIndicator(minHeight: 2),
@@ -311,12 +353,20 @@ class _DayCell extends StatelessWidget {
     required this.hasSpending,
     required this.hasJourney,
     required this.onTap,
+    this.selected = false,
   });
 
   final DateTime date;
   final bool hasSpending;
   final bool hasJourney;
   final VoidCallback onTap;
+
+  /// The day is HELD -- chosen, not yet opened.
+  ///
+  /// Outlined, not filled: a fill means "spending happened here" and is already
+  /// spoken for. So the selection is a ring around the cell, which cannot be
+  /// confused with the data the cell is reporting.
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
@@ -329,7 +379,9 @@ class _DayCell extends StatelessWidget {
       label:
           '${date.day}'
           '${hasSpending ? ', has spending' : ''}'
-          '${hasJourney ? ', journey' : ''}',
+          '${hasJourney ? ', journey' : ''}'
+          '${selected ? ', selected' : ''}',
+      selected: selected,
       child: InkWell(
         key: CalendarScreen.dayKey(date.day),
         borderRadius: BorderRadius.circular(AppRadii.small),
@@ -338,7 +390,12 @@ class _DayCell extends StatelessWidget {
           decoration: BoxDecoration(
             color: hasSpending ? scheme.primary : scheme.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(AppRadii.small),
-            border: hasJourney && !hasSpending
+            border: selected
+                // The selection ring is drawn OUTSIDE the cell's own edge so it
+                // is never mistaken for the journey outline, which is a fill on
+                // the border itself and means something else entirely.
+                ? Border.all(color: scheme.primary, width: 2.5)
+                : hasJourney && !hasSpending
                 ? Border.all(color: scheme.tertiary, width: 2)
                 : isToday
                 ? Border.all(color: scheme.onSurface, width: 1.5)

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_application_1/models/index.dart';
+import 'package:daily_companion/models/index.dart';
 
 void main() {
   group('Transaction', () {

@@ -4,21 +4,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/location_provider.dart';
-import 'package:flutter_application_1/providers/settings_provider.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/screens/transactions/add_expense_sheet.dart';
-import 'package:flutter_application_1/screens/transactions/income_detail_screen.dart';
-import 'package:flutter_application_1/screens/transactions/transactions_screen.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/widgets/chart_pager.dart';
-import 'package:flutter_application_1/widgets/empty_state.dart';
-import 'package:flutter_application_1/widgets/spend_breakdown_card.dart';
-import 'package:flutter_application_1/widgets/spend_trend_cards.dart';
-import 'package:flutter_application_1/widgets/spending_heatmap.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/location_provider.dart';
+import 'package:daily_companion/providers/settings_provider.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/screens/transactions/add_expense_sheet.dart';
+import 'package:daily_companion/screens/transactions/income_detail_screen.dart';
+import 'package:daily_companion/screens/transactions/transactions_screen.dart';
+import 'package:daily_companion/services/storage_service.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/widgets/chart_pager.dart';
+import 'package:daily_companion/widgets/empty_state.dart';
+import 'package:daily_companion/widgets/spend_breakdown_card.dart';
+import 'package:daily_companion/widgets/spend_trend_cards.dart';
+import 'package:daily_companion/widgets/spending_heatmap.dart';
 
 import 'visual_smoke_test.dart' show initTestStorage;
 import 'test_viewports.dart';
@@ -159,12 +159,21 @@ void main() {
       );
       await settleUi(tester);
 
-      expect(find.byType(SpendBreakdownCard), findsNWidgets(2));
-      expect(find.byType(PieChart), findsNWidgets(2));
+      // ONE at a time: the two breakdowns are pages of one swipeable card, so
+      // there is one donut on screen and the other is a swipe away.
+      expect(find.byType(SpendBreakdownCard), findsOneWidget);
+      expect(find.byType(PieChart), findsOneWidget);
       expect(find.text('Spending by category'), findsOneWidget);
-      expect(find.text('Income by category'), findsOneWidget);
       // Real category labels, not the literal "Expense"/"Income".
       expect(find.text('Food'), findsWidgets);
+
+      await scrollTo(tester, find.text('Where did it go'));
+      // The breakdown pager's own dot, not the chart pager's -- both are on this
+      // screen and both number their dots from zero.
+      await tester.tap(find.byKey(const ValueKey('swipe-dot-1')));
+      await settleUi(tester);
+
+      expect(find.text('Income by category'), findsOneWidget);
       expect(find.text('Salary'), findsWidgets);
     });
 
@@ -705,7 +714,7 @@ void main() {
       expect(find.text('When did it change'), findsOneWidget);
     });
 
-    testWidgets('the breakdowns stack rather than sharing a row', (
+    testWidgets('the breakdowns are ONE swipeable card, not two stacked', (
       tester,
     ) async {
       usePhoneLayout(tester, TestViewports.phoneSmall);
@@ -732,15 +741,22 @@ void main() {
       await settleUi(tester);
       await scrollTo(tester, find.text('Where did it go'));
 
-      // Never side by side: at 360dp a row of two donuts is about 165 pixels
-      // each and the donut alone is already 132.
-      final spending = tester.getRect(find.text('Spending by category'));
-      final income = tester.getRect(find.text('Income by category'));
-      expect(
-        income.top,
-        greaterThanOrEqualTo(spending.bottom),
-        reason: 'the two donuts must stack, not share a row',
-      );
+      // ONE page at a time, and never two side by side: at 360dp a row of two
+      // donuts is about 165 pixels each and the donut alone is already 132.
+      expect(find.byType(SpendBreakdownCard), findsOneWidget);
+      expect(find.text('Spending by category'), findsOneWidget);
+      expect(find.text('Income by category'), findsNothing);
+      expect(find.byType(PieChart), findsOneWidget);
+
+      // It says there is a second page, and the page turns.
+      expect(find.text('1 of 2 · Spending'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('swipe-dot-1')));
+      await settleUi(tester);
+
+      expect(find.text('Income by category'), findsOneWidget);
+      expect(find.text('Spending by category'), findsNothing);
+      expect(find.text('2 of 2 · Income'), findsOneWidget);
     });
 
     testWidgets('fits at 360dp', (tester) async {
@@ -768,14 +784,20 @@ void main() {
       await settleUi(tester);
       await scrollTo(tester, find.byType(ChartPager));
 
-      expect(find.byKey(const ValueKey('chart-pager-count')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('chart-indicator-count')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('fits at 412dp', (tester) async {
       await openPager(tester, TestViewports.phonePortrait);
       await scrollTo(tester, find.byType(ChartPager));
 
-      expect(find.byKey(const ValueKey('chart-pager-count')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('chart-indicator-count')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('a filtered day is still marked on the chart', (tester) async {

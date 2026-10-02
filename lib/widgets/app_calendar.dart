@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_application_1/screens/calendar_screen.dart';
+import 'package:daily_companion/screens/calendar_screen.dart';
 
 /// The calendar that opens the month view.
 ///

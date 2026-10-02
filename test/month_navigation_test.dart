@@ -4,14 +4,14 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/location_provider.dart';
-import 'package:flutter_application_1/providers/settings_provider.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/screens/transactions/transactions_screen.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/utils/date_window.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/location_provider.dart';
+import 'package:daily_companion/providers/settings_provider.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/screens/transactions/transactions_screen.dart';
+import 'package:daily_companion/services/storage_service.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/utils/date_window.dart';
 
 import 'test_viewports.dart';
 import 'visual_smoke_test.dart' show initTestStorage;
@@ -287,14 +287,20 @@ void main() {
             'the bug this reversed',
       );
 
-      // Selecting a day narrows the view, and THEN the sheet offers a way back to
-      // the whole month. Both are day controls.
+      // Choosing a day HOLDS it and narrows nothing, so the "whole month" way
+      // back is still absent -- there is no filter to undo yet. Applying it is
+      // the second act, and only then does the way back appear.
       await tester.tap(find.text('15').first);
       await settleUi(tester);
       expect(
         find.byKey(const ValueKey('day-picker-whole-month')),
         findsNothing,
+        reason: 'a merely CHOSEN day has not narrowed the view yet',
       );
+
+      await tester.tap(find.byKey(const ValueKey('day-picker-apply')));
+      await settleUi(tester);
+
       await tester.tap(find.byIcon(Icons.calendar_today_rounded).first);
       await settleUi(tester);
       expect(find.byKey(const ValueKey('day-picker-whole-month')), findsOne);

@@ -2,8 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/theme/app_theme.dart';
 
 /// Spending-location visualization built purely from stored expense
 /// coordinates — no map dependency required.

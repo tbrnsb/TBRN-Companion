@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:flutter_application_1/models/index.dart';
+import 'package:daily_companion/models/index.dart';
 
 /// The shape of an exported trip snapshot.
 ///

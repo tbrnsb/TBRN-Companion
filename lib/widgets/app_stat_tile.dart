@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:daily_companion/theme/app_theme.dart';
 
 /// Flat summary tile: icon + label + value on a tonal surface.
 /// Replaces the various gradient/glass/grey stat boxes.

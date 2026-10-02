@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:share_plus/share_plus.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/services/trip_snapshot.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/services/trip_snapshot.dart';
 
 /// Writing and sharing a trip snapshot as a file.
 ///

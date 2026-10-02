@@ -1,6 +1,6 @@
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
-import 'package:flutter_application_1/services/trip_snapshot.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/services/storage_service.dart';
+import 'package:daily_companion/services/trip_snapshot.dart';
 
 /// What a merge actually did, so the caller can tell the truth about it.
 ///

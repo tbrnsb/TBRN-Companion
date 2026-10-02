@@ -6,20 +6,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/providers/checklist_provider.dart';
-import 'package:flutter_application_1/providers/journey_provider.dart';
-import 'package:flutter_application_1/providers/location_provider.dart';
-import 'package:flutter_application_1/providers/settings_provider.dart';
-import 'package:flutter_application_1/providers/transaction_provider.dart';
-import 'package:flutter_application_1/screens/journeys/journey_detail_screen.dart';
-import 'package:flutter_application_1/screens/journeys/trip_summary_screen.dart';
-import 'package:flutter_application_1/screens/transactions/add_expense_sheet.dart';
-import 'package:flutter_application_1/screens/transactions/transactions_screen.dart';
-import 'package:flutter_application_1/screens/journeys/trip_import_sheet.dart';
-import 'package:flutter_application_1/services/storage_service.dart';
-import 'package:flutter_application_1/services/trip_snapshot.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/checklist_provider.dart';
+import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/location_provider.dart';
+import 'package:daily_companion/providers/settings_provider.dart';
+import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/screens/journeys/journey_detail_screen.dart';
+import 'package:daily_companion/screens/journeys/trip_summary_screen.dart';
+import 'package:daily_companion/screens/transactions/add_expense_sheet.dart';
+import 'package:daily_companion/screens/transactions/transactions_screen.dart';
+import 'package:daily_companion/screens/journeys/trip_import_sheet.dart';
+import 'package:daily_companion/services/storage_service.dart';
+import 'package:daily_companion/services/trip_snapshot.dart';
+import 'package:daily_companion/theme/app_theme.dart';
 
 import 'test_viewports.dart';
 import 'visual_smoke_test.dart' show initTestStorage;
@@ -196,8 +196,13 @@ void main() {
       expect(find.text('3 people'), findsOneWidget);
       // Who-am-I, and the answer is already given.
       expect(find.text('Which one are you?'), findsOneWidget);
-      // The trip code, prominent.
-      expect(find.text('BK4J8Q'), findsOneWidget);
+      // The trip code is NOT on screen. It was a code to read aloud so two
+      // people could confirm they were looking at the same trip, and nothing ever
+      // sent anything -- so confirming was all it did, while looking like a
+      // connection. A stored code is still kept; it is just not shown.
+      expect(find.text('BK4J8Q'), findsNothing);
+      expect(find.text('Make a trip code'), findsNothing);
+      expect(find.byKey(const ValueKey('copy-trip-code')), findsNothing);
       // Per-person totals, with "paid" and "share" spelled out.
       expect(find.textContaining('paid Rs. 5,500'), findsOneWidget);
       expect(find.textContaining('share Rs. 4,633.34'), findsOneWidget);
@@ -406,7 +411,11 @@ void main() {
       );
     });
 
-    test('the trip code is generated once and then left alone', () async {
+    test('no trip code is offered, and none is generated', () async {
+      // The "Make a trip code" button is gone. It promised a short code two
+      // people could read aloud to confirm they were looking at the same trip --
+      // and nothing ever sent anything, so confirming was all it did while
+      // looking like a connection.
       await StorageService().clear();
       await _seedWorkingTrip();
 
@@ -414,8 +423,8 @@ void main() {
       await journeys.initialize();
       addTearDown(journeys.dispose);
 
-      // The seeded trip already has one.
-      expect(await journeys.ensureTripCode('trip-1'), 'BK4J8Q');
+      // A trip that already has one keeps it: this is the removal of
+      // GENERATION, not of stored data.
       expect((await StorageService().getJourney('trip-1'))!.tripCode, 'BK4J8Q');
     });
 

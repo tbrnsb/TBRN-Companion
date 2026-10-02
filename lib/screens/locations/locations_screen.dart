@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/models/place_link.dart';
-import 'package:flutter_application_1/providers/location_provider.dart';
-import 'package:flutter_application_1/widgets/widgets.dart';
-import 'package:flutter_application_1/screens/locations/add_location_screen.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/location_provider.dart';
+import 'package:daily_companion/widgets/widgets.dart';
+import 'package:daily_companion/screens/locations/add_location_screen.dart';
+import 'package:daily_companion/services/place_launcher.dart';
+import 'package:daily_companion/theme/app_theme.dart';
 
 class LocationsScreen extends StatelessWidget {
   const LocationsScreen({super.key});
@@ -38,7 +38,8 @@ class LocationsScreen extends StatelessWidget {
           return RefreshIndicator(
             onRefresh: () async => provider.initialize(),
             child: ListView(
-              padding: const EdgeInsets.all(AppSpacing.md),
+              // Clears the FAB; see AppSpacing.screenPaddingWithFab.
+              padding: AppSpacing.screenPaddingWithFab,
               children: [
                 _SummaryCard(provider: provider),
                 const SizedBox(height: 24),
@@ -151,9 +152,15 @@ class _SummaryCard extends StatelessWidget {
               const SizedBox(width: AppSpacing.xs),
               Expanded(
                 child: Text(
-                  // The actual reason, and an action that matches it. This used
-                  // to be one fixed sentence that hid all of it.
-                  provider.error ?? 'Finding your location…',
+                  // The actual reason, and an action that matches it.
+                  //
+                  // The fallback used to be a fixed "Finding your location…",
+                  // which the device disproved: with the permission denied the
+                  // status was NOT `locating` — Retry was live — yet the screen
+                  // still said it was looking. A sentence about searching, shown
+                  // while nothing is searching, is the one state the user cannot
+                  // act on. The message follows the status instead.
+                  provider.error ?? _locationMessage(provider.status),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -236,12 +243,30 @@ class _LocationTile extends StatelessWidget {
           ),
           trailing: PopupMenuButton<String>(
             itemBuilder: (context) => [
+              // FIRST, and not last: a saved place's whole reason to exist is
+              // being taken to. It used not to be here at all -- the app could
+              // read a pasted Maps link and then had no way to open one, so the
+              // coordinates were stored and otherwise inert.
+              const PopupMenuItem(
+                key: ValueKey('place-open-in-maps'),
+                value: 'maps',
+                child: Text('Open in maps'),
+              ),
               const PopupMenuItem(value: 'edit', child: Text('Edit')),
               const PopupMenuItem(value: 'delete', child: Text('Delete')),
             ],
             onSelected: (value) {
               HapticFeedback.lightImpact();
-              if (value == 'edit') {
+              if (value == 'maps') {
+                PlaceLauncher.openOrExplain(
+                  context,
+                  PlaceLink(
+                    latitude: location.latitude,
+                    longitude: location.longitude,
+                    name: location.name,
+                  ),
+                );
+              } else if (value == 'edit') {
                 LocationsScreen._showLocationDialog(context, location);
               } else if (value == 'delete') {
                 LocationsScreen._confirmDelete(context, provider, location);
@@ -255,3 +280,20 @@ class _LocationTile extends StatelessWidget {
     );
   }
 }
+
+/// What to say when the provider has no error of its own.
+///
+/// Said in terms of the state, because the one thing the user must never be
+/// told is that something is happening when it is not.
+String _locationMessage(LocationStatus status) => switch (status) {
+  LocationStatus.locating => 'Finding your location…',
+  LocationStatus.ready => 'No fix yet. Tap Retry to look again.',
+  LocationStatus.noFix => 'Could not get a fix. Tap Retry to try again.',
+  LocationStatus.serviceDisabled =>
+    'Location services are turned off on this phone.',
+  LocationStatus.permissionDenied =>
+    'Location permission was denied. Tap Retry to ask again.',
+  LocationStatus.permissionDeniedForever =>
+    'Location permission is blocked. Enable it in the phone Settings.',
+  LocationStatus.unknown => 'Location is not on yet. Tap Retry to turn it on.',
+};

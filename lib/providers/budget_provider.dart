@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:flutter_application_1/models/index.dart';
-import 'package:flutter_application_1/services/notification_service.dart';
-import 'package:flutter_application_1/utils/format.dart';
+import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/services/notification_service.dart';
+import 'package:daily_companion/utils/format.dart';
 
 /// The limits the user has set, and nothing else.
 ///
@@ -41,9 +41,19 @@ class BudgetProvider extends ChangeNotifier {
   final Set<String> _notified = {};
 
   /// Every limit currently set, as a stored reading.
-  List<Budget> get budgets =>
-      _limits.entries.map((e) => _budgetForKey(e.key, e.value)).toList()
-        ..sort((a, b) => a.label.compareTo(b.label));
+  List<Budget> get budgets {
+    final sorted =
+        _limits.entries.map((e) => _budgetForKey(e.key, e.value)).toList()
+          ..sort((a, b) => a.label.compareTo(b.label));
+    // Alphabetical, except the Other bucket, which leads somewhere else and so
+    // goes last. Sorting by label alone files it between "Office" and
+    // "Personal" and puts a two-step row in the middle of a list of one-step
+    // ones.
+    return CategoryRegistry.othersLast(
+      sorted,
+      isOther: (b) => !b.isJourneyLevel && b.label == CategoryRegistry.otherId,
+    );
+  }
 
   /// The limit for a budget, or null when none is set.
   ///

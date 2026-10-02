@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_application_1/theme/app_chart_colors.dart';
-import 'package:flutter_application_1/theme/app_palettes.dart';
-import 'package:flutter_application_1/theme/app_theme.dart';
-import 'package:flutter_application_1/widgets/chart_pager.dart';
+import 'package:daily_companion/theme/app_chart_colors.dart';
+import 'package:daily_companion/theme/app_palettes.dart';
+import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/widgets/chart_pager.dart';
 
 /// THE FLOOR IS 4.5:1, NOT 3:1.
 ///
