@@ -33,10 +33,21 @@ class PlaceLauncher {
   static Future<bool> open(BuildContext context, PlaceLink place) async {
     final coordinates = '${place.latitude},${place.longitude}';
 
-    // 1. The platform scheme.
-    final geo = Uri.parse(
-      'geo:$coordinates?q=$coordinates(${place.name ?? ''})',
-    );
+    // 1. The platform scheme, aimed AT the point rather than at a search for it.
+    //
+    // The `q=` form is what makes this "the exact place": it names the
+    // coordinates themselves, so the maps app drops a pin on them instead of
+    // running a text search and hoping for the best.
+    //
+    // The label is percent-encoded, and it has to be. This URI used to be
+    // assembled by string concatenation, so a place called "Cafe & Bar" put an
+    // unescaped `&` into the query and the maps app read the label as a second
+    // parameter -- the point silently lost its name.
+    final label = place.name?.trim();
+    final query = label == null || label.isEmpty
+        ? coordinates
+        : '$coordinates(${Uri.encodeComponent(label)})';
+    final geo = Uri.parse('geo:$coordinates?q=$query');
     if (await _try(geo)) return true;
 
     // 2. The Google Maps universal URL, which a browser can always handle.
@@ -67,8 +78,10 @@ class PlaceLauncher {
 
   /// Opens [place], or explains why it could not.
   ///
-  /// The message names the coordinates, because when no maps app can be opened
-  /// the coordinates are the only thing the user can still act on.
+  /// The message says what is actually wrong and how to fix it. It used to say
+  /// "No maps app found" and then print the coordinates, which is the one thing
+  /// the user cannot act on and the thing they already had on screen a moment
+  /// earlier -- it read as the app giving up rather than telling them the fix.
   static Future<void> openOrExplain(
     BuildContext context,
     PlaceLink place,
@@ -79,11 +92,12 @@ class PlaceLauncher {
     final scheme = Theme.of(context).colorScheme;
     messenger.showSnackBar(
       SnackBar(
-        content: Text(
-          'No maps app found. The coordinates are '
-          '${place.latitude}, ${place.longitude}.',
+        content: const Text(
+          'No maps app on this phone can open a location. Install Google Maps '
+          'or Organic Maps, then try again.',
         ),
         backgroundColor: scheme.surfaceContainerHighest,
+        duration: const Duration(seconds: 5),
       ),
     );
   }

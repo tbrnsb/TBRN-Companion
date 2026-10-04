@@ -67,5 +67,30 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+
+        <!--
+          Maps. Without these two, "Open in maps" can NEVER work on Android 11+.
+
+          Since API 30 an app cannot see which other apps can handle an intent
+          unless it declares the scheme here. `canLaunchUrl` therefore returned
+          false for BOTH candidates the launcher tried (the `geo:` scheme and
+          the Google Maps web URL), so the feature reported "No maps app found"
+          on a phone that had a perfectly good maps app installed, and every
+          attempt ended in the coordinates-in-a-snackbar fallback. The failure
+          looked exactly like a missing app, because from inside the app that is
+          precisely what package visibility reports.
+
+          Declared as schemes rather than as one app's package, so this keeps
+          working whichever maps app answers: Google Maps, Organic Maps, OsmDroid
+          or anything else that registers for `geo:`.
+        -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="geo"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
     </queries>
 </manifest>
