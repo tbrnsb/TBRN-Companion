@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:daily_companion/models/index.dart';
-import 'package:daily_companion/providers/journey_provider.dart';
-import 'package:daily_companion/providers/location_provider.dart';
 import 'package:daily_companion/providers/settings_provider.dart';
 import 'package:daily_companion/providers/transaction_provider.dart';
 import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/widgets/transaction_location_block.dart';
 import 'package:daily_companion/utils/format.dart';
 import 'package:daily_companion/utils/iterable_ext.dart';
 
@@ -32,12 +31,8 @@ class ExpenseDetailScreen extends StatelessWidget {
         expense;
 
     final meta = current.categoryMeta;
-    final location = current.locationId == null
-        ? null
-        : context.read<LocationProvider>().getLocationById(current.locationId!);
-    final journey = current.journeyId == null
-        ? null
-        : context.read<JourneyProvider>().getJourneyById(current.journeyId!);
+    // `location` and `journey` are resolved inside TransactionLocationBlock now,
+    // which is also where they became tappable rather than plain text.
 
     return Scaffold(
       appBar: AppBar(
@@ -111,7 +106,7 @@ class ExpenseDetailScreen extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.lg),
 
-          _DetailRow(
+          TransactionDetailRow(
             icon: meta.icon,
             iconColor: meta.color,
             label: 'Category',
@@ -121,38 +116,18 @@ class ExpenseDetailScreen extends StatelessWidget {
           // before this field existed has none, and printing "Cash" for those
           // would be a fact the user never entered.
           if (current.paymentMethod != null)
-            _DetailRow(
+            TransactionDetailRow(
               icon: current.paymentMethod == PaymentMethod.cash
                   ? Icons.payments_rounded
                   : Icons.smartphone_rounded,
               label: current.isExpense ? 'Paid by' : 'Received by',
               value: current.paymentMethod!.label,
             ),
-          if (location != null)
-            _DetailRow(
-              icon: Icons.place_rounded,
-              label: 'Place',
-              value: location.name,
-            ),
-          if (journey != null)
-            _DetailRow(
-              icon: Icons.route_rounded,
-              label: 'Journey',
-              value: journey.title,
-            ),
-          if (current.locationCapturedAt != null)
-            _DetailRow(
-              icon: Icons.my_location_rounded,
-              label: 'Location captured',
-              value: AppFormat.dateTime(current.locationCapturedAt!),
-            ),
-          if (current.hasCoordinates)
-            _DetailRow(
-              icon: Icons.pin_drop_outlined,
-              label: 'Coordinates',
-              value:
-                  '${current.latitude!.toStringAsFixed(5)}, ${current.longitude!.toStringAsFixed(5)}',
-            ),
+          // The place, journey, capture time and coordinates — resolved and cross-linked
+          // by ONE shared block, because this screen grew them by hand and the
+          // income screen never got them at all. Same data, same behaviour, one
+          // implementation.
+          TransactionLocationBlock(transaction: current),
           const SizedBox(height: AppSpacing.lg),
 
           OutlinedButton.icon(
@@ -201,56 +176,6 @@ class ExpenseDetailScreen extends StatelessWidget {
               foregroundColor: Theme.of(context).colorScheme.error,
             ),
             child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    this.iconColor,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color? iconColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            icon,
-            size: 20,
-            color: iconColor ?? colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: textTheme.labelMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(value, style: textTheme.bodyLarge),
-              ],
-            ),
           ),
         ],
       ),

@@ -19,14 +19,45 @@ import 'package:daily_companion/utils/location_settings.dart';
 /// The order is now: say what it is, say where it is (paste a link, use where
 /// you are, or type it), then the details.
 class AddLocationScreen extends StatefulWidget {
-  const AddLocationScreen({super.key, this.location});
+  const AddLocationScreen({
+    super.key,
+    this.location,
+    this.initialLatitude,
+    this.initialLongitude,
+  });
 
   /// Null to add a new place.
   final Location? location;
 
-  static Future<bool?> show(BuildContext context, {Location? location}) {
+  /// A position to open the form WITH, without editing anything.
+  ///
+  /// This is what makes "save the spot you keep spending at" possible. The
+  /// coordinates are known — the app has them on four transactions already — so
+  /// asking for them again is busywork, and the only thing the user actually has
+  /// to supply is the name.
+  ///
+  /// SEPARATE FROM [location] ON PURPOSE. Pre-filling by passing a whole `Location`
+  /// would flip the screen into edit mode, change the title to "Edit place", and
+  /// route the save to `updateLocation` — so offering to save a new spot would
+  /// overwrite whatever place happened to be constructed. Two parameters, two
+  /// intents.
+  final double? initialLatitude;
+  final double? initialLongitude;
+
+  static Future<bool?> show(
+    BuildContext context, {
+    Location? location,
+    double? initialLatitude,
+    double? initialLongitude,
+  }) {
     return Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => AddLocationScreen(location: location)),
+      MaterialPageRoute(
+        builder: (_) => AddLocationScreen(
+          location: location,
+          initialLatitude: initialLatitude,
+          initialLongitude: initialLongitude,
+        ),
+      ),
     );
   }
 
@@ -41,7 +72,7 @@ class _AddLocationScreenState extends State<AddLocationScreen> {
   late final TextEditingController _longitude;
   late final TextEditingController _description;
   late final TextEditingController _link;
-  final _radius = TextEditingController(text: '100');
+  final _radius = TextEditingController();
 
   late String _iconKey;
   String? _journeyId;
@@ -54,16 +85,19 @@ class _AddLocationScreenState extends State<AddLocationScreen> {
   void initState() {
     super.initState();
     final existing = widget.location;
+    final seededLat = existing?.latitude ?? widget.initialLatitude;
+    final seededLng = existing?.longitude ?? widget.initialLongitude;
     _name = TextEditingController(text: existing?.name ?? '');
     _latitude = TextEditingController(
-      text: existing == null ? '' : existing.latitude.toStringAsFixed(6),
+      text: seededLat == null ? '' : seededLat.toStringAsFixed(6),
     );
     _longitude = TextEditingController(
-      text: existing == null ? '' : existing.longitude.toStringAsFixed(6),
+      text: seededLng == null ? '' : seededLng.toStringAsFixed(6),
     );
     _description = TextEditingController(text: existing?.description ?? '');
     _link = TextEditingController();
-    _radius.text = (existing?.radiusMeters ?? 100).toStringAsFixed(0);
+    _radius.text = (existing?.radiusMeters ?? Location.defaultRadiusMeters)
+        .toStringAsFixed(0);
     _iconKey = existing?.icon ?? PlaceIcons.defaultKey;
     _journeyId = existing?.journeyId;
   }
@@ -158,7 +192,8 @@ class _AddLocationScreenState extends State<AddLocationScreen> {
       latitude: double.parse(_latitude.text.trim()),
       longitude: double.parse(_longitude.text.trim()),
       description: _description.text.trim(),
-      radiusMeters: double.tryParse(_radius.text.trim()) ?? 100,
+      radiusMeters:
+          double.tryParse(_radius.text.trim()) ?? Location.defaultRadiusMeters,
       // Editing preserves the trip exactly as it was; a new place joins the
       // active trip by default. Falling back to the active trip while editing
       // would silently re-file a place the user had deliberately left unfiled.
@@ -331,13 +366,22 @@ class _AddLocationScreenState extends State<AddLocationScreen> {
               decoration: InputDecoration(
                 labelText: 'Checkpoint radius',
                 suffixText: 'm',
-                helperText: 'How close you must be for this place to trigger',
+                helperText:
+                    'How close you must be for this place to count. '
+                    'Up to ${Location.maxRadiusMeters.toStringAsFixed(0)} m.',
                 helperMaxLines: 2,
                 border: const OutlineInputBorder(),
               ),
               validator: (v) {
                 final parsed = double.tryParse((v ?? '').trim());
                 if (parsed == null || parsed <= 0) return 'Enter a distance';
+                // REFUSED, not silently clamped. The constructor already clamps,
+                // so a 900 m radius would otherwise save as 200 and the field
+                // would read 900 until the screen reopened — the user would be
+                // told their value was accepted and it was not.
+                if (parsed > Location.maxRadiusMeters) {
+                  return 'Use ${Location.maxRadiusMeters.toStringAsFixed(0)} m or less';
+                }
                 return null;
               },
             ),

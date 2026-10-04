@@ -3,6 +3,31 @@ import 'package:uuid/uuid.dart';
 import 'dart:math' as math;
 
 class Location {
+  /// The default "how close counts as being here", in metres.
+  ///
+  /// 50 m, not the 100 m this used to default to. A radius is a claim that a
+  /// transaction happened *at* a place, and the default decides how bold that
+  /// claim is for every place the user never thinks about — which is most of
+  /// them. 100 m catches the far end of a car park or the next building along;
+  /// 50 m is about being on the spot. Anyone who genuinely needs more can raise
+  /// it, up to [maxRadiusMeters].
+  static const double defaultRadiusMeters = 50.0;
+
+  /// The largest radius a saved place may be given.
+  ///
+  /// A ceiling rather than a suggestion. Past a few hundred metres a "place" is
+  /// a neighbourhood, and the "Are you at [name]?" prompt starts firing on
+  /// transactions that are somewhere else entirely — which trains the user to
+  /// tap No without reading, and the feature stops being worth having.
+  static const double maxRadiusMeters = 200.0;
+
+  /// Clamps a requested radius into the range a place may have.
+  ///
+  /// Applied on read as well as on write, so a record edited by hand or written
+  /// by an older build cannot put a place outside the range the UI offers.
+  static double clampRadius(double meters) =>
+      meters.clamp(1.0, maxRadiusMeters).toDouble();
+
   final String id;
   final String name;
   final double latitude;
@@ -10,7 +35,10 @@ class Location {
   final String description;
   final String? color; // Hex color code
   final String? icon; // Icon emoji or name
-  final double radiusMeters; // Geofence radius
+
+  /// How close you must be for this place to be recognised. See
+  /// [defaultRadiusMeters].
+  final double radiusMeters;
   final String? journeyId; // Optional journey this place belongs to
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -24,10 +52,11 @@ class Location {
     this.color,
     this.icon,
     this.journeyId,
-    this.radiusMeters = 100.0,
+    double radiusMeters = defaultRadiusMeters,
     DateTime? createdAt,
     DateTime? updatedAt,
-  }) : id = id ?? const Uuid().v4(),
+  }) : radiusMeters = clampRadius(radiusMeters),
+       id = id ?? const Uuid().v4(),
        createdAt = createdAt ?? DateTime.now(),
        updatedAt = updatedAt ?? DateTime.now();
 
@@ -59,7 +88,12 @@ class Location {
       color: json['color'],
       icon: json['icon'],
       journeyId: json['journeyId'],
-      radiusMeters: (json['radiusMeters'] as num?)?.toDouble() ?? 100.0,
+      // `defaultRadiusMeters` rather than a literal, and clamped by the
+      // constructor. A record written before this field existed, and one edited
+      // by hand to 5000 m, both come back inside the range the UI offers rather
+      // than putting the "Are you at [name]?" prompt on the whole district.
+      radiusMeters:
+          (json['radiusMeters'] as num?)?.toDouble() ?? defaultRadiusMeters,
       createdAt: DateTime.parse(json['createdAt']),
       updatedAt: DateTime.parse(json['updatedAt']),
     );

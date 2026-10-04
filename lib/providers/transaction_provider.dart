@@ -195,12 +195,21 @@ class TransactionProvider extends ChangeNotifier {
   /// A selected day deliberately does NOT narrow this. The day filter is a
   /// browsing convenience; a search is a question about the month, and the user
   /// can always narrow further with the day picker.
-  List<Transaction> get searchResults {
+  List<Transaction> get searchResults => searchResultsFor(_search);
+
+  /// The rows [query] would return, without touching the stored [search].
+  ///
+  /// This exists so the search SCREEN can hold its own query. [searchResults]
+  /// reads [_search], which is shared app state: when the search view wrote the
+  /// user's typing there, the transaction list switched its whole body to the
+  /// result set and stayed that way after search was closed. A search is a
+  /// question asked on one screen and it must not outlive that screen, so the
+  /// screen asks with an explicit query instead of moving a global.
+  List<Transaction> searchResultsFor(TransactionSearchQuery query) {
     // Reads [myLedger] rather than re-applying the shared-trip rule to
-    // `_transactions`. Same reason as `_viewTransactions`: one definition of what
+    // `_transactions`. Same reason as [_viewTransactions]: one definition of what
     // counts, reached two ways instead of spelled out twice.
     final ledger = myLedger;
-    final query = _search;
     if (query.isEmpty) {
       return ledger.where(_filterAllows).toList();
     }
@@ -968,6 +977,45 @@ class TransactionProvider extends ChangeNotifier {
       notifyListeners();
       return [];
     }
+  }
+
+  /// Everything ever recorded at [locationId], both directions.
+  ///
+  /// SYNCHRONOUS, and over EVERY month rather than the loaded one. A saved place
+  /// is a place the user keeps going to, so "what happened here" is a question
+  /// about all of its history — answering it from the month currently on screen
+  /// would make a place with a year of history look empty on all but one day of
+  /// the month. That is why this is not `filteredTransactions`: the month
+  /// navigator must not decide what a place contains.
+  ///
+  /// BOTH directions, because income records a location too. Reading it from the
+  /// provider's own cache rather than hitting the box is what lets the place
+  /// screen paint during a build instead of flashing empty on every open.
+  List<Transaction> transactionsAtLocation(String locationId) {
+    final all = _allTransactions;
+    if (all == null) return const [];
+    return all
+        .where((t) => !t.isDeleted && t.locationId == locationId)
+        .toList();
+  }
+
+  /// EVERY transaction on record, both directions, live only.
+  ///
+  /// FOR WHOLE-HISTORY QUESTIONS — the "you have been spending here a lot"
+  /// cluster check being the one that matters.
+  ///
+  /// NOT `filteredTransactions`. That is the month on screen narrowed by the
+  /// All/Expenses/Income chip and by any selected day, which is right for a list
+  /// and wrong here: the cluster was checked against that narrowed view, so
+  /// leaving the "Income" chip on hid every expense from the count, and picking
+  /// a day on the calendar cut the history down to one day. Either could silence
+  /// a prompt the user was waiting for, silently, for no visible reason. A
+  /// question about "how much have I spent at this spot" cannot be answered by
+  /// whichever filter happens to be active.
+  List<Transaction> allLiveTransactions() {
+    final all = _allTransactions;
+    if (all == null) return _transactions.where((t) => !t.isDeleted).toList();
+    return all.where((t) => !t.isDeleted).toList();
   }
 
   double getSpendingByCategory() {

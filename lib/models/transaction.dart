@@ -69,6 +69,46 @@ sealed class Transaction {
   /// this field existed — so existing data loads unchanged with no migration.
   final DateTime? deletedAt;
 
+  /// Where this happened, and which saved place it belongs to.
+  ///
+  /// ON THE BASE CLASS, and that is the whole point. These four lived on [Expense]
+  /// alone, so income — which is money arriving at a place just as much as money
+  /// leaving one — had no way to record where it happened. That made "log where
+  /// you spent" true only for spending, and every place the money went was a
+  /// place the app could not describe.
+  ///
+  /// MIGRATION SAFETY: unchanged on the wire. [Expense] already wrote these keys
+  /// at the top level of the same map, so moving the declaration up a class
+  /// hierarchy does not move a single byte of what is persisted. A record
+  /// written by an older build reads back identically.
+  ///
+  /// `locationId` and the raw coordinates are SEPARATE on purpose. The
+  /// coordinates are the fact — where the phone was — and they are captured
+  /// every single time. The `locationId` is a name the user gave to a spot, and
+  /// it stays null until they choose one. Collapsing the two would mean either
+  /// losing every unsaved location or inventing a place the user never named.
+  final String? locationId;
+  final double? latitude;
+  final double? longitude;
+
+  /// When the fix behind [latitude]/[longitude] was taken.
+  ///
+  /// Distinct from [date], which is when the transaction happened and which the
+  /// user may well have backdated. A transaction logged today for last Tuesday
+  /// carries Tuesday's date and today's capture time, and conflating them would
+  /// quietly misreport how fresh the position is.
+  final DateTime? locationCapturedAt;
+
+  /// Whether this record carries a usable position.
+  bool get hasCoordinates => latitude != null && longitude != null;
+
+  /// Whether this record has ever been placed on the map at all.
+  ///
+  /// Weaker than [hasCoordinates] on purpose: a record can carry a capture time
+  /// with no coordinates if a fix was attempted and timed out, and "we tried" is
+  /// not the same as "we know where this was".
+  bool get hasLocation => hasCoordinates || locationCapturedAt != null;
+
   /// Whether this record is in the trash.
   bool get isDeleted => deletedAt != null;
 
@@ -79,6 +119,10 @@ sealed class Transaction {
     required this.description,
     this.customCategoryName,
     this.paymentMethod,
+    this.locationId,
+    this.latitude,
+    this.longitude,
+    this.locationCapturedAt,
     DateTime? date,
     DateTime? createdAt,
     this.deletedAt,
@@ -118,6 +162,13 @@ sealed class Transaction {
       'paymentMethod': paymentMethod?.name,
       'date': date.toIso8601String(),
       'createdAt': createdAt.toIso8601String(),
+      // Optional keys, absent on every record written before they existed, which
+      // reads back as null. Same keys [Expense] used to write itself, so a record
+      // on disk is unaffected by these moving up to the base class.
+      'locationId': locationId,
+      'latitude': latitude,
+      'longitude': longitude,
+      'locationCapturedAt': locationCapturedAt?.toIso8601String(),
       // Optional key. Absent on every record written before the field existed,
       // which reads back as null — i.e. live — so no migration is needed.
       'deletedAt': deletedAt?.toIso8601String(),
@@ -147,12 +198,8 @@ sealed class Transaction {
 }
 
 class Expense extends Transaction {
-  final String? locationId;
   final ExpenseCategory category;
   final String? journeyId;
-  final double? latitude;
-  final double? longitude;
-  final DateTime? locationCapturedAt;
 
   /// Which participant fronted this expense, on a shared trip.
   ///
@@ -167,19 +214,17 @@ class Expense extends Transaction {
   /// app must not imply a payment was tracked for them.
   final String? paidByParticipantId;
 
-  bool get hasCoordinates => latitude != null && longitude != null;
-
   Expense({
     super.id,
     required super.amount,
     required this.category,
     required super.description,
-    this.locationId,
+    super.locationId,
     super.customCategoryName,
     super.paymentMethod,
-    this.latitude,
-    this.longitude,
-    this.locationCapturedAt,
+    super.latitude,
+    super.longitude,
+    super.locationCapturedAt,
     this.journeyId,
     this.paidByParticipantId,
     super.date,
@@ -199,11 +244,7 @@ class Expense extends Transaction {
   Map<String, dynamic> toJson() {
     final json = super.toJson();
     json['category'] = category.toString().split('.').last;
-    json['locationId'] = locationId;
     json['journeyId'] = journeyId;
-    json['latitude'] = latitude;
-    json['longitude'] = longitude;
-    json['locationCapturedAt'] = locationCapturedAt?.toIso8601String();
     // Optional: absent on every expense written before the field existed.
     json['paidByParticipantId'] = paidByParticipantId;
     return json;
@@ -294,6 +335,10 @@ class Income extends Transaction {
     required super.description,
     super.customCategoryName,
     super.paymentMethod,
+    super.locationId,
+    super.latitude,
+    super.longitude,
+    super.locationCapturedAt,
     super.date,
     super.createdAt,
     super.deletedAt,
@@ -316,6 +361,12 @@ class Income extends Transaction {
       description: json['description'],
       customCategoryName: json['customCategoryName'],
       paymentMethod: PaymentMethodX.fromName(json['paymentMethod'] as String?),
+      locationId: json['locationId'],
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
+      locationCapturedAt: json['locationCapturedAt'] == null
+          ? null
+          : DateTime.tryParse(json['locationCapturedAt']),
       date: DateTime.parse(json['date']),
       createdAt: _parseCreatedAt(json['createdAt']),
       deletedAt: _parseDeletedAt(json['deletedAt']),
@@ -328,9 +379,15 @@ class Income extends Transaction {
     String? description,
     String? customCategoryName,
     PaymentMethod? paymentMethod,
+    String? locationId,
+    double? latitude,
+    double? longitude,
+    DateTime? locationCapturedAt,
     DateTime? date,
     DateTime? createdAt,
     DateTime? deletedAt,
+    bool clearLocation = false,
+    bool clearCoordinates = false,
     bool clearDeletedAt = false,
   }) {
     return Income(
@@ -340,6 +397,12 @@ class Income extends Transaction {
       description: description ?? this.description,
       customCategoryName: customCategoryName ?? this.customCategoryName,
       paymentMethod: paymentMethod ?? this.paymentMethod,
+      locationId: clearLocation ? null : (locationId ?? this.locationId),
+      latitude: clearCoordinates ? null : (latitude ?? this.latitude),
+      longitude: clearCoordinates ? null : (longitude ?? this.longitude),
+      locationCapturedAt: clearCoordinates
+          ? null
+          : (locationCapturedAt ?? this.locationCapturedAt),
       date: date ?? this.date,
       createdAt: createdAt ?? this.createdAt,
       deletedAt: clearDeletedAt ? null : (deletedAt ?? this.deletedAt),
@@ -373,13 +436,6 @@ extension TransactionExtensions on Transaction {
     return CategoryRegistry.metaForIncome((this as Income).category);
   }
 
-  String? get locationId {
-    if (this is Expense) {
-      return (this as Expense).locationId;
-    }
-    return null;
-  }
-
   String? get journeyId {
     if (this is Expense) {
       return (this as Expense).journeyId;
@@ -396,33 +452,11 @@ extension TransactionExtensions on Transaction {
     return null;
   }
 
-  double? get latitude {
-    if (this is Expense) {
-      return (this as Expense).latitude;
-    }
-    return null;
-  }
-
-  double? get longitude {
-    if (this is Expense) {
-      return (this as Expense).longitude;
-    }
-    return null;
-  }
-
-  DateTime? get locationCapturedAt {
-    if (this is Expense) {
-      return (this as Expense).locationCapturedAt;
-    }
-    return null;
-  }
-
-  bool get hasCoordinates {
-    if (this is Expense) {
-      return (this as Expense).hasCoordinates;
-    }
-    return false;
-  }
+  // `locationId`, `latitude`, `longitude`, `locationCapturedAt` and
+  // `hasCoordinates` are NOT here any more: they moved onto [Transaction] itself
+  // so income carries them too, which means these accessors used to exist only to
+  // return null for half the records in the app. Anything reading a position off a
+  // `Transaction` now gets the real value for both directions.
 
   /// The display label for this transaction's category.
   ///
