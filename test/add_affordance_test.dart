@@ -239,35 +239,25 @@ void main() {
       await tester.pumpWidget(_app(const TransactionsScreen(), provider));
       await settleUi(tester);
 
-      // Search moved to its own screen, reached from the app bar. The LIST's job
-      // here is unchanged: when a search is active it shows the results and says
-      // so, and it grows no add affordance of its own.
+      // Search moved to its own screen, reached from the app bar, and the LIST
+      // is not a search surface any more. A search query in shared state used to
+      // switch this screen into a results mode with its own banner; it does not
+      // now, which is the fix for "search for nothing, come back, the month is
+      // gone". So the screen under test shows the month whatever the query says.
       provider.search = const TransactionSearchQuery(text: 'zzzznothing');
       await settleUi(tester);
 
       expect(
         find.byKey(const ValueKey('active-search-banner')),
-        findsOneWidget,
+        findsNothing,
+        reason:
+            'the banner went with the search mode: the list is not narrowed '
+            'by a query, so it has nothing to announce',
       );
-      expect(find.textContaining('showing search results'), findsOneWidget);
-      // The month still has a row, so the FAB is present and is the only add
-      // affordance. The banner deliberately carries no add button either — it is
-      // a statement about what is on screen, not an offer to change it.
+      // The month still has its row, so the FAB is present and is the only add
+      // affordance on the screen.
       expect(find.byType(FloatingActionButton), findsOneWidget);
-      expect(
-        find.descendant(
-          of: find.byKey(const ValueKey('active-search-banner')),
-          matching: find.byType(FilledButton),
-        ),
-        findsNothing,
-      );
-      expect(
-        find.descendant(
-          of: find.byKey(const ValueKey('active-search-banner')),
-          matching: find.byType(FloatingActionButton),
-        ),
-        findsNothing,
-      );
+      expect(find.textContaining('showing search results'), findsNothing);
     });
   });
 }

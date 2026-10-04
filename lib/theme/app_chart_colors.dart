@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'package:daily_companion/models/expense_category_meta.dart';
+
 import 'app_theme.dart';
 
 /// Resolves a category's colour against the surface it is about to be drawn on.
@@ -96,6 +98,233 @@ class AppCategoryColour {
 
   static Color resolve(Color base, Color surface) =>
       resolveAll([base], surface).single;
+
+  /// [meta]'s colour as it should be drawn on [surface].
+  ///
+  /// THIS is what a call site should use, rather than reading `meta.color`.
+  /// Reading the raw hex is what made category colours look pasted onto whichever
+  /// palette was active: the registry hexes were tuned for TBRN's cream page, so
+  /// on Gruvbox's mid-tone card or a near-black dark page they sat at whatever
+  /// contrast the tuning happened to land on. Twenty-nine places read the hex
+  /// directly, which is why this resolver existed, was tested, and was almost
+  /// never called.
+  ///
+  /// It resolves the WHOLE built-in set and returns this category's share,
+  /// because the set is the unit: several of these colours are browns in one
+  /// narrow lightness band, and moving only a failing one lands it on top of a
+  /// passing neighbour. See [resolveAll].
+  ///
+  /// A CUSTOM category is handed back untouched. The user chose that hex, and
+  /// re-deriving it per theme would quietly restyle the one colour in the app
+  /// that somebody picked on purpose.
+  static Color forMeta(CategoryMeta meta, Color surface) {
+    if (meta.id.startsWith('custom:')) return meta.color;
+    final index = _indexOf(meta.name);
+    if (index == null) return meta.color;
+    return _builtInResolved(surface)[index];
+  }
+
+  /// Every built-in category's colour on [surface], keyed by category id.
+  ///
+  /// For a caller drawing several slices at once, so a single [resolveAll]
+  /// serves all of them and they keep their separation from each other.
+  static Map<String, Color> allBuiltInOn(Color surface) {
+    final resolved = _builtInResolved(surface);
+    return {
+      for (var i = 0; i < _builtInOrder.length; i++)
+        _builtInOrder[i].name: resolved[i],
+    };
+  }
+
+  /// The built-ins, in the fixed order [_builtInResolved] returns them in.
+  ///
+  /// Expense first, then the suggested "Other" types, then income, because that
+  /// is the order they can appear together in a breakdown: a donut is either
+  /// spending or income, and the suggested types join the expense side.
+  static final List<CategoryMeta> _builtInOrder = [
+    ...CategoryRegistry.expenseCategories(),
+    ...CategoryRegistry.suggestedExpenseTypes(),
+    ...CategoryRegistry.incomeCategories(),
+  ];
+
+  /// Keyed by NAME, not by [CategoryMeta.id].
+  ///
+  /// Two built-ins share the id `other` -- the expense "Other" and the income
+  /// "Other Income" -- so an id-keyed map silently dropped one of them and gave
+  /// the other its colour. Every one of the 27 names is unique.
+  ///
+  /// Name is also the honest key: a transaction persists its category as a NAME
+  /// (`Expense.fromJson` reads `json['category']`), so this is the same string
+  /// the data is actually keyed on.
+  static final Map<String, int> _indexByName = {
+    for (var i = 0; i < _builtInOrder.length; i++) _builtInOrder[i].name: i,
+  };
+
+  static int? _indexOf(String name) => _indexByName[name];
+
+  /// The resolved set for [surface], memoised per surface.
+  ///
+  /// The memo is on the [Color] itself, so the two or three surfaces a screen
+  /// actually draws on are resolved once rather than on every rebuild, and a
+  /// palette change lands on a different key so it cannot serve a stale answer.
+  static final Expando<List<Color>> _cache = Expando('categoryColours');
+
+  /// WHY THE SET IS RESOLVED PER FAMILY, not all at once.
+  ///
+  /// Moving every category by ONE offset is what preserves their separation, and
+  /// it is also the flaw. On Gruvbox's mid-tone card the whole set has to go
+  /// lighter, and `Utilities` (a sage green) and `Other` (a taupe) landed on
+  /// `#8BB1A3` and `#99A6B0` — 107 apart on the project's own colour distance,
+  /// against a floor of 150. Two slices of one donut, effectively the same grey.
+  ///
+  /// Nothing is wrong with either hex: before any shift they are 1248 apart. The
+  /// shift is what merged them, because a uniform lightness move takes two
+  /// low-chroma neighbours toward the same grey.
+  ///
+  /// So the set is split by HUE and each family gets its own offset. Utilities is
+  /// green and Other is warm, so they are no longer dragged to the same place by
+  /// a contrast constraint that only one of them actually has. Within a family the
+  /// uniform move is kept, because that is where the crowding is: the warm
+  /// browns really are all sitting in one narrow band and really do need to move
+  /// together.
+  static List<Color> _builtInResolved(Color surface) {
+    return _cache[surface] ??= _resolveByFamily(surface);
+  }
+
+  /// Six hue bands, assigned by the colour's own hue rather than by its id.
+  ///
+  /// By hue so a category added later lands in the right family without anyone
+  /// remembering to update a list. The gold `Bonus` (hue 46) is deliberately in
+  /// the WARM band and not the green one, because a yellow-gold sitting among the
+  /// greens reads as a fifth green.
+  static int _familyOf(Color colour) {
+    final hue = HSLColor.fromColor(colour).hue;
+    if (hue < 48 || hue >= 350) return _warm;
+    if (hue < 165) return _green;
+    if (hue < 200) return _teal;
+    if (hue < 250) return _blue;
+    if (hue < 320) return _purple;
+    return _pink;
+  }
+
+  static const int _warm = 0;
+  static const int _green = 1;
+  static const int _teal = 2;
+  static const int _blue = 3;
+  static const int _purple = 4;
+  static const int _pink = 5;
+  static const int _familyCount = 6;
+
+  static List<Color> _resolveByFamily(Color surface) {
+    // Bucket the indices by family, keeping the original order inside each so the
+    // result is still index-aligned with `_builtInOrder`.
+    final buckets = List.generate(_familyCount, (_) => <int>[]);
+    for (var i = 0; i < _builtInOrder.length; i++) {
+      buckets[_familyOf(_builtInOrder[i].color)].add(i);
+    }
+
+    final out = List<Color>.filled(
+      _builtInOrder.length,
+      const Color(0xFF000000),
+    );
+    final familyOf = List<int>.filled(_builtInOrder.length, 0);
+    for (var f = 0; f < _familyCount; f++) {
+      for (final i in buckets[f]) {
+        familyOf[i] = f;
+      }
+    }
+
+    for (final bucket in buckets) {
+      if (bucket.isEmpty) continue;
+      final resolved = resolveAll([
+        for (final i in bucket) _builtInOrder[i].color,
+      ], surface);
+      for (var k = 0; k < bucket.length; k++) {
+        out[bucket[k]] = resolved[k];
+      }
+    }
+
+    return _repairCrossFamily(out, familyOf, surface);
+  }
+
+  /// THE B HALF: separate pairs that the per-family moves pushed together.
+  ///
+  /// Per-family offsets fix crowding WITHIN a family, and they introduce a
+  /// different defect: nothing stops one family landing on another. Warm pushed
+  /// +0.20 meets blue pushed +0.02, and on Gruvbox's card the expense "Other" and
+  /// the income "Other Income" arrived at the SAME colour -- 0 apart, the worst
+  /// possible outcome. Shopping and Gift went from 572 to 131 the same way.
+  ///
+  /// So after the families have each moved, any CROSS-family pair that fell below
+  /// the floor is walked apart. The member with more room is the one that moves,
+  /// and it moves in lightness only, AWAY from its partner and towards whichever
+  /// end of the background already gives it contrast -- so it cannot break the
+  /// 3:1 it just earned.
+  ///
+  /// Pairs inside one family are left alone. They are the ones the uniform move
+  /// exists to preserve, and separating them individually is the failure the
+  /// original comment warns about.
+  ///
+  /// Bounded rather than unbounded: a full separation is not always reachable by
+  /// lightness alone, and looping forever on an impossible pair would hang a
+  /// frame. What is unreachable is reported by the test, not silently accepted.
+  static List<Color> _repairCrossFamily(
+    List<Color> colours,
+    List<int> familyOf,
+    Color surface,
+  ) {
+    final out = List<Color>.of(colours);
+    final goLighter = _luminance(surface) < 0.45;
+
+    for (var pass = 0; pass < _repairPasses; pass++) {
+      var moved = false;
+
+      for (var i = 0; i < out.length; i++) {
+        for (var j = i + 1; j < out.length; j++) {
+          if (familyOf[i] == familyOf[j]) continue;
+          if (_separation(out[i], out[j]) >= _minimumSeparation) continue;
+
+          // Move the one that can afford it, in whichever direction its own
+          // contrast already points. Moving the darker one lighter on a dark
+          // surface keeps both readable; moving it darker would undo the 3:1 the
+          // resolve pass just bought.
+          final slack =
+              _contrast(out[i], surface) - AppCategoryColour.minimumContrast;
+          final iCanMove = slack.abs() >= 0.02;
+          final target = iCanMove ? i : j;
+          final away = goLighter ? 1 : -1;
+
+          out[target] = _shifted(out[target], away * _repairStep);
+          moved = true;
+        }
+      }
+
+      if (!moved) break;
+    }
+    return out;
+  }
+
+  /// How far apart two colours must read, on the same luma-weighted measure
+  /// `design_system_test.dart` uses.
+  ///
+  /// The SAME measure and the same floor as the existing separation test, on
+  /// purpose. This file once used an HSL-based distance of its own and reported
+  /// 175 failing pairs on colours that ship today, including "Travel/Coffee 6" --
+  /// it was measuring something the app had never claimed. A guard is only worth
+  /// having if it agrees with the guard already in the suite.
+  static const double _minimumSeparation = 150.0;
+
+  /// Perceived distance, luma-weighted: the eye is most sensitive to green and
+  /// least to blue.
+  static double _separation(Color a, Color b) {
+    final dr = (a.r - b.r) * 255;
+    final dg = (a.g - b.g) * 255;
+    final db = (a.b - b.b) * 255;
+    return dr * dr * 0.30 + dg * dg * 0.59 + db * db * 0.11;
+  }
+
+  static const int _repairPasses = 40;
+  static const double _repairStep = 0.02;
 
   static double _contrast(Color a, Color b) {
     final la = _luminance(a);

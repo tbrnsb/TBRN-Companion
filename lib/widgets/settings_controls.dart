@@ -72,69 +72,96 @@ class SettingsOptionRow<T> extends StatelessWidget {
             vertical: AppSpacing.sm,
           ),
           child: Row(
-            // TOP-ALIGNED, not centred. A `Row` centres its children by default,
-            // so on a row whose supporting text wrapped to three lines the icon
-            // floated in the middle of the row, level with the second line of
-            // the label rather than with the label itself. Every row in a list
-            // wants its glyph against the FIRST line of its text.
-            crossAxisAlignment: CrossAxisAlignment.start,
+            // CENTRED, with the glyph and the label column pinned back to the
+            // top by their own Aligns below.
+            //
+            // What this fixes: the value sat level with the row's TITLE on a row
+            // that is two lines tall, so it read as part of the title -- dead
+            // space under it, and nothing beside the caption. Centred, it sits on
+            // the row's own axis instead, which is what makes a column of six
+            // values look like a column.
+            //
+            // It was `start` for everything, which is what kept the icon against
+            // the FIRST line of the label. A Row cannot centre one child and
+            // top-align another, so the Row centres and those two are pinned back.
+            //
+            // Centring the value ALONE, inside a `start` Row, does nothing: such a
+            // Row hands its children a LOOSE height, so a `Center` around the
+            // value has no extra space to centre within and the value does not
+            // move. That was built, measured on a device, and shifted by zero
+            // pixels -- which is why this is at the Row and not on the Text.
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               if (icon != null) ...[
-                // Nudged down a hair so it sits on the label's optical centre
-                // rather than its box top.
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Icon(icon, size: 20, color: scheme.onSurfaceVariant),
+                // Against the FIRST line of the label, as before. The Row now
+                // centres, so the glyph is pinned back up here, and the nudge
+                // keeps it on the label's optical centre rather than its box top.
+                Align(
+                  alignment: Alignment.topLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Icon(icon, size: 20, color: scheme.onSurfaceVariant),
+                  ),
                 ),
                 const SizedBox(width: AppSpacing.sm),
               ],
               Expanded(
                 flex: 2,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // THE LABEL NEVER WRAPS, and it is the wider of the two
-                    // columns.
-                    //
-                    // Both the label and the value are in a flex, and a value
-                    // like "15 built in, 0 yours" is long enough that a 50/50
-                    // split left "Categories" a column so narrow it broke over
-                    // two lines -- which is the row being taller than its
-                    // neighbours, again. The label is what the row IS, so it
-                    // gets the larger share and never wraps; the value is the
-                    // detail, so it is the one that ellipsises.
-                    Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyLarge,
-                    ),
-                    if (supporting != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 1),
-                        child: Text(
-                          supporting!,
-                          // TWO LINES AT MOST, and ellipsised beyond that. These
-                          // lines are there to say what a setting is FOR, and a
-                          // three-line explanation under a one-word label makes
-                          // the row taller than the thing it is describing. The
-                          // ones that need more room say it in a group's
-                          // footnote instead, below the card.
-                          // ONE LINE. A caption that wraps is what made
-                          // these rows taller than the rows above them, so the
-                          // Settings page had three different row heights in a
-                          // list that is otherwise uniform. It ellipsises, which
-                          // is the right failure: a trimmed caption still reads,
-                          // and a two-line one changes the shape of the page.
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                            height: 1.25,
+                // The Row's `center` hands this a TIGHT height -- the real row
+                // height -- so the value measures against what the row actually
+                // is rather than against a two-line guess. `mainAxisSize.min`
+                // keeps the Column to its own two lines, which is the whole point:
+                // the label sits at the TOP of the row while the value sits in
+                // the MIDDLE of it.
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // THE LABEL NEVER WRAPS, and it is the wider of the two
+                      // columns.
+                      //
+                      // Both the label and the value are in a flex, and a value
+                      // like "15 built in, 0 yours" is long enough that a 50/50
+                      // split left "Categories" a column so narrow it broke over
+                      // two lines -- which is the row being taller than its
+                      // neighbours, again. The label is what the row IS, so it
+                      // gets the larger share and never wraps; the value is the
+                      // detail, so it is the one that ellipsises.
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyLarge,
+                      ),
+                      if (supporting != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 1),
+                          child: Text(
+                            supporting!,
+                            // TWO LINES AT MOST, and ellipsised beyond that. These
+                            // lines are there to say what a setting is FOR, and a
+                            // three-line explanation under a one-word label makes
+                            // the row taller than the thing it is describing. The
+                            // ones that need more room say it in a group's
+                            // footnote instead, below the card.
+                            // ONE LINE. A caption that wraps is what made
+                            // these rows taller than the rows above them, so the
+                            // Settings page had three different row heights in a
+                            // list that is otherwise uniform. It ellipsises, which
+                            // is the right failure: a trimmed caption still reads,
+                            // and a two-line one changes the shape of the page.
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                              height: 1.25,
+                            ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: AppSpacing.sm),
@@ -307,56 +334,68 @@ class SettingsNavRow extends StatelessWidget {
             vertical: AppSpacing.sm,
           ),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            // CENTRED, for the same reason and with the same structure as the
+            // option row above: the value centres on the row's axis, the label
+            // and glyph are pinned back to the top. A `start` Row hands its
+            // children a loose height, so centring the value on its own would do
+            // nothing at all.
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               if (icon != null) ...[
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Icon(icon, size: 20, color: scheme.onSurfaceVariant),
+                Align(
+                  alignment: Alignment.topLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Icon(icon, size: 20, color: scheme.onSurfaceVariant),
+                  ),
                 ),
                 const SizedBox(width: AppSpacing.sm),
               ],
               Expanded(
                 flex: 2,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // THE LABEL NEVER WRAPS, and it is the wider of the two
-                    // columns.
-                    //
-                    // Both the label and the value are in a flex, and a value
-                    // like "15 built in, 0 yours" is long enough that a 50/50
-                    // split left "Categories" a column so narrow it broke over
-                    // two lines -- which is the row being taller than its
-                    // neighbours, again. The label is what the row IS, so it
-                    // gets the larger share and never wraps; the value is the
-                    // detail, so it is the one that ellipsises.
-                    Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyLarge,
-                    ),
-                    if (supporting != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 1),
-                        child: Text(
-                          supporting!,
-                          // ONE LINE. A caption that wraps is what made
-                          // these rows taller than the rows above them, so the
-                          // Settings page had three different row heights in a
-                          // list that is otherwise uniform. It ellipsises, which
-                          // is the right failure: a trimmed caption still reads,
-                          // and a two-line one changes the shape of the page.
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                            height: 1.25,
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // THE LABEL NEVER WRAPS, and it is the wider of the two
+                      // columns.
+                      //
+                      // Both the label and the value are in a flex, and a value
+                      // like "15 built in, 0 yours" is long enough that a 50/50
+                      // split left "Categories" a column so narrow it broke over
+                      // two lines -- which is the row being taller than its
+                      // neighbours, again. The label is what the row IS, so it
+                      // gets the larger share and never wraps; the value is the
+                      // detail, so it is the one that ellipsises.
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyLarge,
+                      ),
+                      if (supporting != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 1),
+                          child: Text(
+                            supporting!,
+                            // ONE LINE. A caption that wraps is what made
+                            // these rows taller than the rows above them, so the
+                            // Settings page had three different row heights in a
+                            // list that is otherwise uniform. It ellipsises, which
+                            // is the right failure: a trimmed caption still reads,
+                            // and a two-line one changes the shape of the page.
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                              height: 1.25,
+                            ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: AppSpacing.sm),
