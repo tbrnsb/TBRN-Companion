@@ -168,8 +168,12 @@ cp build/app/outputs/flutter-apk/app-release.apk \
 ```
 
 Then tag, publish a GitHub Release with that file attached, and verify the
-download actually serves the build you just made. A tag on its own publishes
-nothing — the asset attached to the Release is what people download.
+download actually serves the build you just made — `a tag on its own publishes
+nothing`, and the asset attached to the Release is the file people download.
+
+Also bump the "What's new" section above and the version in `pubspec.yaml` for
+each release, so the README, the changelog and the tag never disagree about what
+version the repository is on.
 
 ## Privacy
 
