@@ -125,10 +125,14 @@ void main() {
     });
   });
 
-  group('the failure message names the coordinates', () {
-    // When nothing can open a map, the coordinates are the only thing the user
-    // can still act on, so a message that does not include them is a dead end.
-    testWidgets('a bare "no maps app" is not what is shown', (tester) async {
+  group('the failure message is actionable', () {
+    // It used to read "No maps app found. The coordinates are 28.2096,
+    // 83.9856." -- which dumps the one piece of information the user could not
+    // act on, on top of a coordinate pair that was on screen a moment earlier,
+    // and says nothing about what to do. Reported from the device as
+    // "it says no maps are found the coordinates are XYZ,ABC so thats a
+    // problem". The coordinates were never the fix; a maps app is.
+    testWidgets('it says what to do, not just the coordinates', (tester) async {
       platform.unsupported = {'geo', 'https'};
       usePhoneLayout(tester, TestViewports.phonePortrait);
       await tester.pumpWidget(
@@ -148,8 +152,46 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
 
-      expect(find.textContaining('28.2096'), findsOneWidget);
-      expect(find.textContaining('83.9856'), findsOneWidget);
+      // Names the actual remedy, so the message is something to act on.
+      expect(find.textContaining('Install Google Maps'), findsOneWidget);
+      // And no longer leads with the coordinate dump.
+      expect(find.textContaining('The coordinates are'), findsNothing);
+    });
+  });
+
+  group('a label that would break the URI is encoded, not pasted', () {
+    // The URI used to be assembled by string concatenation, so an unescaped
+    // `&` in a place name became a second query parameter and the maps app read
+    // the label as empty. This is the shape of name that proved it.
+    testWidgets('an ampersand in the name survives', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.dark(),
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => PlaceLauncher.open(
+                  context,
+                  const PlaceLink(
+                    latitude: 28.2096,
+                    longitude: 83.9856,
+                    name: 'Cafe & Bar',
+                  ),
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      final uri = platform.launched.single;
+      // Encoded, so it is part of the label and not a parameter separator...
+      expect(uri.toString(), contains('Cafe%20%26%20Bar'));
+      // ...which means `q` is still the whole label and nothing leaked out.
+      expect(uri.queryParameters['q'], contains('Cafe & Bar'));
     });
   });
 
