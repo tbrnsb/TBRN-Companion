@@ -114,12 +114,15 @@ Dart 3.13.0.
 
 ### Install the app
 
-Download [TBRN-Companion.apk](https://github.com/tbrnsb/TBRN-Companion/releases/latest/download/TBRN-Companion.apk)
-and open it. Android will warn that the file came from outside the Play Store,
-which is what happens for any sideloaded app.
+Download the APK from the [latest release](https://github.com/tbrnsb/TBRN-Companion/releases/latest)
+— `TBRN-Companion-v1.1.0.apk` — and open it. Android will warn that the file
+came from outside the Play Store, which is what happens for any sideloaded app.
 
-That `latest` link always serves the newest published release, so it is the right
-link to share and never needs editing between versions.
+The link above points at the release page rather than a fixed filename on
+purpose. Assets are named for the version they contain, so `1.2.0` can ship
+`TBRN-Companion-v1.2.0.apk` without overwriting this one or breaking a link
+somewhere. The page always shows the newest release; older ones stay downloadable
+under their own tags.
 
 If you already have an older copy installed, install this one straight over the
 top — Android recognises it as an upgrade and keeps your data. There is no need
@@ -129,9 +132,9 @@ The APK is signed with the release key, so it installs as
 `com.tbrnsb.daily_companion` and every later release updates it in place.
 
 The same file is also committed at
-[`android/TBRN-Companion.apk`](android/TBRN-Companion.apk), pinned to the commit
-it was built from. If the two ever disagree, the release download is the one to
-trust.
+[`android/TBRN-Companion-v1.1.0.apk`](android/TBRN-Companion-v1.1.0.apk), pinned to
+the commit it was built from. If the two ever disagree, the release download is
+the one to trust.
 
 ### Build from source
 
@@ -155,6 +158,18 @@ flutter build apk --release
 
 That writes `build/app/outputs/flutter-apk/app-release.apk`. Copy it to the
 device and open it, or install it over ADB with `adb install`.
+
+To cut a release, rename it for the version it contains and commit it under
+`android/` so the repository always carries the exact build it claims to:
+
+```bash
+cp build/app/outputs/flutter-apk/app-release.apk \
+   android/TBRN-Companion-v$(grep '^version:' pubspec.yaml | cut -d'"' -f1 | cut -d+ -f1 | tr -d ' ').apk
+```
+
+Then tag, publish a GitHub Release with that file attached, and verify the
+download actually serves the build you just made. A tag on its own publishes
+nothing — the asset attached to the Release is what people download.
 
 ## Privacy
 
