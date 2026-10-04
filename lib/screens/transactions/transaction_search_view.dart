@@ -37,6 +37,16 @@ class _TransactionSearchViewState extends State<TransactionSearchView> {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focus = FocusNode();
 
+  /// The query, held HERE and not in [TransactionProvider.search].
+  ///
+  /// It was in the provider, and that was the bug: the provider is shared, the
+  /// transaction list switches to its search results whenever the provider says
+  /// a search is active, and nothing cleared it on the way out. So "search for
+  /// something that does not exist, then go back" left the list rendering zero
+  /// results with no way to undo it. The field being local means leaving the
+  /// screen cannot leave anything behind.
+  TransactionSearchQuery _query = TransactionSearchQuery.none;
+
   @override
   void initState() {
     super.initState();
@@ -46,6 +56,11 @@ class _TransactionSearchViewState extends State<TransactionSearchView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _focus.requestFocus();
     });
+  }
+
+  void _setQuery(TransactionSearchQuery value) {
+    if (value == _query) return;
+    setState(() => _query = value);
   }
 
   @override
@@ -63,18 +78,18 @@ class _TransactionSearchViewState extends State<TransactionSearchView> {
     // Dismiss the keyboard first: the filter sheet is a modal, and a keyboard
     // left open behind it squeezes the sheet into the top third of the screen.
     FocusScope.of(context).unfocus();
-    final updated = await TransactionSearchSheet.show(context, provider.search);
+    final updated = await TransactionSearchSheet.show(context, _query);
     if (updated == null || !mounted) return;
-    provider.search = updated;
+    _setQuery(updated);
     if (updated.text != _controller.text) {
       _controller.value = TextEditingValue(
         text: updated.text,
         selection: TextSelection.collapsed(offset: updated.text.length),
       );
     }
-    // Redundant with the provider's own notification, but a sheet can also
-    // change the query with no visible consequence otherwise, and a search that
-    // silently changes is a search the user distrusts.
+    // Redundant with the rebuild, but a sheet can also change the query with no
+    // visible consequence otherwise, and a search that silently changes is a
+    // search the user distrusts.
     messenger.hideCurrentSnackBar();
   }
 
@@ -86,13 +101,13 @@ class _TransactionSearchViewState extends State<TransactionSearchView> {
     );
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final query = provider.search;
+    final query = _query;
 
     // ONE list of results, read once, and the SAME list the count and the empty
     // state describe. Reading `searchResults` three times would be three chances
     // for the count to disagree with the rows.
-    final results = provider.searchResults;
-    final narrowing = provider.hasActiveSearch;
+    final results = provider.searchResultsFor(query);
+    final narrowing = query.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -105,7 +120,7 @@ class _TransactionSearchViewState extends State<TransactionSearchView> {
           focusNode: _focus,
           textInputAction: TextInputAction.search,
           style: theme.textTheme.titleMedium,
-          onChanged: (value) => provider.search = query.copyWith(text: value),
+          onChanged: (value) => _setQuery(query.copyWith(text: value)),
           decoration: InputDecoration(
             hintText: 'Search transactions',
             border: InputBorder.none,
@@ -119,7 +134,7 @@ class _TransactionSearchViewState extends State<TransactionSearchView> {
                     onPressed: () {
                       HapticFeedback.selectionClick();
                       _controller.clear();
-                      provider.search = query.copyWith(text: '');
+                      _setQuery(query.copyWith(text: ''));
                     },
                   ),
           ),
@@ -146,7 +161,7 @@ class _TransactionSearchViewState extends State<TransactionSearchView> {
               query: query,
               resultCount: results.length,
               currencySymbol: currencySymbol,
-              onClear: provider.clearSearch,
+              onClear: () => _setQuery(TransactionSearchQuery.none),
             ),
           Expanded(
             child: results.isEmpty

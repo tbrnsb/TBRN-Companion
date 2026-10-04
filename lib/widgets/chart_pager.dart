@@ -68,7 +68,20 @@ class ChartPager extends StatefulWidget {
   /// `chart_pager_test.dart` asserts that no page overflows this box at either
   /// viewport, so a chart that grows past it fails a test instead of silently
   /// clipping.
-  static const double pageHeight = 280;
+  /// 300 rather than 280.
+  ///
+  /// The heatmap gained a weekday header row above its grid -- seven letters so
+  /// the columns can be named, which is what makes it a calendar rather than a
+  /// texture -- and that row is about twenty pixels of page. At 280 the heatmap
+  /// overflowed its slot by ten, which on a device is a black-and-yellow stripe
+  /// across the bottom of the calendar.
+  ///
+  /// Raising the constant rather than shrinking the header, because the header is
+  /// the fix for a real defect and 280 is only a number that happened to fit the
+  /// four OLDEST pages. The `lessThan(320)` budget in `chart_pager_test.dart`
+  /// still holds with twenty pixels of room in it, so the next page that needs
+  /// more has to spend that budget rather than assume it.
+  static const double pageHeight = 300;
 
   @override
   State<ChartPager> createState() => _ChartPagerState();

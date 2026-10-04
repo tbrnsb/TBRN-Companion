@@ -52,7 +52,14 @@ class SpendingHeatmap extends StatelessWidget {
   /// outline that a row of days read as a hatched block on the device. A gutter
   /// has to be visibly CARD between the cells, not merely non-zero, or the
   /// outline closes the seam back up.
-  static const double _gap = 4;
+  ///
+  /// PUBLIC rather than private because the weekday header above the grid has to
+  /// sit on exactly this geometry. A header derived from its own copy of the
+  /// number is a header that is a pixel off, and a header a pixel off is what
+  /// makes a calendar look crooked.
+  static const double gutter = 4;
+
+  static const double _gap = gutter;
 
   /// Rows are weekdays, Monday first, matching the grid.
   static const List<String> weekdayInitials = [
@@ -152,6 +159,23 @@ class SpendingHeatmap extends StatelessWidget {
                 // Column is what makes `Center` do anything.
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // THE WEEKDAY HEADER, on the same geometry as the grid below.
+                  //
+                  // Seven columns of coloured squares with no labels are a
+                  // texture, not a calendar: there is no way to tell which column
+                  // is Monday, so a Monday-heavy month and a Tuesday-heavy one
+                  // look identical and neither can be read against the calendar
+                  // above it. The header is the difference between a chart and a
+                  // calendar, and it was declared in this file the whole time --
+                  // [weekdayInitials] -- and never rendered.
+                  //
+                  // Same `_gap`, same measured `cell`, and `crossAxisAlignment`
+                  // centred so each initial sits over its own column. The letters
+                  // are centred on the cell rather than left-aligned in it,
+                  // because a letter on the left edge of a wide cell reads as
+                  // belonging to the cell on its left.
+                  _WeekdayHeader(cell: cell),
+                  const SizedBox(height: AppSpacing.xxs),
                   for (var row = 0; row < rows; row++)
                     Padding(
                       padding: EdgeInsets.only(
@@ -363,6 +387,51 @@ class SpendingHeatmap extends StatelessWidget {
   /// The size the legend swatches are drawn at, so the key cannot drift from
   /// the grid it explains.
   static double legendCellFor(double width) => cellFor(width);
+}
+
+/// The M T W T F S S row above the grid.
+///
+/// Sized from the same measured cell and the same gutter as the cells below, so
+/// each initial is centred over the column it names. The alternative — letting
+/// the Row distribute itself — gives seven equal fractions of the card, which is
+/// only correct if the cells also fill the card, and they deliberately do not.
+class _WeekdayHeader extends StatelessWidget {
+  const _WeekdayHeader({required this.cell});
+
+  final double cell;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < SpendingHeatmap.columnsPerRow; i++) ...[
+          if (i > 0) const SizedBox(width: SpendingHeatmap.gutter),
+          SizedBox(
+            width: cell,
+            // TALLER THAN THE LETTER NEEDS, so the header band is as deep as the
+            // row it labels and the two read as a pair rather than as a caption
+            // floating above a grid.
+            height: cell,
+            child: Center(
+              child: Text(
+                SpendingHeatmap.weekdayInitials[i],
+                // Small and dim on purpose. The header is an index, not content:
+                // it must be findable without competing with the spending it is
+                // explaining.
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontSize: 9,
+                  height: 1,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
 }
 
 /// One day. Empty days are still drawn, in the recessed surface, because a

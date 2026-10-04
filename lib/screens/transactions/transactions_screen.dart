@@ -81,14 +81,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           }
 
           final currentMonth = provider.currentMonth ?? DateTime.now();
-          // Which list is on screen: the search result set while a search is
-          // active, the ordinary filtered month otherwise. One variable, so the
-          // empty state, the section header and the tiles cannot each pick a
-          // different set and disagree about how many rows there are.
-          final isSearching = provider.hasActiveSearch;
-          final transactions = isSearching
-              ? provider.searchResults
-              : provider.filteredTransactions;
+          // The list is the month, always. It used to switch to the search
+          // result set whenever the provider said a search was active, which
+          // meant leaving the search screen could leave you here looking at a
+          // search you had already closed.
+          final transactions = provider.filteredTransactions;
           final totalIncome = provider.totalIncome;
           final totalExpenses = provider.totalExpenses;
           final balance = provider.balance;
@@ -158,17 +155,16 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     onFilterChanged: (filter) => provider.filter = filter,
                   ),
                   const SizedBox(height: AppSpacing.sm),
-                  // ONE search UI. The inline field and its summary used to live
-                  // here, and the dedicated view was added on top of them, which
-                  // meant two fields writing the same query: type in one, watch
-                  // the other change. Search now has one home, reached from the
-                  // app bar, and this list shows a month.
+                  // ONE search UI, in the app bar. The inline field used to live
+                  // here too, and the dedicated view was added on top of it,
+                  // which meant two fields writing the same query.
                   //
-                  // Still an app-level affordance rather than nothing: when a
-                  // search is active the list IS the result set, and a user who
-                  // narrowed something needs to see that they have.
-                  if (isSearching)
-                    _ActiveSearchBanner(currencySymbol: currencySymbol),
+                  // This list is not a search surface. It renders the month and
+                  // nothing else: the search screen owns the query, and when it
+                  // used to write that query into shared state the list followed
+                  // it out — leave search with nothing matching and the month was
+                  // replaced by "nothing matched", with no way back. A screen
+                  // that cannot be narrowed must not pretend it can be.
 
                   // Anything still owed on a shared trip. Renders nothing when
                   // there is none, which is the case on most days.
@@ -250,66 +246,48 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   ],
                   if (transactions.isEmpty) ...[
                     const SizedBox(height: AppSpacing.lg),
-                    if (isSearching)
-                      // A search with no hits is not the same thing as an empty
-                      // month, and the two must not share a message: "log your
-                      // first expense" when the month already has thirty is
-                      // simply wrong, and it is the one place a user looks after
-                      // deciding they HAVE found everything.
+                    // There is no "nothing matched" state HERE, and its absence
+                    // is the fix. This screen cannot be narrowed by a search any
+                    // more, so an empty list means the month really is empty,
+                    // and the one message that is true is the one below. Search
+                    // keeps its own "nothing matched" explanation, where the
+                    // search is visible and can be undone.
+                    EmptyState(
+                      icon: Icons.receipt_long_rounded,
+                      // A DAY IS A DIFFERENT QUESTION.
                       //
-                      // No add affordance here, deliberately. The FAB is already on
-                      // screen, and the FAB is the app's one rule for adding —
-                      // see the single-affordance decision in the test below.
-                      EmptyState(
-                        icon: Icons.search_off_rounded,
-                        title: 'Nothing matches',
-                        message:
-                            'No transaction in '
-                            '${DateFormat.yMMMM().format(currentMonth)} '
-                            'matches what you searched for.',
-                      )
-                    else
-                      EmptyState(
-                        icon: Icons.receipt_long_rounded,
-                        // A DAY IS A DIFFERENT QUESTION.
-                        //
-                        // The device opened this by tapping a day in the
-                        // calendar, choosing one with nothing on it, and being
-                        // told "No transactions yet — log your first expense for
-                        // October 2026". The user has thirty in that month. The
-                        // day filter chip was right above it saying the same
-                        // thing, so the empty state was arguing with the screen
-                        // it was on: the answer was about a day, not a month.
-                        title: provider.selectedDay != null
-                            ? 'Nothing on ${DateFormat.MMMd().format(provider.selectedDay!)}'
-                            : provider.filter == TransactionFilter.income
-                            ? 'No income recorded'
-                            : 'No transactions yet',
-                        message: provider.selectedDay != null
-                            ? 'That day is clear. Take the filter off to see the rest of ${DateFormat.yMMMM().format(currentMonth)}.'
-                            : provider.filter == TransactionFilter.income
-                            ? 'Add income to see it here.'
-                            : 'Log your first expense for ${DateFormat.yMMMM().format(currentMonth)} — it takes a few seconds.',
-                        // The action always opens the Expense/Income chooser now,
-                        // so the label must not promise a single type.
-                        actionLabel: 'Add transaction',
-                        onAction: () => AddTransactionSheet.show(context),
-                      ),
+                      // The device opened this by tapping a day in the
+                      // calendar, choosing one with nothing on it, and being
+                      // told "No transactions yet — log your first expense for
+                      // October 2026". The user has thirty in that month. The
+                      // day filter chip was right above it saying the same
+                      // thing, so the empty state was arguing with the screen
+                      // it was on: the answer was about a day, not a month.
+                      title: provider.selectedDay != null
+                          ? 'Nothing on ${DateFormat.MMMd().format(provider.selectedDay!)}'
+                          : provider.filter == TransactionFilter.income
+                          ? 'No income recorded'
+                          : 'No transactions yet',
+                      message: provider.selectedDay != null
+                          ? 'That day is clear. Take the filter off to see the rest of ${DateFormat.yMMMM().format(currentMonth)}.'
+                          : provider.filter == TransactionFilter.income
+                          ? 'Add income to see it here.'
+                          : 'Log your first expense for ${DateFormat.yMMMM().format(currentMonth)} — it takes a few seconds.',
+                      // The action always opens the Expense/Income chooser now,
+                      // so the label must not promise a single type.
+                      actionLabel: 'Add transaction',
+                      onAction: () => AddTransactionSheet.show(context),
+                    ),
                   ] else ...[
                     const SizedBox(height: AppSpacing.md),
                     SectionHeader(
-                      isSearching
-                          ? 'Search results'
-                          : 'Recent ${provider.filter == TransactionFilter.income
-                                ? 'income'
-                                : provider.filter == TransactionFilter.expenses
-                                ? 'expenses'
-                                : 'transactions'}',
+                      'Recent ${provider.filter == TransactionFilter.income
+                          ? 'income'
+                          : provider.filter == TransactionFilter.expenses
+                          ? 'expenses'
+                          : 'transactions'}',
                       trailing: Text(
-                        isSearching
-                            ? '${transactions.length} match'
-                                  '${transactions.length == 1 ? '' : 'es'}'
-                            : '${transactions.length} this month',
+                        '${transactions.length} this month',
                         style: Theme.of(context).textTheme.labelMedium
                             ?.copyWith(
                               color: Theme.of(context)
@@ -748,65 +726,6 @@ class _DayPickerSheetState extends State<_DayPickerSheet> {
     if (value.isBefore(lo)) return lo;
     if (value.isAfter(hi)) return hi;
     return value;
-  }
-}
-
-/// "2 matches · Search" on the list, while a search is active.
-///
-/// The list is showing the result set when this is on screen, and a narrowed
-/// view that does not say so is indistinguishable from a month that shrank. It
-/// says how many, and it offers the way back — but it does not offer a SECOND
-/// field to type into, because the search screen owns that.
-class _ActiveSearchBanner extends StatelessWidget {
-  const _ActiveSearchBanner({required this.currencySymbol});
-
-  final String currencySymbol;
-
-  @override
-  Widget build(BuildContext context) {
-    final provider = context.watch<TransactionProvider>();
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return Container(
-      key: const ValueKey('active-search-banner'),
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.sm,
-        vertical: AppSpacing.xxs,
-      ),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHigh,
-        borderRadius: AppRadii.smallRadius,
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.search_rounded, size: 16, color: scheme.onSurfaceVariant),
-          const SizedBox(width: AppSpacing.xs),
-          Expanded(
-            child: Text(
-              '${provider.searchResults.length} match'
-              '${provider.searchResults.length == 1 ? '' : 'es'} — showing '
-              'search results',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          TextButton(
-            key: const ValueKey('search-open-view'),
-            onPressed: () => AppSearchButton.open(context),
-            child: const Text('Search'),
-          ),
-          TextButton(
-            key: const ValueKey('search-clear-all'),
-            onPressed: provider.clearSearch,
-            child: const Text('Clear'),
-          ),
-        ],
-      ),
-    );
   }
 }
 

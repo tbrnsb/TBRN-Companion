@@ -179,6 +179,69 @@ have no export of their own. They live in the app's own storage, so uninstalling
 the app removes them, and the trip JSON is the only way to move a journey to
 another phone.
 
+## What's new in 1.1.0
+
+Nothing in this release breaks your existing data. Every record written by 1.0.0
+loads exactly as it did, and the app's storage format is unchanged.
+
+### Added
+
+- **Every transaction now remembers where you were.** Latitude, longitude and the
+  time of the reading are saved with the transaction, whether or not you have ever
+  named that spot.
+- **Income records its location too.** Previously only expenses carried a
+  position, so a place you were paid at was invisible to everything that reads a
+  location.
+- **"Are you at [place]?"** When a transaction lands inside the radius of a place
+  you have saved, the app asks whether to link it. Say yes and the two are counted
+  together; say no and it keeps its own coordinates.
+- **"You have been spending here a lot."** After four transactions near a spot you
+  have not named, the app offers to save it, opening the Add Place form with the
+  coordinates already filled in.
+- **Saved places have a screen of their own** — how many transactions happened
+  there, how much you spent and received, a breakdown by category, and the full
+  history. Each row opens the transaction.
+- **Everything links to everything.** Tap a place name on a transaction to see
+  everything recorded there; tap a journey to open the trip.
+- **Open in Maps from a transaction**, for any transaction with a position.
+- **Twenty themes across four families**, including a full Gruvbox palette with
+  its own second accent colour.
+- **Budget periods** — a limit per category and per trip, each over a week, a
+  month, or a year.
+- **Search has its own screen**, filtering by description text, amount range and
+  category.
+- **Trash** — deleting a transaction is reversible.
+- **CSV import**, the reverse of the export already in Settings, previewed before
+  anything is added.
+
+### Fixed
+
+- **"Open in maps" never worked on Android 11 or newer.** The app had not told
+  Android which map schemes it used, so the system refused to say which apps could
+  handle them. It reported "no maps app found" on a phone with Google Maps on it.
+- **Transactions recorded no location on most phones.** The reading required the
+  "Allow all the time" permission, but Android's normal grant is "Allow while
+  using the app", so on the great majority of devices it quietly did nothing.
+- **"You have been spending here a lot" never appeared.** It counted distinct
+  *days* rather than transactions, so five expenses in one sitting counted as one
+  day against a threshold of four.
+- **Custom income categories could not be chosen.** They saved correctly, but the
+  income form only ever listed the six built-in categories.
+- **A place with an ampersand in its name lost its label** on the map pin.
+- **An unrelated filter could silence the spending-here prompt** — leaving
+  "Income" selected hid every expense from the count.
+- **The heatmap had no weekday labels.** Seven unlabelled columns of colour was a
+  texture rather than a calendar.
+- **Chart pages could draw over their own headings** at larger text sizes.
+- **The Settings page had three different row heights.**
+- **Search results could get stuck** — searching for something that matched
+  nothing, then going back, left the list empty with no way to undo it.
+- **Category colours looked pasted on**, tuned against a single light palette.
+  They are now re-derived per surface, and the closest pair of greens was pulled
+  apart so Gear and Freelance can be told apart.
+
+The full history is in [CHANGELOG.md](CHANGELOG.md).
+
 ## Contributing
 
 Run `tool/verify.sh` before every commit. It checks formatting, static analysis, the

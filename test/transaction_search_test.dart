@@ -273,7 +273,8 @@ void main() {
     testWidgets('typing narrows the results, live', (tester) async {
       usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
       await pumpSpendScreen(tester);
-      final provider = await openSearchView(tester);
+      // The call opens the view; nothing here reads the provider back.
+      await openSearchView(tester);
 
       await tester.enterText(
         find.byKey(const ValueKey('search-view-field')),
@@ -281,7 +282,9 @@ void main() {
       );
       await settleUi(tester);
 
-      expect(provider.hasActiveSearch, isTrue);
+      // Asserted on what the SCREEN shows, not on `provider.hasActiveSearch`.
+      // The query lives in the view's own state now, and that is the point:
+      // a search is scoped to the screen that asked it.
       expect(visibleDescriptions(tester), ['Coffee with Priya']);
       expect(find.byKey(const ValueKey('search-result-count')), findsOne);
     });
@@ -476,7 +479,7 @@ void main() {
       tester,
     ) async {
       usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
-      final provider = await pumpSpendScreen(tester);
+      await pumpSpendScreen(tester);
 
       await openSearchView(tester);
       await tester.tap(find.byKey(const ValueKey('search-view-filters')));
@@ -492,8 +495,8 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('search-apply-filters')));
       await settleUi(tester);
 
-      expect(provider.search.minAmount, 400);
-      expect(provider.search.maxAmount, 1500);
+      // The criteria are read off the visible results and the criteria bar,
+      // not off the provider: the query is the view's own state now.
       final shown = visibleDescriptions(tester);
       expect(shown, contains('Groceries at the market'));
       expect(shown, contains('Bus fare to the coast'));
@@ -505,7 +508,7 @@ void main() {
 
     testWidgets('a category chip narrows to that category', (tester) async {
       usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
-      final provider = await pumpSpendScreen(tester);
+      await pumpSpendScreen(tester);
 
       await openSearchView(tester);
       await tester.tap(find.byKey(const ValueKey('search-view-filters')));
@@ -518,7 +521,6 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('search-apply-filters')));
       await settleUi(tester);
 
-      expect(provider.search.categories, {ExpenseCategory.travel.name});
       expect(visibleDescriptions(tester), ['Bus fare to the coast']);
     });
 
@@ -548,9 +550,12 @@ void main() {
 
     testWidgets('cancelling the sheet changes nothing', (tester) async {
       usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
-      final provider = await pumpSpendScreen(tester);
-      final before = provider.search;
+      await pumpSpendScreen(tester);
       await openSearchView(tester);
+      // The rows BEFORE the sheet, so "changes nothing" is checked against what
+      // the screen actually shows rather than against provider state the view no
+      // longer touches.
+      final before = visibleDescriptions(tester);
 
       await tester.tap(find.byKey(const ValueKey('search-view-filters')));
       await settleUi(tester);
@@ -562,8 +567,137 @@ void main() {
       await settleUi(tester);
 
       // A dismissed sheet is a cancel, not an apply. Treating the two the same
-      // is the bug the day picker had.
-      expect(provider.search, before);
+      // is the bug the day picker had. A cancelled sheet that narrowed to the
+      // rows over 500 would look exactly like a working filter.
+      expect(visibleDescriptions(tester), before);
+      expect(find.byKey(const ValueKey('search-view-criteria')), findsNothing);
+    });
+  });
+
+  group('search does not follow you out of the search screen', () {
+    // The bug this group exists for, reported from the field: type something
+    // that matches nothing, go back, and the whole month is gone from the
+    // list, showing "nothing matched" with no way back to the transactions.
+    //
+    // The cause is that the search view writes the query into the SHARED
+    // provider (`provider.search`) and never clears it, while the transaction
+    // list switches its entire body to the search result set whenever
+    // `hasActiveSearch` is true. Leaving search therefore left the list
+    // rendering the search's results permanently.
+    //
+    // A search is a question asked on one screen. It must not survive the
+    // screen that asked it.
+    testWidgets(
+      'going back from a search that matched nothing restores the list',
+      (tester) async {
+        usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
+        final provider = await pumpSpendScreen(tester);
+        final monthTotal = provider.filteredTransactions.length;
+        expect(
+          monthTotal,
+          greaterThan(0),
+          reason: 'the fixture month has rows',
+        );
+
+        await openSearchView(tester);
+        await tester.enterText(
+          find.byKey(const ValueKey('search-view-field')),
+          'zzzznothing',
+        );
+        await settleUi(tester);
+        expect(visibleDescriptions(tester), isEmpty);
+
+        // Leave, the way a user does: the system back gesture.
+        await tester.binding.handlePopRoute();
+        await settleUi(tester);
+
+        // The transaction list is showing again, with the month, not the query.
+        expect(
+          provider.hasActiveSearch,
+          isFalse,
+          reason:
+              'leaving search must clear the shared query, or the list '
+              'keeps rendering search results after search is gone',
+        );
+        expect(visibleDescriptions(tester).length, greaterThan(0));
+      },
+    );
+
+    testWidgets('a search that DID match still does not leak back', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
+      final provider = await pumpSpendScreen(tester);
+
+      await openSearchView(tester);
+      await tester.enterText(
+        find.byKey(const ValueKey('search-view-field')),
+        'coffee',
+      );
+      await settleUi(tester);
+
+      await tester.binding.handlePopRoute();
+      await settleUi(tester);
+
+      // A leaking "coffee" filter would be less alarming than "nothing matched"
+      // but just as wrong: the list would show a subset and call it the month.
+      expect(provider.hasActiveSearch, isFalse);
+      expect(
+        visibleDescriptions(tester).length,
+        provider.filteredTransactions.length,
+      );
+    });
+
+    testWidgets('reopening search does not resurrect the old query', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
+      await pumpSpendScreen(tester);
+
+      await openSearchView(tester);
+      await tester.enterText(
+        find.byKey(const ValueKey('search-view-field')),
+        'coffee',
+      );
+      await settleUi(tester);
+      await tester.binding.handlePopRoute();
+      await settleUi(tester);
+
+      await openSearchView(tester);
+
+      // A fresh search screen starts empty. Carrying the last query forward
+      // means the second search silently inherits the first one's filter.
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('search-view-field')))
+            .controller!
+            .text,
+        isEmpty,
+      );
+      expect(visibleDescriptions(tester).length, greaterThan(1));
+    });
+
+    testWidgets('the list no longer offers a search mode of its own', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, _tallEnoughToBuildEveryRow);
+      final provider = await pumpSpendScreen(tester);
+
+      // If a search is active, the list must NOT be showing search results.
+      // This is the invariant, stated directly, so a future change that routes
+      // the query back into the list fails here rather than on a device.
+      provider.search = TransactionSearchQuery(text: 'coffee');
+      await settleUi(tester);
+
+      expect(
+        find.byKey(const ValueKey('active-search-banner')),
+        findsNothing,
+        reason: 'the list is not a search surface; the banner must not exist',
+      );
+      expect(
+        visibleDescriptions(tester).length,
+        provider.filteredTransactions.length,
+      );
     });
   });
 
@@ -576,18 +710,39 @@ void main() {
         tester,
       ) async {
         usePhoneLayout(tester, viewport);
-        final provider = await pumpSpendScreen(tester);
+        await pumpSpendScreen(tester);
+        await openSearchView(tester);
 
-        // Force the widest case: field text, a range and a category all at
-        // once, which is the row's worst realistic layout.
-        provider.search = TransactionSearchQuery(
-          text: 'a long enough phrase to fill the field',
-          minAmount: 1000,
-          maxAmount: 20000,
-          categories: const {'food', 'travel'},
+        // Force the widest case, on the screen that now owns the query: field
+        // text plus a range plus a category all at once, which is the
+        // criteria bar's worst realistic layout. Setting `provider.search`
+        // used to be how this was reached, which is exactly the coupling the
+        // leak fix removed — the query is set here the way a user sets it.
+        await tester.enterText(
+          find.byKey(const ValueKey('search-view-field')),
+          'a long enough phrase to fill the field',
         );
         await settleUi(tester);
+        await tester.tap(find.byKey(const ValueKey('search-view-filters')));
+        await settleUi(tester);
+        await tester.enterText(
+          find.byKey(const ValueKey('search-min-amount')),
+          '1000',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('search-max-amount')),
+          '20000',
+        );
+        await settleUi(tester);
+        await tester.tap(
+          find.byKey(ValueKey('search-cat-${ExpenseCategory.food.name}')),
+        );
+        await tester.tap(find.byKey(const ValueKey('search-apply-filters')));
+        await settleUi(tester);
 
+        // All three criteria are showing at once, which is the case that
+        // would overflow.
+        expect(find.byKey(const ValueKey('search-view-criteria')), findsOne);
         expect(tester.takeException(), isNull);
       });
     }
