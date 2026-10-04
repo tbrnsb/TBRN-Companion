@@ -118,12 +118,20 @@ Download [TBRN-Companion.apk](https://github.com/tbrnsb/TBRN-Companion/releases/
 and open it. Android will warn that the file came from outside the Play Store,
 which is what happens for any sideloaded app.
 
+That `latest` link always serves the newest published release, so it is the right
+link to share and never needs editing between versions.
+
+If you already have an older copy installed, install this one straight over the
+top — Android recognises it as an upgrade and keeps your data. There is no need
+to uninstall first.
+
 The APK is signed with the release key, so it installs as
 `com.tbrnsb.daily_companion` and every later release updates it in place.
 
 The same file is also committed at
 [`android/TBRN-Companion.apk`](android/TBRN-Companion.apk), pinned to the commit
-it was built from.
+it was built from. If the two ever disagree, the release download is the one to
+trust.
 
 ### Build from source
 
