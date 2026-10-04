@@ -539,6 +539,62 @@ void main() {
       expect(saved.length, 1);
       expect(saved.single.category, 'freelance');
     });
+
+    testWidgets(
+      'a custom income category shows in the income picker and is saved',
+      (tester) async {
+        usePhoneLayout(tester, TestViewports.phonePortrait);
+
+        final provider = await seedProvider(tester, const []);
+        // initialize() just loaded an empty registry from the cleared test
+        // storage. Simulate a category the user named as income in Settings:
+        // it lives in the registry this picker reads, exactly as it would after
+        // a real load.
+        addTearDown(() => CategoryRegistry.setCustomCategories(const []));
+        CategoryRegistry.setCustomCategories([
+          const CustomCategory(
+            name: 'Speaking fees',
+            kind: CategoryKind.income,
+          ),
+        ]);
+
+        await tester.pumpWidget(
+          _spendApp(
+            transactions: provider,
+            settings: await seededSettings(tester),
+          ),
+        );
+        await settleUi(tester);
+
+        await tapAddAffordance(tester);
+        await settleUi(tester);
+        await tester.tap(inChooser('Income'));
+        await settleUi(tester);
+
+        expect(find.byType(IncomeEditSheet), findsOneWidget);
+        // The bug: a custom income category was stored in settings but never
+        // appeared, because the picker only walked IncomeCategory.values.
+        expect(find.text('Speaking fees'), findsOneWidget);
+
+        // Selecting it persists the custom id...
+        await tester.tap(find.text('Speaking fees'));
+        await settleUi(tester);
+        await tester.enterText(find.widgetWithText(TextFormField, '0'), '120');
+        await settleUi(tester);
+        await tester.runAsync(() async {
+          await tester.tap(find.text('Save income'));
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+        });
+        await settleUi(tester);
+
+        final saved = provider.transactions.whereType<Income>().toList();
+        expect(saved.length, 1);
+        expect(saved.single.category, 'custom:speaking fees');
+        // ...and it resolves back to the custom category rather than "Other
+        // Income".
+        expect(saved.single.categoryMeta.name, 'Speaking fees');
+      },
+    );
   });
 
   group('currency', () {

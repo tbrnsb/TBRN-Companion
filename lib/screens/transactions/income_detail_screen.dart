@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 
 import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/providers/location_provider.dart';
 import 'package:daily_companion/providers/settings_provider.dart';
 import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/services/transaction_location_service.dart';
 import 'package:daily_companion/theme/app_theme.dart';
 import 'package:daily_companion/utils/format.dart';
+import 'package:daily_companion/widgets/context_menu_chip.dart';
+import 'package:daily_companion/widgets/transaction_location_block.dart';
+
+import '../locations/add_location_screen.dart';
 
 class IncomeDetailScreen extends StatelessWidget {
   const IncomeDetailScreen({super.key, required this.income});
@@ -15,8 +22,8 @@ class IncomeDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
 
     final current =
         context
@@ -107,12 +114,20 @@ class IncomeDetailScreen extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.lg),
 
-          _DetailRow(
+          TransactionDetailRow(
             icon: meta.icon,
             iconColor: meta.color,
             label: 'Category',
             value: current.effectiveCategoryName,
           ),
+          const SizedBox(height: AppSpacing.lg),
+
+          // The SAME block the expense detail screen uses, so a payment gets the
+          // place, the journey, the capture time, the coordinates and the Maps
+          // action — identical to what an expense gets. This row set was absent
+          // here entirely, which is the gap: income recorded no location, so it
+          // had nothing to show and nowhere to link to.
+          TransactionLocationBlock(transaction: current),
           const SizedBox(height: AppSpacing.lg),
 
           OutlinedButton.icon(
@@ -169,56 +184,6 @@ class IncomeDetailScreen extends StatelessWidget {
   }
 }
 
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    this.iconColor,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color? iconColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            icon,
-            size: 20,
-            color: iconColor ?? colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: textTheme.labelMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(value, style: textTheme.bodyLarge),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class IncomeEditSheet extends StatefulWidget {
   const IncomeEditSheet({super.key, this.existing});
 
@@ -242,6 +207,13 @@ class _IncomeEditSheetState extends State<IncomeEditSheet> {
   late final TextEditingController _descriptionController;
   late String _category;
   late DateTime _date;
+
+  /// Which saved place this income belongs to, if the user named one.
+  ///
+  /// Null is the normal state and means "no place chosen", NOT "no place" — the
+  /// raw coordinates are captured regardless, and stay null here until either
+  /// the user picks from the chip or agrees to a proximity prompt.
+  String? _locationId;
   bool _saving = false;
   String? _saveError;
 
@@ -259,6 +231,7 @@ class _IncomeEditSheetState extends State<IncomeEditSheet> {
     );
     _category = existing?.category ?? 'salary';
     _date = existing?.date ?? DateTime.now();
+    _locationId = existing?.locationId;
   }
 
   @override
@@ -272,6 +245,9 @@ class _IncomeEditSheetState extends State<IncomeEditSheet> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    // Watched, so a place saved elsewhere while this sheet is open appears in
+    // the menu without the sheet having to be reopened.
+    final locations = context.watch<LocationProvider>().locations;
 
     return Padding(
       padding: EdgeInsets.only(
@@ -365,6 +341,38 @@ class _IncomeEditSheetState extends State<IncomeEditSheet> {
                     label: Text(AppFormat.relativeDay(_date).split(',').first),
                     onPressed: _pickDate,
                   ),
+                  // The place chip, the SAME control the expense form uses.
+                  //
+                  // Income had no way to say where money arrived, so a place the
+                  // user was paid at — an office, a client, a home — was
+                  // invisible to everything that reads a location. Sharing the
+                  // control rather than writing a second one is what stops the
+                  // two forms drifting apart again.
+                  if (locations.isNotEmpty)
+                    ContextMenuChip<String?>(
+                      icon: Icons.place_rounded,
+                      label: _locationId == null
+                          ? 'No place'
+                          : locations
+                                    .where((l) => l.id == _locationId)
+                                    .firstOrNull
+                                    ?.name ??
+                                'No place',
+                      value: _locationId,
+                      items: [
+                        const DropdownMenuItem(
+                          value: null,
+                          child: Text('No place'),
+                        ),
+                        ...locations.map(
+                          (l) => DropdownMenuItem(
+                            value: l.id,
+                            child: Text(l.name),
+                          ),
+                        ),
+                      ],
+                      onChanged: (v) => setState(() => _locationId = v),
+                    ),
                 ],
               ),
 
@@ -454,18 +462,47 @@ class _IncomeEditSheetState extends State<IncomeEditSheet> {
           amount: double.parse(_amountController.text),
           category: _category,
           description: description,
+          locationId: _locationId,
+          clearLocation: _locationId == null,
           date: _date,
         ),
       );
     } else {
+      // THE SAME FOUR RULES AS AN EXPENSE, in the same order, because they are
+      // the same question: capture the position, ask about a nearby saved place,
+      // save the coordinates either way, then offer to name the spot if it keeps
+      // coming up. Money arriving somewhere is recorded in the same place, by the
+      // same phone, at the same moment as money leaving it.
+      final position = await TransactionLocationService.capturePosition();
+
+      String? locationId = _locationId;
+      if (position != null && locationId == null && mounted) {
+        final linked = await TransactionLocationService.confirmProximity(
+          context,
+          locations: context.read<LocationProvider>().locations,
+          latitude: position.latitude,
+          longitude: position.longitude,
+          noun: 'payment',
+        );
+        if (linked != null) locationId = linked.id;
+      }
+
       saved = await provider.addTransaction(
         Income(
           amount: double.parse(_amountController.text),
           category: _category,
           description: description,
+          locationId: locationId,
+          latitude: position?.latitude,
+          longitude: position?.longitude,
+          locationCapturedAt: position != null ? DateTime.now() : null,
           date: _date,
         ),
       );
+
+      if (saved && mounted) {
+        await _maybeOfferToSaveSpot(provider, position);
+      }
     }
 
     if (!mounted) return;
@@ -481,6 +518,38 @@ class _IncomeEditSheetState extends State<IncomeEditSheet> {
     }
 
     Navigator.pop(context);
+  }
+
+  /// Offers to name the spot, once the same spot has come up often enough.
+  ///
+  /// The income twin of the expense sheet's method, calling the same two shared
+  /// functions. Written twice on purpose — once per sheet — rather than pulled
+  /// into a base class the two do not otherwise share, because the alternative
+  /// is a third copy of the capture rules by the time anything else needs them.
+  Future<void> _maybeOfferToSaveSpot(
+    TransactionProvider provider,
+    Position? position,
+  ) async {
+    if (position == null || !mounted) return;
+
+    final candidate = TransactionLocationService.clusterAfterSave(
+      transactions: provider.allLiveTransactions(),
+      savedLocations: context.read<LocationProvider>().locations,
+    );
+    if (candidate == null) return;
+
+    final wantsSave = await offerToSaveCluster(
+      context,
+      candidate,
+      noun: 'Payments',
+    );
+    if (!wantsSave || !mounted) return;
+
+    await AddLocationScreen.show(
+      context,
+      initialLatitude: candidate.centerLatitude,
+      initialLongitude: candidate.centerLongitude,
+    );
   }
 }
 
@@ -513,16 +582,23 @@ class _IncomeCategoryPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final categories = IncomeCategory.values;
+    // The six built-in income categories, plus any the user has named as income
+    // in Settings. A custom income category is a first-class option on the form,
+    // not a footnote: the bug was that this picker only walked
+    // `IncomeCategory.values` and so never saw the registry a custom category is
+    // loaded into -- a category filed under income was invisible here, even
+    // though it was stored correctly.
+    final categories = [
+      for (final category in IncomeCategory.values) category.meta,
+      ...CategoryRegistry.customCategories
+          .where((c) => c.kind == CategoryKind.income)
+          .map(CategoryRegistry.metaForCustom),
+    ];
 
     return Wrap(
       spacing: AppSpacing.xs,
       runSpacing: AppSpacing.xs,
-      children: categories.map((category) {
-        final meta = category.meta;
-        // `category.name` is the enum name ("IncomeCategory.salary"), not the
-        // stored id, so it must not be used as the label, the selection
-        // comparison, or the saved value.
+      children: categories.map((meta) {
         final isSelected = meta.id == selected;
 
         return ChoiceChip(

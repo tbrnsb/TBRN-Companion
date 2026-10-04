@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:daily_companion/models/index.dart';
 import 'package:daily_companion/providers/location_provider.dart';
 import 'package:daily_companion/widgets/widgets.dart';
+import 'package:daily_companion/screens/locations/location_detail_screen.dart';
 import 'package:daily_companion/screens/locations/add_location_screen.dart';
 import 'package:daily_companion/services/place_launcher.dart';
 import 'package:daily_companion/theme/app_theme.dart';
@@ -274,6 +275,15 @@ class _LocationTile extends StatelessWidget {
             },
           ),
           isThreeLine: location.description.isNotEmpty,
+          // The row body opens the place. It used to do nothing at all — the only
+          // affordances were three items in a popup menu, so a saved place with
+          // fifteen transactions against it had no screen you could reach and no
+          // way to see any of them.
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => LocationDetailScreen(location: location),
+            ),
+          ),
         ),
         const Divider(indent: 64, height: 1),
       ],

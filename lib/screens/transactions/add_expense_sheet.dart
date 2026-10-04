@@ -8,9 +8,11 @@ import 'package:daily_companion/providers/journey_provider.dart';
 import 'package:daily_companion/providers/location_provider.dart';
 import 'package:daily_companion/providers/settings_provider.dart';
 import 'package:daily_companion/providers/transaction_provider.dart';
-import 'package:daily_companion/services/location_insight_service.dart';
+import 'package:daily_companion/services/transaction_location_service.dart';
 import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/widgets/context_menu_chip.dart';
 
+import '../locations/add_location_screen.dart';
 import 'other_category_screen.dart';
 
 import 'package:daily_companion/utils/format.dart';
@@ -272,7 +274,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
                     onPressed: _pickDate,
                   ),
                   if (journeys.isNotEmpty)
-                    _ContextMenuChip<String?>(
+                    ContextMenuChip<String?>(
                       icon: Icons.route_rounded,
                       label: _journeyId == null
                           ? 'No journey'
@@ -300,7 +302,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
                       }),
                     ),
                   if (locations.isNotEmpty)
-                    _ContextMenuChip<String?>(
+                    ContextMenuChip<String?>(
                       icon: Icons.place_rounded,
                       label: _locationId == null
                           ? 'No place'
@@ -447,23 +449,26 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
       return;
     }
 
-    final position = await _tryCapturePosition();
+    // THE COORDINATES ARE CAPTURED FIRST, and unconditionally, before anything
+    // else is decided. They are the fact — where the phone was — and they do not
+    // depend on whether the user links this to a saved place, agrees to a prompt,
+    // or has location permission at all. Everything below is optional; this is
+    // not.
+    final position = await TransactionLocationService.capturePosition();
 
+    // The proximity question is only asked when there is a fix to ask about, and
+    // only when the user has not already chosen a place by hand. Asking over a
+    // manual choice would be the app second-guessing them.
     String? locationId = _locationId;
     if (position != null && locationId == null && mounted) {
-      final suggestion = LocationInsightService.suggestCheckpoint(
-        context.read<LocationProvider>().locations,
-        position.latitude,
-        position.longitude,
+      final linked = await TransactionLocationService.confirmProximity(
+        context,
+        locations: context.read<LocationProvider>().locations,
+        latitude: position.latitude,
+        longitude: position.longitude,
+        noun: 'expense',
       );
-      if (suggestion != null) {
-        final accepted = await _confirmCheckpoint(suggestion);
-        if (accepted == true) {
-          locationId = suggestion.id;
-        } else if (accepted == false) {
-          await LocationInsightService.declineCheckpoint(suggestion.id);
-        }
-      }
+      if (linked != null) locationId = linked.id;
     }
 
     final saved = await provider.addTransaction(
@@ -480,7 +485,12 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
         paidByParticipantId: _paidByParticipantId,
         latitude: position?.latitude,
         longitude: position?.longitude,
-        locationCapturedAt: position != null ? DateTime.now() : null,
+        // WHEN THE FIX WAS TAKEN, which is not `date`: a transaction logged today
+        // for last Tuesday carries Tuesday's date and today's position, and
+        // conflating them misreports how fresh the fix is.
+        locationCapturedAt: position != null
+            ? DateTime.now()
+            : widget.existing?.locationCapturedAt,
         date: _date,
       ),
     );
@@ -492,6 +502,12 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
       });
       return;
     }
+
+    // The spot-naming offer, AFTER the write, because the cluster count has to
+    // include the transaction being saved — asking on the fourth visit has to be
+    // able to see all four.
+    await _maybeOfferToSaveSpot(provider, position);
+    if (!mounted) return;
     Navigator.pop(context);
   }
 
@@ -527,55 +543,43 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
     });
   }
 
-  Future<Position?> _tryCapturePosition() async {
-    try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return null;
+  /// Offers to name the spot, once the same spot has come up often enough.
+  ///
+  /// Only when this transaction carries coordinates: a cluster is built from
+  /// positions, and a transaction with no position cannot join one.
+  Future<void> _maybeOfferToSaveSpot(
+    TransactionProvider provider,
+    Position? position,
+  ) async {
+    if (position == null || !mounted) return;
 
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        return null;
-      }
+    // Already linked to a saved place: there is nothing left to name.
+    final locations = context.read<LocationProvider>().locations;
+    final candidate = TransactionLocationService.clusterAfterSave(
+      transactions: provider.allLiveTransactions(),
+      savedLocations: locations,
+    );
+    if (candidate == null) return;
 
-      return await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium,
-        timeLimit: const Duration(seconds: 8),
-      ).timeout(const Duration(seconds: 10), onTimeout: () => throw 'timeout');
-    } catch (_) {
-      return null;
-    }
-  }
+    final wantsSave = await offerToSaveCluster(
+      context,
+      candidate,
+      noun: 'Spending',
+    );
+    if (!wantsSave || !mounted) return;
 
-  Future<bool?> _confirmCheckpoint(Location checkpoint) {
-    return showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.place_rounded),
-        title: Text('At ${checkpoint.name}?'),
-        content: const Text(
-          'Link this expense to this saved place? This helps location insights.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Not this time'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Yes'),
-          ),
-        ],
-      ),
+    // Opens the SAME form as the Locations tab's Add button, with the position
+    // already filled in — the user is asked for the only thing the app does not
+    // know, which is what to call it.
+    await AddLocationScreen.show(
+      context,
+      initialLatitude: candidate.centerLatitude,
+      initialLongitude: candidate.centerLongitude,
     );
   }
 }
 
 /// Cash or online, as two equal halves of one control.
-///
 /// Not a dropdown: there are only two answers, and a two-item menu costs a tap
 /// to open and a tap to choose, where this is one tap. Not a switch either,
 /// because "Online" is not the negation of "Cash" and a switch invites reading
@@ -1013,72 +1017,6 @@ class _SelectedCategoryRow extends StatelessWidget {
           ),
           TextButton(onPressed: onEdit, child: const Text('Change')),
         ],
-      ),
-    );
-  }
-}
-
-class _ContextMenuChip<T> extends StatelessWidget {
-  const _ContextMenuChip({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.items,
-    required this.onChanged,
-  });
-
-  final IconData icon;
-  final String label;
-  final T value;
-  final List<DropdownMenuItem<T>> items;
-  final ValueChanged<T> onChanged;
-
-  /// Widest a context chip is allowed to become.
-  ///
-  /// [DropdownMenu] sizes itself to its longest entry, so a long journey or
-  /// place title made the chip claim the whole width available inside the
-  /// sheet (measured at 312dp on a 360dp phone) and pushed its siblings onto
-  /// their own lines. The chip caps itself instead.
-  static const double maxChipWidth = 220;
-
-  @override
-  Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: maxChipWidth),
-      child: DropdownMenu<T>(
-        initialSelection: value,
-        onSelected: (v) => onChanged(v as T),
-        dropdownMenuEntries: items
-            .map(
-              (item) => DropdownMenuEntry<T>(
-                value: item.value as T,
-                label: (item.child as Text).data ?? '',
-              ),
-            )
-            .toList(),
-        // Without a cap the selected value is drawn at its natural width,
-        // which is what let the menu claim the whole row.
-        maxLines: 1,
-        inputDecorationTheme: const InputDecorationTheme(
-          isDense: true,
-          contentPadding: EdgeInsets.symmetric(
-            horizontal: AppSpacing.sm,
-            vertical: 0,
-          ),
-        ),
-        leadingIcon: Icon(icon, size: 18),
-        hintText: label,
-        textStyle: Theme.of(context).textTheme.labelLarge,
-        menuStyle: MenuStyle(
-          shape: WidgetStatePropertyAll(
-            RoundedRectangleBorder(borderRadius: AppRadii.smallRadius),
-          ),
-          // The open menu gets the same cap, so a long entry scrolls inside a
-          // popup rather than producing a popup wider than the screen.
-          maximumSize: WidgetStatePropertyAll(
-            const Size(maxChipWidth, double.infinity),
-          ),
-        ),
       ),
     );
   }

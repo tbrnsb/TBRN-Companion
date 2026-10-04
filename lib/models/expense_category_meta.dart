@@ -106,7 +106,17 @@ class CategoryRegistry {
       id: 'gear',
       name: 'Gear',
       icon: Icons.backpack_rounded,
-      color: Color(0xFF5C7A52),
+      // KNOWN ISSUE -- green family closeness: Gear and Freelance are both greens
+      // in the same hue band. Freelance is an income category and Gear an expense
+      // one, so they are never in the same donut but ARE drawn side by side as
+      // chips, legend swatches and detail headers on the same screens.
+      //
+      // Before this change Gear was #5C7A52, only 59 apart from Freelance's
+      // #4E7A52 on the luma-weighted distance this palette uses -- below the 150
+      // separation floor enforced by design_system_test.dart and
+      // category_theme_test.dart. Now #478F55, the pair is 276 apart: above the
+      // floor, but still the closest green pair. Freelance itself is unchanged.
+      color: Color(0xFF478F55),
       popularity: 3,
     ),
     CategoryMeta(
@@ -486,10 +496,19 @@ class CategoryRegistry {
       .join(' ');
 
   static CategoryMeta metaForIncome(String categoryName) {
-    return _incomeMetas.firstWhere(
-      (m) => m.id == categoryName,
-      orElse: () => _incomeMetas.last,
-    );
+    for (final meta in _incomeMetas) {
+      if (meta.id == categoryName) return meta;
+    }
+    // A custom income category is stored under its `custom:<name>` id (see
+    // [CustomCategory.id]). It is not one of the built-ins, so it used to miss
+    // here and fall back to Other Income -- which is exactly the bug that hid a
+    // chosen income category behind "Other" everywhere it was drawn (the form, the
+    // breakdown, the income detail). Hand it to [metaById], which resolves
+    // `custom:` ids from the registry a custom category is loaded into at startup.
+    final custom = metaById(categoryName);
+    if (custom != null) return custom;
+    // Anything still unrecognised preserves the historical default.
+    return _incomeMetas.last;
   }
 
   static List<CategoryMeta> incomeCategories() =>

@@ -118,11 +118,22 @@ class LocationProvider extends ChangeNotifier {
   }
 
   // Initialize - load all locations
+  ///
+  /// LOADS ONLY. It does not ask for location permission, and that is the whole
+  /// point of this method existing separately from [updateCurrentPosition].
+  ///
+  /// It used to call that too, which meant the app asked for the device's
+  /// location within a second of opening, before the user had done anything at
+  /// all. A permission prompt before the first tap reads as the app wanting
+  /// something from you rather than serving you, and for an app that stores
+  /// everything locally it is the first thing that makes someone suspicious.
+  ///
+  /// The saved places are what this screen needs to render, and they are in
+  /// storage. Position is a separate question, asked only when the user does
+  /// something that needs it: adding a place from where they are standing, or
+  /// asking for the geofence check.
   Future<void> initialize() async {
     await loadLocations();
-    if (!kIsWeb) {
-      await updateCurrentPosition();
-    }
   }
 
   // Load all locations from database
@@ -142,6 +153,12 @@ class LocationProvider extends ChangeNotifier {
   }
 
   // Get current GPS position
+  ///
+  /// The one place in the app that ASKS for location permission, and that is
+  /// deliberate: both callers are a person tapping something that means "where
+  /// am I" — "Use current location" while adding a place, or the locate button on
+  /// the Places tab. A prompt that answers the question you just asked is
+  /// reasonable. A prompt that arrives because the app opened is not.
   Future<void> updateCurrentPosition() async {
     if (kIsWeb) {
       _currentPosition = null;
