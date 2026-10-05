@@ -90,11 +90,14 @@ void main() {
       await settleUi(tester);
 
       expect(find.text('No checklists yet'), findsOneWidget);
-      // The empty state's own button.
-      expect(find.text('Create Checklist'), findsOneWidget);
-      // And no FAB saying "New Checklist" underneath it. Two buttons doing the
-      // same thing, worded differently, on the same screen.
-      expect(find.text('New Checklist'), findsNothing);
+      // The empty state's own button. One label, sentence case, the same
+      // string the FAB uses below — this pair used to read "Create Checklist"
+      // and "New Checklist" on one screen.
+      expect(find.text('Add checklist'), findsOneWidget);
+      // Exactly one, and no FAB underneath it. Two buttons doing the same thing
+      // on the same screen is the defect this asserts against; the button count
+      // is what proves it, not the label.
+      expect(find.text('Add checklist'), findsOneWidget);
       expect(find.byType(FloatingActionButton), findsNothing);
     });
 
@@ -115,7 +118,7 @@ void main() {
       await settleUi(tester);
 
       expect(find.text('No checklists yet'), findsNothing);
-      expect(find.text('New Checklist'), findsOneWidget);
+      expect(find.text('Add checklist'), findsOneWidget);
       expect(find.byType(FloatingActionButton), findsOneWidget);
     });
   });

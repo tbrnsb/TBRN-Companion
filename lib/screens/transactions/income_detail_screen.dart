@@ -8,6 +8,7 @@ import 'package:daily_companion/providers/location_provider.dart';
 import 'package:daily_companion/providers/settings_provider.dart';
 import 'package:daily_companion/providers/transaction_provider.dart';
 import 'package:daily_companion/services/transaction_location_service.dart';
+import 'package:daily_companion/theme/app_chart_colors.dart';
 import 'package:daily_companion/theme/app_theme.dart';
 import 'package:daily_companion/utils/format.dart';
 import 'package:daily_companion/widgets/context_menu_chip.dart';
@@ -59,7 +60,13 @@ class IncomeDetailScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(AppSpacing.lg),
             decoration: BoxDecoration(
-              color: meta.color.withValues(alpha: 0.12),
+              // Resolved against the page: this tile is a direct child of the
+              // Scaffold's ListView, so it stands on the page and not on a card.
+              color: AppCategorySurfaces.on(
+                meta,
+                colorScheme,
+                page: Theme.of(context).scaffoldBackgroundColor,
+              ).withValues(alpha: 0.12),
               borderRadius: AppRadii.mediumRadius,
             ),
             child: Column(
@@ -70,10 +77,21 @@ class IncomeDetailScreen extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(AppSpacing.sm),
                       decoration: BoxDecoration(
-                        color: meta.color.withValues(alpha: 0.2),
+                        color: AppCategorySurfaces.on(
+                          meta,
+                          colorScheme,
+                          page: Theme.of(context).scaffoldBackgroundColor,
+                        ).withValues(alpha: 0.2),
                         borderRadius: AppRadii.smallRadius,
                       ),
-                      child: Icon(meta.icon, color: meta.color),
+                      child: Icon(
+                        meta.icon,
+                        color: AppCategorySurfaces.on(
+                          meta,
+                          colorScheme,
+                          page: Theme.of(context).scaffoldBackgroundColor,
+                        ),
+                      ),
                     ),
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(
@@ -116,7 +134,12 @@ class IncomeDetailScreen extends StatelessWidget {
 
           TransactionDetailRow(
             icon: meta.icon,
-            iconColor: meta.color,
+            // Resolved against the page — this row is in the Scaffold's ListView.
+            iconColor: AppCategorySurfaces.on(
+              meta,
+              colorScheme,
+              page: Theme.of(context).scaffoldBackgroundColor,
+            ),
             label: 'Category',
             value: current.effectiveCategoryName,
           ),
@@ -600,22 +623,27 @@ class _IncomeCategoryPicker extends StatelessWidget {
       runSpacing: AppSpacing.xs,
       children: categories.map((meta) {
         final isSelected = meta.id == selected;
+        // Resolved against the page: this picker is a direct child of the
+        // Scaffold, not of a card.
+        final tint = AppCategorySurfaces.on(
+          meta,
+          colorScheme,
+          page: Theme.of(context).scaffoldBackgroundColor,
+        );
 
         return ChoiceChip(
           label: Text(meta.name),
           selected: isSelected,
           onSelected: (_) => onSelected(meta.id),
-          selectedColor: meta.color.withValues(alpha: 0.15),
+          selectedColor: tint.withValues(alpha: 0.15),
           labelStyle: TextStyle(
-            color: isSelected ? meta.color : colorScheme.onSurfaceVariant,
+            color: isSelected ? tint : colorScheme.onSurfaceVariant,
           ),
-          side: BorderSide(
-            color: isSelected ? meta.color : colorScheme.outline,
-          ),
+          side: BorderSide(color: isSelected ? tint : colorScheme.outline),
           avatar: Icon(
             meta.icon,
             size: 18,
-            color: isSelected ? meta.color : colorScheme.onSurfaceVariant,
+            color: isSelected ? tint : colorScheme.onSurfaceVariant,
           ),
         );
       }).toList(),

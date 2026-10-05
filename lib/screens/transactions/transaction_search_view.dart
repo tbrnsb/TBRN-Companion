@@ -7,6 +7,7 @@ import 'package:daily_companion/models/index.dart';
 import 'package:daily_companion/providers/journey_provider.dart';
 import 'package:daily_companion/providers/settings_provider.dart';
 import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/theme/app_chart_colors.dart';
 import 'package:daily_companion/theme/app_theme.dart';
 import 'package:daily_companion/utils/format.dart';
 
@@ -339,10 +340,23 @@ class _SearchResultTile extends StatelessWidget {
         width: 42,
         height: 42,
         decoration: BoxDecoration(
-          color: meta.color.withValues(alpha: 0.15),
+          // Resolved against the page this result row stands on.
+          color: AppCategorySurfaces.on(
+            meta,
+            scheme,
+            page: Theme.of(context).scaffoldBackgroundColor,
+          ).withValues(alpha: 0.15),
           borderRadius: AppRadii.smallRadius,
         ),
-        child: Icon(meta.icon, color: meta.color, size: 20),
+        child: Icon(
+          meta.icon,
+          color: AppCategorySurfaces.on(
+            meta,
+            scheme,
+            page: Theme.of(context).scaffoldBackgroundColor,
+          ),
+          size: 20,
+        ),
       ),
       title: Text(
         transaction.description,

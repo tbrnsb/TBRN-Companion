@@ -135,6 +135,16 @@ class AppPaletteSpec {
   /// Ordered, and every level is a DIFFERENT colour: a ladder where two levels
   /// coincide is the original bug in a new palette, and it is invisible until a
   /// user sees a card that has no edge.
+  ///
+  /// No level may equal [background] either, which is a distinct failure with a
+  /// distinct symptom. A tier that shares the page colour is not a faint card,
+  /// it paints nothing at all — and `surfaceMid` is not only the light `flat`
+  /// tier, it is `surfaceContainer`, which is what menus, dialogs, sheets,
+  /// filled fields, chips and snack bars draw themselves with. Four palettes
+  /// shipped with `surfaceMid == background`; in Catppuccin Latte that also
+  /// made the `flat` tier invisible, because `specFor` reads `flat` from
+  /// `surfaceContainer` in light mode. `test/palettes_test.dart` asserts every
+  /// level clears both its neighbours and the page.
   final Color surfaceLowest;
   final Color surfaceLow;
   final Color surfaceMid;
@@ -212,7 +222,9 @@ class AppPalettes {
     primary: Color(0xFFE8D9C2),
     secondary: Color(0xFFA8907D),
     onSurface: Color(0xFFE8D9C2),
-    surfaceLowest: Color(0xFF100D0A),
+    // Was #100D0A, which is `background` — see the ladder doc on the class.
+    // On a dark page the deepest step has to be a step DEEPER, not the page.
+    surfaceLowest: Color(0xFF100A07),
     surfaceLow: Color(0xFF171310),
     surfaceMid: Color(0xFF1C1712),
     surfaceHigh: Color(0xFF221C16),
@@ -234,7 +246,8 @@ class AppPalettes {
     onSurface: Color(0xFFCACCCC),
     surfaceLowest: Color(0xFF080A0B),
     surfaceLow: Color(0xFF0C0E10),
-    surfaceMid: Color(0xFF101315),
+    // Was #101315, which is `background` — see the ladder doc on the class.
+    surfaceMid: Color(0xFF131618),
     surfaceHigh: Color(0xFF16191C),
     surfaceHighest: Color(0xFF1E242A),
 
@@ -268,7 +281,8 @@ class AppPalettes {
     onSurface: Color(0xFFD4BE98), // foreground
     surfaceLowest: Color(0xFF1E1E1E), // dark_background
     surfaceLow: Color(0xFF232323),
-    surfaceMid: Color(0xFF282828),
+    // Was #282828, which is `background` — see the ladder doc on the class.
+    surfaceMid: Color(0xFF2B2B2B),
     surfaceHigh: Color(0xFF3C3836), // lighter_background
     surfaceHighest: Color(0xFF5E564F),
     surfaceRecessed: Color(0xFF161616), // darker_background
@@ -321,7 +335,8 @@ class AppPalettes {
     onSurface: Color(0xFFCDD6F4),
     surfaceLowest: Color(0xFF161622),
     surfaceLow: Color(0xFF181825),
-    surfaceMid: Color(0xFF1E1E2E),
+    // Was #1E1E2E, which is `background` — see the ladder doc on the class.
+    surfaceMid: Color(0xFF212131),
     surfaceHigh: Color(0xFF313244),
     surfaceHighest: Color(0xFF49495E),
     surfaceRecessed: Color(0xFF13131F),
@@ -341,7 +356,10 @@ class AppPalettes {
     onSurface: Color(0xFF4C4F69),
     surfaceLowest: Color(0xFFFFFFFF),
     surfaceLow: Color(0xFFF5F6FA),
-    surfaceMid: Color(0xFFEFF1F5),
+    // Was #EFF1F5, which is `background`. `specFor` reads the light `flat` tier
+    // from `surfaceContainer`, which is this slot, so a flat surface was
+    // painting the page colour exactly and had no border to fall back on.
+    surfaceMid: Color(0xFFE9ECF2),
     surfaceHigh: Color(0xFFE6E9EF),
     surfaceHighest: Color(0xFFDCE0E8),
     surfaceRecessed: Color(0xFFE9EBF1),

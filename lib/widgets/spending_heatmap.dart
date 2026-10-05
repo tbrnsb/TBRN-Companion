@@ -420,11 +420,13 @@ class _WeekdayHeader extends StatelessWidget {
                 // Small and dim on purpose. The header is an index, not content:
                 // it must be findable without competing with the spending it is
                 // explaining.
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  fontSize: 9,
-                  height: 1,
-                ),
+                //
+                // `labelSmall` unmodified. This overrode the size down to 9, which is
+                // a step below the floor of the type scale — the smallest role
+                // in the app was an off-scale literal rather than a stated one.
+                // A chart axis is exactly where the smallest type belongs, and
+                // `labelSmall` at 11 still fits the smallest cell.
+                style: theme.textTheme.labelSmall?.copyWith(height: 1),
               ),
             ),
           ),
@@ -554,19 +556,24 @@ class _Scale extends StatelessWidget {
           ),
         ),
         const SizedBox(width: AppSpacing.xxs),
-        for (var i = 0; i < 5; i++)
+        // The ramp's OWN length. This was a literal 5, sitting eight lines above a
+        // comment forbidding exactly that — so the legend claimed to follow the
+        // ramp and did not. Latent while every palette offers five steps, and a
+        // guaranteed lie the moment one does not.
+        for (var i = 0; i < rampLength; i++)
           Padding(
-            padding: EdgeInsets.only(right: i == 4 ? 0 : 2),
+            padding: EdgeInsets.only(
+              right: i == rampLength - 1 ? 0 : AppSpacing.xxs,
+            ),
             child: Container(
               width: cell,
               height: cell,
               decoration: BoxDecoration(
-                // Same ramp as the grid, or the legend lies about it.
                 // Same tokens as the grid, or the legend lies about it: the
                 // empty cell and the ramp steps both come from AppChartColors.
-                // The ramp's OWN length, never a literal 4. A hardcoded divisor
-                // silently skips steps the moment a theme offers a different
-                // number of them, and the legend then lies about the grid.
+                // Divided by the ramp's OWN length, never a literal — a
+                // hardcoded divisor silently skips steps the moment a theme
+                // offers a different number of them.
                 color: i == 0
                     ? AppChartColors.heatmapEmpty(scheme)
                     : AppChartColors.spendStep(scheme, i / (rampLength - 1)),

@@ -48,7 +48,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
+        // AppMotion.medium, not a hand-written 300ms. This is the one
+        // transition the user performs on every single tab change, and it was
+        // the only one outside the token — and outside the assertion that keeps
+        // the others inside the 150-250ms band.
+        duration: AppMotion.medium,
         switchInCurve: Curves.easeOutCubic,
         child: _buildBody(),
       ),
@@ -67,7 +71,11 @@ class _HomeScreenState extends State<HomeScreen> {
           color: colorScheme.surface,
           border: Border(
             top: BorderSide(
-              color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+              // Full strength, not 35%. At that alpha the border composited to
+              // about four RGB units off the surface on tbrn dark, which is
+              // not an edge — content scrolling under the dock had no anchor.
+              // `outline` is the role Material draws dividers with.
+              color: colorScheme.outline,
             ),
           ),
         ),

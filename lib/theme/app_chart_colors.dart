@@ -358,6 +358,43 @@ class AppCategorySurfaces {
     ('flat row', AppSurfaces.specFor(AppSurfaceTier.flat, scheme).color),
     ('raised card', AppSurfaces.specFor(AppSurfaceTier.raised, scheme).color),
   ];
+
+  /// The colour for a category tint, given the surface its widget stands on.
+  ///
+  /// The one thing a call site cannot work out for itself. Handing the resolver
+  /// a raw `Color` instead means every call site guesses, and a wrong guess is
+  /// invisible — the tint is still a colour, just resolved against a background
+  /// it is not on.
+  ///
+  /// Supply the surface EXPLICITLY, as [tier] or as [page]. The obvious
+  /// shorthand — "a widget not inside a card is on the page" — is wrong: the
+  /// page is `Theme.of(context).scaffoldBackgroundColor`, which `_base` fills
+  /// from `spec.background`, and `scheme.surface` is a DIFFERENT token
+  /// (`spec.surfaceLow`). The two are equal only in TBRN light; in the other
+  /// five specs, resolving against `scheme.surface` would tune every tint
+  /// against a background nothing is painted on. So there is deliberately no
+  /// default: naming the surface is the entire point of this method.
+  ///
+  /// - [tier] for a widget inside an [AppSurface]: `flat`, `raised`, `accent`.
+  /// - [page] for anything else — the scaffold's own background for a direct
+  ///   child of a Scaffold, or `scheme.surface` for a modal sheet, which this
+  ///   app themes to that token rather than to the scaffold.
+  static Color on(
+    CategoryMeta meta,
+    ColorScheme scheme, {
+    AppSurfaceTier? tier,
+    Color? page,
+  }) {
+    assert(
+      tier != null || page != null,
+      'AppCategorySurfaces.on needs the surface this widget stands on: pass a '
+      'tier inside an AppSurface, or the page colour. See the doc comment.',
+    );
+    return AppCategoryColour.forMeta(meta, switch (tier) {
+      null => page!,
+      final t => AppSurfaces.specFor(t, scheme).color,
+    });
+  }
 }
 
 /// The heatmap's own colour tokens, resolved against the cell background.

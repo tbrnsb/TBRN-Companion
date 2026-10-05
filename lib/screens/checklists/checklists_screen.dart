@@ -92,10 +92,17 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                     EmptyState(
                       icon: Icons.checklist_rounded,
                       title: 'No checklists yet',
-                      message:
-                          'Create your first checklist, or pack for the trip '
-                          'above',
-                      actionLabel: 'Create Checklist',
+                      // Conditional, because "the trip above" is only true when
+                      // the suggestion card is actually on screen. It is gated
+                      // on `suggestions.isNotEmpty`, so a user with no active
+                      // journey — exactly the user reading this — was told to
+                      // pack for a trip that was not there.
+                      message: activeJourney == null
+                          ? 'Create your first checklist, and we will suggest '
+                                'what to pack once you have a trip'
+                          : 'Create your first checklist, or pack for the trip '
+                                'above',
+                      actionLabel: 'Add checklist',
                       onAction: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(
@@ -114,11 +121,11 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
             },
       ),
       // Hidden while the list is empty. The empty state already offers
-      // "Create Checklist" in the middle of the screen, and a FAB saying
-      // "New Checklist" underneath it gave the user two buttons doing the same
-      // thing, worded differently, on the same screen. The empty state's
-      // action is the one call to action; the FAB returns once there is
-      // something to add to.
+      // "Add checklist" in the middle of the screen, and a FAB saying the same
+      // thing underneath it gave the user two buttons doing one job on the same
+      // screen. The empty state's action is the one call to action; the FAB
+      // returns once there is something to add to. One action, one label —
+      // both said "checklist", one in Title Case and one in sentence case.
       floatingActionButton: isEmpty
           ? null
           : FloatingActionButton.extended(
@@ -129,7 +136,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                 );
               },
               icon: const Icon(Icons.add_rounded),
-              label: const Text('New Checklist'),
+              label: const Text('Add checklist'),
             ),
     );
   }
@@ -477,7 +484,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                         if (checklist.items.isNotEmpty) ...[
                           const SizedBox(height: 8),
                           ClipRRect(
-                            borderRadius: BorderRadius.circular(4),
+                            borderRadius: AppRadii.smallRadius,
                             child: LinearProgressIndicator(
                               value: checklist.getProgress(),
                               minHeight: 4,

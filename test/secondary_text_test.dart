@@ -268,10 +268,12 @@ void main() {
 /// alpha: the widget's `color` field is the translucent paint and the user sees
 /// that over the card behind it.
 Color _dotColour(WidgetTester tester, Finder key) {
-  // The key is on the InkWell (the tap target); the painted box is a descendant,
-  // because a key on a zero-size AnimatedContainer is not a usable handle.
+  // The key is on the InkWell (the tap target) and the painted pip is no longer
+  // its DESCENDANT: the touch area is a sibling of the pip rather than its
+  // parent, so that the 44dp target can overflow a row that stays 24 tall. So
+  // search the dot's own slot for the painted box.
   final finder = find.descendant(
-    of: key,
+    of: find.ancestor(of: key, matching: find.byType(SizedBox)).first,
     matching: find.byType(AnimatedContainer),
   );
   final container = tester.widget<AnimatedContainer>(finder.first);

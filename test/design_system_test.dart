@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -8,6 +10,21 @@ import 'package:daily_companion/theme/app_theme.dart';
 import 'package:daily_companion/widgets/app_motion.dart';
 
 import 'test_viewports.dart';
+
+/// Every palette in every mode it can actually produce.
+List<({String name, ThemeData theme})> _matrix() {
+  final out = <({String name, ThemeData theme})>[];
+  for (final palette in AppPalette.values) {
+    if (palette.supportsLight) {
+      out.add((
+        name: '${palette.label} light',
+        theme: AppTheme.lightFor(palette),
+      ));
+    }
+    out.add((name: '${palette.label} dark', theme: AppTheme.darkFor(palette)));
+  }
+  return out;
+}
 
 void main() {
   group('category colour contrast', () {
@@ -345,6 +362,115 @@ void main() {
           .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator))
           .value!;
       expect(value, lessThanOrEqualTo(1));
+    });
+  });
+
+  group('a category tint is resolved where it is drawn', () {
+    // THE TEST THAT WAS MISSING, and the reason this change was worth making.
+    //
+    // `design_system_test.dart` asserted that `AppCategoryColour.resolveAll`
+    // returns a legible colour. It never asserted that any SCREEN calls it — so
+    // twenty-seven call sites read `meta.color` raw, the resolver was tested and
+    // almost never used, and the suite stayed green. This asserts the source.
+    //
+    // A source scan rather than a widget assertion, because the failure is not a
+    // wrong colour on screen: it is the absence of a call. There is no widget
+    // tree in which "nothing called the resolver" is visible.
+
+    /// The widget files a category tint can be drawn in.
+    const screens = ['lib/screens', 'lib/widgets'];
+
+    /// `meta.color` read directly, which is the thing being retired.
+    ///
+    /// `.withValues(...)` and `AppCategorySurfaces.on(...)` are both fine — one
+    /// is a different surface, the other is the resolver. A bare read is a tint
+    /// tuned for TBRN's cream and painted on whichever palette is active.
+    final rawRead = RegExp(r'meta\.color(?!\w)');
+
+    test('no screen or widget reads meta.color directly', () {
+      final offenders = <String>[];
+
+      for (final dir in screens) {
+        for (final file in Directory(dir).listSync(recursive: true)) {
+          if (file is! File || !file.path.endsWith('.dart')) continue;
+          final lines = file.readAsLinesSync();
+          for (var i = 0; i < lines.length; i++) {
+            final line = lines[i];
+            if (!rawRead.hasMatch(line)) continue;
+            // A comment naming the old behaviour is not a call site.
+            final trimmed = line.trimLeft();
+            if (trimmed.startsWith('//') || trimmed.startsWith('*')) continue;
+            offenders.add('${file.path}:${i + 1}  ${line.trim()}');
+          }
+        }
+      }
+
+      expect(
+        offenders,
+        isEmpty,
+        reason:
+            'these read the registry hex instead of resolving it for the '
+            'surface they are drawn on:\n${offenders.join('\n')}\n\n'
+            'Use AppCategorySurfaces.on(meta, scheme, tier: <tier>) inside an '
+            'AppSurface, or pass the page/sheet colour as `page:`.',
+      );
+    });
+
+    test('every palette keeps every tint legible on every surface it is drawn on', () {
+      // The property the resolver exists to provide, asserted per palette and
+      // per surface rather than on TBRN alone. Travel and Snacks were 2.20:1
+      // and 1.86:1 on Gruvbox's raised card before the call sites were fixed.
+      const minimum = 3.0;
+      final tooLow = <String>[];
+
+      for (final entry in _matrix()) {
+        final scheme = entry.theme.colorScheme;
+        // The page is the SCAFFOLD's background, not `scheme.surface` — they
+        // are different tokens and equal in only one of the six specs.
+        final page = entry.theme.scaffoldBackgroundColor;
+        final metas = _everyCategoryColour().toList();
+        final surfaces = <String, Color>{
+          'page': page,
+          'flat row': AppSurfaces.specFor(AppSurfaceTier.flat, scheme).color,
+          'raised card': AppSurfaces.specFor(
+            AppSurfaceTier.raised,
+            scheme,
+          ).color,
+        };
+
+        for (final surface in surfaces.entries) {
+          final drawn = AppCategoryColour.resolveAll([
+            for (final m in metas) m.$2,
+          ], surface.value);
+          for (var i = 0; i < metas.length; i++) {
+            final ratio = _contrastRatio(drawn[i], surface.value);
+            if (ratio < minimum) {
+              tooLow.add(
+                '${entry.name}: ${metas[i].$1} ${ratio.toStringAsFixed(2)} on ${surface.key}',
+              );
+            }
+          }
+        }
+      }
+
+      expect(tooLow, isEmpty, reason: tooLow.join('; '));
+    });
+
+    test('a resolved tint is never the surface it is drawn on', () {
+      for (final entry in _matrix()) {
+        final scheme = entry.theme.colorScheme;
+        for (final surface in AppCategorySurfaces.forScheme(scheme)) {
+          final drawn = AppCategoryColour.allBuiltInOn(surface.$2);
+          for (final e in drawn.entries) {
+            expect(
+              e.value,
+              isNot(surface.$2),
+              reason:
+                  '${entry.name}: ${e.key} resolved to the ${surface.$1} colour',
+            );
+          }
+        }
+      }
     });
   });
 

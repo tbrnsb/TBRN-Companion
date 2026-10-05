@@ -227,6 +227,59 @@ void main() {
       }
     });
 
+    test('a flat surface separates from the page it sits on', () {
+      // The gap that let four palettes ship a `surfaceMid` identical to the
+      // page. `flat` has `BorderSide.none`, so sharing the page colour is not a
+      // faint surface — it is no surface. In Catppuccin Latte that made the
+      // light `flat` tier paint the scaffold exactly, at distance 0.00.
+      for (final entry in _matrix()) {
+        final scheme = entry.theme.colorScheme;
+        expect(
+          _distance(
+            scheme.surface,
+            AppSurfaces.specFor(AppSurfaceTier.flat, scheme).color,
+          ),
+          greaterThan(6.0),
+          reason: '${entry.name}: a flat surface IS the page',
+        );
+      }
+    });
+
+    test('no role a surface or a Material component reads is the page colour', () {
+      // Scoped to the four roles `specFor` actually resolves a tier from, plus
+      // `surfaceMid`.
+      //
+      // `surfaceMid` is here because it is `surfaceContainer`, which is what
+      // menus, dialogs, sheets, filled fields, chips and snack bars paint
+      // themselves with in BOTH brightnesses — so it is not only the light
+      // `flat` tier. Four palettes shipped with it equal to `background`.
+      //
+      // `surfaceLow` is deliberately NOT asserted: `_schemeFor` maps it to
+      // `scheme.surface`, which IS the base role, so it is allowed to be the
+      // page. Asserting it would fail a palette for being correct.
+      for (final entry in _matrix()) {
+        // Read the colours off the built theme rather than off the palette
+        // table, so this asserts what the app hands out and not the literals.
+        final theme = entry.theme;
+        final scheme = theme.colorScheme;
+        final page = theme.scaffoldBackgroundColor;
+        final bySlot = <String, Color>{
+          'surfaceLowest': scheme.surfaceContainerLowest, // raised, light
+          'surfaceMid': scheme.surfaceContainer, // flat, light + the role
+          'surfaceHigh': scheme.surfaceContainerHigh, // raised, dark
+          'surfaceHighest': scheme.surfaceContainerHighest, // flat, dark
+        };
+
+        for (final slot in bySlot.entries) {
+          expect(
+            _distance(page, slot.value),
+            greaterThan(6.0),
+            reason: '${entry.name}: ${slot.key} is the page colour',
+          );
+        }
+      }
+    });
+
     test('the tiers resolve from the scheme, not from a named TBRN tone', () {
       // The specific defect: `specFor` returned `AppColors.darkSurface`, so a Card
       // stayed TBRN-brown on Kanagawa's ink whichever theme was active.

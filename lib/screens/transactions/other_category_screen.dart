@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:daily_companion/models/index.dart';
+import 'package:daily_companion/theme/app_chart_colors.dart';
 import 'package:daily_companion/theme/app_theme.dart';
 
 /// Picked from the "Other" screen: either a named type, or a custom name.
@@ -291,10 +292,23 @@ class _CategoryRow extends StatelessWidget {
       leading: Container(
         padding: const EdgeInsets.all(AppSpacing.xs),
         decoration: BoxDecoration(
-          color: meta.color.withValues(alpha: 0.16),
+          // Resolved against the page: a plain row on a chooser sheet.
+          color: AppCategorySurfaces.on(
+            meta,
+            colorScheme,
+            page: Theme.of(context).scaffoldBackgroundColor,
+          ).withValues(alpha: 0.16),
           borderRadius: AppRadii.smallRadius,
         ),
-        child: Icon(meta.icon, size: 20, color: meta.color),
+        child: Icon(
+          meta.icon,
+          size: 20,
+          color: AppCategorySurfaces.on(
+            meta,
+            colorScheme,
+            page: Theme.of(context).scaffoldBackgroundColor,
+          ),
+        ),
       ),
       title: Text(
         meta.name,

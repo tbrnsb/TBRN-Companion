@@ -6,6 +6,7 @@ import 'package:daily_companion/providers/journey_provider.dart';
 import 'package:daily_companion/providers/settings_provider.dart';
 import 'package:daily_companion/providers/transaction_provider.dart';
 import 'package:daily_companion/screens/journeys/journey_detail_screen.dart';
+import 'package:daily_companion/theme/app_chart_colors.dart';
 import 'package:daily_companion/theme/app_theme.dart';
 import 'package:daily_companion/utils/format.dart';
 
@@ -472,7 +473,15 @@ class _TransactionRow extends StatelessWidget {
 
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: Icon(meta.icon, color: meta.color),
+      // Resolved against the page: a plain ListTile in a sheet.
+      leading: Icon(
+        meta.icon,
+        color: AppCategorySurfaces.on(
+          meta,
+          Theme.of(context).colorScheme,
+          page: Theme.of(context).scaffoldBackgroundColor,
+        ),
+      ),
       title: Text(
         transaction.description.isEmpty ? meta.name : transaction.description,
         maxLines: 1,

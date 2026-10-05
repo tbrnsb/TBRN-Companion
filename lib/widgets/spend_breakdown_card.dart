@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import 'package:daily_companion/models/expense_category_meta.dart';
+import 'package:daily_companion/theme/app_chart_colors.dart';
 import 'package:daily_companion/theme/app_theme.dart';
 import 'package:daily_companion/utils/format.dart';
 
@@ -130,6 +131,23 @@ class _Donut extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The surface the slices are drawn ON, so the resolver is given the right
+    // one. This card is `AppSurfaceTier.raised`, and reading `meta.color`
+    // instead is what left Travel at 2.20:1 and Snacks at 1.86:1 on Gruvbox's
+    // raised card — the registry hex is tuned for TBRN's cream, not for
+    // whichever palette is active.
+    final surface = AppSurfaces.specFor(
+      AppSurfaceTier.raised,
+      Theme.of(context).colorScheme,
+    ).color;
+
+    // ONE resolve for the whole set, then every slice reads its share out of
+    // it. Resolving per slice would resolve the set repeatedly inside the
+    // resolver anyway, and the set is the unit — several of these colours are
+    // browns in one narrow lightness band, and moving only a failing one lands
+    // it on top of a passing neighbour.
+    final resolved = AppCategoryColour.allBuiltInOn(surface);
+
     return PieChart(
       PieChartData(
         sectionsSpace: 2,
@@ -140,7 +158,13 @@ class _Donut extends StatelessWidget {
           for (final segment in drawable)
             PieChartSectionData(
               value: segment.amount,
-              color: segment.meta.color,
+              // From the resolved set, never the registry hex. The `??` is a
+              // fallback for a category the resolver does not know — a custom
+              // one is handed back untouched by design, so this only fires if a
+              // name is missing from the built-in table entirely.
+              color:
+                  resolved[segment.meta.name] ??
+                  AppCategoryColour.forMeta(segment.meta, surface),
               radius: 20,
               showTitle: false,
             ),
@@ -169,6 +193,14 @@ class _LegendRow extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final percent = total == 0 ? 0 : (amount / total * 100);
 
+    // Same resolved colour the slice above it was drawn with, on the same
+    // surface. A legend swatch that disagrees with its own slice is worse than
+    // no legend.
+    final swatch = AppCategoryColour.forMeta(
+      meta,
+      AppSurfaces.specFor(AppSurfaceTier.raised, colorScheme).color,
+    );
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
@@ -177,8 +209,10 @@ class _LegendRow extends StatelessWidget {
             width: 10,
             height: 10,
             decoration: BoxDecoration(
-              color: meta.color,
-              borderRadius: BorderRadius.circular(3),
+              color: swatch,
+              // AppRadii.small, not a literal 3. At this swatch's 10px
+              // it rounds to a circle, which is what a legend key wants.
+              borderRadius: AppRadii.smallRadius,
             ),
           ),
           const SizedBox(width: AppSpacing.xs),

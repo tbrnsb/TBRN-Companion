@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:daily_companion/models/index.dart';
 import 'package:daily_companion/providers/settings_provider.dart';
 import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/theme/app_chart_colors.dart';
 import 'package:daily_companion/theme/app_theme.dart';
 import 'package:daily_companion/widgets/transaction_location_block.dart';
 import 'package:daily_companion/utils/format.dart';
@@ -51,7 +52,13 @@ class ExpenseDetailScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(AppSpacing.lg),
             decoration: BoxDecoration(
-              color: meta.color.withValues(alpha: 0.12),
+              // Resolved against the page: this tile is a direct child of the
+              // Scaffold's ListView, so it stands on the page and not on a card.
+              color: AppCategorySurfaces.on(
+                meta,
+                colorScheme,
+                page: Theme.of(context).scaffoldBackgroundColor,
+              ).withValues(alpha: 0.12),
               borderRadius: AppRadii.mediumRadius,
             ),
             child: Column(
@@ -62,10 +69,21 @@ class ExpenseDetailScreen extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(AppSpacing.sm),
                       decoration: BoxDecoration(
-                        color: meta.color.withValues(alpha: 0.2),
+                        color: AppCategorySurfaces.on(
+                          meta,
+                          colorScheme,
+                          page: Theme.of(context).scaffoldBackgroundColor,
+                        ).withValues(alpha: 0.2),
                         borderRadius: AppRadii.smallRadius,
                       ),
-                      child: Icon(meta.icon, color: meta.color),
+                      child: Icon(
+                        meta.icon,
+                        color: AppCategorySurfaces.on(
+                          meta,
+                          colorScheme,
+                          page: Theme.of(context).scaffoldBackgroundColor,
+                        ),
+                      ),
                     ),
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(
@@ -108,7 +126,12 @@ class ExpenseDetailScreen extends StatelessWidget {
 
           TransactionDetailRow(
             icon: meta.icon,
-            iconColor: meta.color,
+            // Resolved against the page — this row is in the Scaffold's ListView.
+            iconColor: AppCategorySurfaces.on(
+              meta,
+              colorScheme,
+              page: Theme.of(context).scaffoldBackgroundColor,
+            ),
             label: 'Category',
             value: current.effectiveCategoryName,
           ),
