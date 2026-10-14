@@ -451,7 +451,14 @@ class StorageService {
     }
     final existing = await getCustomCategories();
     final wanted = cleaned.toLowerCase();
-    if (existing.any((c) => c.name.trim().toLowerCase() == wanted)) {
+    // Matched on name AND kind. Name alone collapsed the two halves together:
+    // saving "Refund" as income after "Refund" as an expense was silently
+    // refused, so the income side quietly kept the expense side's record and
+    // every read of it was wrong. They are different categories that happen to
+    // share a word -- they sit in different charts and must not collide.
+    if (existing.any(
+      (c) => c.name.trim().toLowerCase() == wanted && c.kind == category.kind,
+    )) {
       return false;
     }
     await _expenseCategoriesBox.add(category.copyWith(name: cleaned).encode());
@@ -473,21 +480,21 @@ class StorageService {
   Future<void> updateCustomCategory({
     required String currentName,
     required CustomCategory updated,
+    CategoryKind kind = CategoryKind.expense,
   }) async {
     final wanted = currentName.trim().toLowerCase();
-    final all = await getCustomCategories();
-    final index = all.indexWhere((c) => c.name.trim().toLowerCase() == wanted);
-    if (index < 0) return;
+    // Matched on kind as well as name. The same word can be an expense category
+    // and an income category, and renaming one must not rewrite the other --
+    // which is what matching on the name alone did.
+    bool matches(CustomCategory c) =>
+        c.name.trim().toLowerCase() == wanted && c.kind == kind;
 
-    // Hive's `put` needs a key, and this box is keyed by an auto-increment. The
-    // record is therefore replaced in place by rewriting the value at the key
-    // the OLD record sits under, found by matching the stored string.
     for (final key in _expenseCategoriesBox.keys) {
       final stored = _expenseCategoriesBox.get(key);
       if (stored is! String) continue;
       final parsed = CustomCategory.fromStored(stored);
       if (parsed == null) continue;
-      if (parsed.name.trim().toLowerCase() == wanted) {
+      if (matches(parsed)) {
         await _expenseCategoriesBox.put(key, updated.encode());
         return;
       }

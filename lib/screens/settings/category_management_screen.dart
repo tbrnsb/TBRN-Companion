@@ -136,6 +136,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
     await StorageService().updateCustomCategory(
       currentName: existing.name,
       updated: result,
+      kind: existing.kind,
     );
     await _publish();
     await _load();

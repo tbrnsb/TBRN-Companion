@@ -70,7 +70,14 @@ class TransactionProvider extends ChangeNotifier {
   List<Transaction>? _allTransactions;
 
   List<Transaction> _transactions = [];
+
+  /// The user's own EXPENSE categories, newest first.
   List<String> _recentCustomCategories = [];
+
+  /// The user's own INCOME categories. Kept separate from the expense list so a
+  /// category named on the income side is never offered as an expense.
+  List<String> _recentIncomeCategories = [];
+
   bool _isLoading = false;
   String? _error;
   DateTime? _currentMonth;
@@ -80,6 +87,7 @@ class TransactionProvider extends ChangeNotifier {
 
   List<Transaction> get transactions => _transactions;
   List<String> get recentCustomCategories => _recentCustomCategories;
+  List<String> get recentIncomeCategories => _recentIncomeCategories;
 
   /// Most recently used categories, newest first.
   ///
@@ -457,7 +465,27 @@ class TransactionProvider extends ChangeNotifier {
   Future<void> loadRecentCustomCategories() async {
     try {
       final stored = await _storageService.getCustomCategories();
-      _recentCustomCategories = [for (final category in stored) category.name];
+      // The two kinds are kept apart from here all the way to the pickers.
+      //
+      // "Random" was saved under Income in Settings and then offered when adding
+      // an EXPENSE. The flattened list was the cause: a category carries a
+      // `kind`, and it was dropped at the one point every consumer read through,
+      // so the expense form could not have known better. A category named in the
+      // income form is money coming IN, and offering it for an expense is not a
+      // harmless extra choice -- it is a transaction filed under the wrong half
+      // of the ledger, which then misreports the balance and every budget.
+      //
+      // Same name in both halves is allowed and stays allowed: they are
+      // different lists drawn in different charts, and a user may genuinely have
+      // a "Refund" on each side.
+      _recentCustomCategories = [
+        for (final category in stored)
+          if (category.kind == CategoryKind.expense) category.name,
+      ];
+      _recentIncomeCategories = [
+        for (final category in stored)
+          if (category.kind == CategoryKind.income) category.name,
+      ];
       CategoryRegistry.setCustomCategories(stored);
       notifyListeners();
     } catch (e) {
@@ -465,18 +493,21 @@ class TransactionProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> addCustomCategory(String categoryName) async {
+  Future<void> addCustomCategory(
+    String categoryName, {
+    CategoryKind kind = CategoryKind.expense,
+  }) async {
     final cleaned = categoryName.trim();
     if (cleaned.isEmpty) return;
     try {
-      await _storageService.addExpenseCategory(cleaned);
+      await _storageService.addCustomCategory(
+        CustomCategory(name: cleaned, kind: kind),
+      );
       // Re-read rather than patch the cache: the name is now in storage, and the
-      // record that came back carries the colour and icon too.
+      // record that came back carries the colour and icon too. Patching by hand
+      // is what put an income category in the expense picker -- the hand had no
+      // way to know which of the two lists it belonged to.
       await loadRecentCustomCategories();
-      if (!_recentCustomCategories.contains(cleaned)) {
-        _recentCustomCategories.insert(0, cleaned);
-      }
-      notifyListeners();
     } catch (e) {
       _error = 'Failed to save custom category: $e';
       notifyListeners();

@@ -370,4 +370,83 @@ void main() {
       }
     });
   });
+
+  group('an income category is not an expense category', () {
+    // A category named "Random" under Income was then offered when adding an
+    // EXPENSE. Not a harmless extra choice: the row lands on the wrong half of
+    // the ledger, so the balance, the charts and every budget are wrong while
+    // looking right.
+    test('the expense picker is not offered the income one', () async {
+      SharedPreferences.setMockInitialValues({});
+      await initTestStorage();
+
+      await StorageService().addCustomCategory(
+        const CustomCategory(name: 'Random', kind: CategoryKind.income),
+      );
+
+      final provider = TransactionProvider();
+      await provider.initialize();
+      addTearDown(provider.dispose);
+
+      expect(provider.recentCustomCategories, isNot(contains('Random')));
+    });
+
+    test('the income picker is offered its own', () async {
+      SharedPreferences.setMockInitialValues({});
+      await initTestStorage();
+
+      await StorageService().addCustomCategory(
+        const CustomCategory(name: 'Random', kind: CategoryKind.income),
+      );
+
+      final provider = TransactionProvider();
+      await provider.initialize();
+      addTearDown(provider.dispose);
+
+      expect(provider.recentIncomeCategories, contains('Random'));
+    });
+
+    test('a category added through the provider keeps its kind', () async {
+      // The form that invents a name writes through here, and used to hardcode
+      // the expense kind regardless of which form called it.
+      SharedPreferences.setMockInitialValues({});
+      await initTestStorage();
+
+      final provider = TransactionProvider();
+      await provider.initialize();
+      addTearDown(provider.dispose);
+
+      await provider.addCustomCategory('Freelance', kind: CategoryKind.income);
+
+      expect(provider.recentIncomeCategories, contains('Freelance'));
+      expect(provider.recentCustomCategories, isNot(contains('Freelance')));
+
+      final stored = await StorageService().getCustomCategories();
+      expect(
+        stored.firstWhere((c) => c.name == 'Freelance').kind,
+        CategoryKind.income,
+      );
+    });
+
+    test('the same name on both sides is allowed and stays separate', () async {
+      // A user may genuinely have a Refund as income and a Refund as an
+      // expense. They are drawn in different charts, so there is no collision.
+      SharedPreferences.setMockInitialValues({});
+      await initTestStorage();
+
+      await StorageService().addCustomCategory(
+        const CustomCategory(name: 'Refund', kind: CategoryKind.expense),
+      );
+      await StorageService().addCustomCategory(
+        const CustomCategory(name: 'Refund', kind: CategoryKind.income),
+      );
+
+      final provider = TransactionProvider();
+      await provider.initialize();
+      addTearDown(provider.dispose);
+
+      expect(provider.recentCustomCategories, contains('Refund'));
+      expect(provider.recentIncomeCategories, contains('Refund'));
+    });
+  });
 }
