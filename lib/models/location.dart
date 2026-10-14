@@ -40,6 +40,19 @@ class Location {
   /// [defaultRadiusMeters].
   final double radiusMeters;
   final String? journeyId; // Optional journey this place belongs to
+
+  /// Whether reaching this place should raise a notification.
+  ///
+  /// Per place rather than global, because the reason for one is that a place
+  /// you saved to be reminded about and a place you happened to pin are not the
+  /// same thing. A global switch cannot tell those apart, so it is either on for
+  /// every pin the user ever made, or off for the one pin they wanted.
+  ///
+  /// TRUE by default, and read defensively: a place written before this existed
+  /// was saved as a reminder in the user's mind, and defaulting it to off would
+  /// silently switch off notifications they had every reason to expect. The
+  /// whole feature is opt-OUT, per place.
+  final bool notificationsEnabled;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -52,6 +65,7 @@ class Location {
     this.color,
     this.icon,
     this.journeyId,
+    this.notificationsEnabled = true,
     double radiusMeters = defaultRadiusMeters,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -71,6 +85,7 @@ class Location {
       'color': color,
       'icon': icon,
       'journeyId': journeyId,
+      'notificationsEnabled': notificationsEnabled,
       'radiusMeters': radiusMeters,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
@@ -94,6 +109,7 @@ class Location {
       // than putting the "Are you at [name]?" prompt on the whole district.
       radiusMeters:
           (json['radiusMeters'] as num?)?.toDouble() ?? defaultRadiusMeters,
+      notificationsEnabled: json['notificationsEnabled'] != false,
       createdAt: DateTime.parse(json['createdAt']),
       updatedAt: DateTime.parse(json['updatedAt']),
     );
@@ -109,6 +125,7 @@ class Location {
     String? icon,
     String? journeyId,
     double? radiusMeters,
+    bool? notificationsEnabled,
     bool clearJourney = false,
   }) {
     return Location(
@@ -121,6 +138,7 @@ class Location {
       icon: icon ?? this.icon,
       journeyId: clearJourney ? null : (journeyId ?? this.journeyId),
       radiusMeters: radiusMeters ?? this.radiusMeters,
+      notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
       createdAt: createdAt,
       updatedAt: DateTime.now(),
     );

@@ -88,6 +88,23 @@ sealed class Transaction {
   /// it stays null until they choose one. Collapsing the two would mean either
   /// losing every unsaved location or inventing a place the user never named.
   final String? locationId;
+
+  /// Free text naming where this money was going, for a TRAVEL expense.
+  ///
+  /// SEPARATE FROM [locationId] ON PURPOSE. The location id points at a place
+  /// the user saved and can be drawn on a map; this is just the words on the
+  /// receipt. Conflating them would force a destination to become a saved place
+  /// before a taxi fare could be recorded, and the taxi fare is exactly the
+  /// thing someone wants to write down while standing at the rank.
+  ///
+  /// It is what makes "what did getting to SmatErr cost" answerable: the travel
+  /// expenses carrying this label add up to a trip's total, which a category
+  /// total alone cannot tell you.
+  ///
+  /// Null for everything that is not travel, and on every row written before
+  /// this field existed.
+  final String? destinationLabel;
+
   final double? latitude;
   final double? longitude;
 
@@ -120,6 +137,7 @@ sealed class Transaction {
     this.customCategoryName,
     this.paymentMethod,
     this.locationId,
+    this.destinationLabel,
     this.latitude,
     this.longitude,
     this.locationCapturedAt,
@@ -166,6 +184,7 @@ sealed class Transaction {
       // reads back as null. Same keys [Expense] used to write itself, so a record
       // on disk is unaffected by these moving up to the base class.
       'locationId': locationId,
+      'destinationLabel': destinationLabel,
       'latitude': latitude,
       'longitude': longitude,
       'locationCapturedAt': locationCapturedAt?.toIso8601String(),
@@ -220,6 +239,7 @@ class Expense extends Transaction {
     required this.category,
     required super.description,
     super.locationId,
+    super.destinationLabel,
     super.customCategoryName,
     super.paymentMethod,
     super.latitude,
@@ -281,6 +301,7 @@ class Expense extends Transaction {
       ),
       description: json['description'],
       locationId: json['locationId'],
+      destinationLabel: json['destinationLabel'],
       customCategoryName: json['customCategoryName'],
       paymentMethod: PaymentMethodX.fromName(json['paymentMethod'] as String?),
       latitude: (json['latitude'] as num?)?.toDouble(),
@@ -306,6 +327,7 @@ class Expense extends Transaction {
     ExpenseCategory? category,
     String? description,
     String? locationId,
+    String? destinationLabel,
     String? customCategoryName,
     PaymentMethod? paymentMethod,
     double? latitude,
@@ -328,6 +350,7 @@ class Expense extends Transaction {
       category: category ?? this.category,
       description: description ?? this.description,
       locationId: clearLocation ? null : (locationId ?? this.locationId),
+      destinationLabel: destinationLabel ?? this.destinationLabel,
       customCategoryName: customCategoryName ?? this.customCategoryName,
       paymentMethod: paymentMethod ?? this.paymentMethod,
       latitude: clearCoordinates ? null : (latitude ?? this.latitude),
@@ -357,6 +380,7 @@ class Income extends Transaction {
     super.customCategoryName,
     super.paymentMethod,
     super.locationId,
+    super.destinationLabel,
     super.latitude,
     super.longitude,
     super.locationCapturedAt,
@@ -383,6 +407,7 @@ class Income extends Transaction {
       customCategoryName: json['customCategoryName'],
       paymentMethod: PaymentMethodX.fromName(json['paymentMethod'] as String?),
       locationId: json['locationId'],
+      destinationLabel: json['destinationLabel'],
       latitude: (json['latitude'] as num?)?.toDouble(),
       longitude: (json['longitude'] as num?)?.toDouble(),
       locationCapturedAt: json['locationCapturedAt'] == null

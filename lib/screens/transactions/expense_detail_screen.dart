@@ -94,6 +94,28 @@ class ExpenseDetailScreen extends StatelessWidget {
                     color: colorScheme.onSurface,
                   ),
                 ),
+                // Read back, so a trip's total cost to get somewhere is visible
+                // per expense rather than only in a sum nobody can itemise.
+                if (current.destinationLabel != null &&
+                    current.destinationLabel!.isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.xs),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.flag_outlined,
+                        size: 15,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: AppSpacing.xs),
+                      Text(
+                        'To ${current.destinationLabel}',
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: AppSpacing.xs),
                 Text(
                   AppFormat.relativeDay(current.date),

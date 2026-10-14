@@ -63,6 +63,10 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
   double? _latitude;
   double? _longitude;
 
+  /// "Where to?" for a travel expense. Free text, so a taxi fare can name a
+  /// destination that was never saved as a place.
+  final _destinationController = TextEditingController();
+
   /// Which participant fronted this, on a shared trip.
   ///
   /// Null on a personal trip and on an expense saved before this field existed,
@@ -85,6 +89,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
     _descriptionController = TextEditingController(
       text: existing?.description ?? '',
     );
+    _destinationController.text = existing?.destinationLabel ?? '';
     _category = existing?.category ?? ExpenseCategory.food;
     if (existing == null) {
       final recentMeta = context
@@ -152,6 +157,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
   void dispose() {
     _amountController.dispose();
     _descriptionController.dispose();
+    _destinationController.dispose();
     super.dispose();
   }
 
@@ -310,14 +316,26 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
                     ),
                   if (locations.isNotEmpty)
                     ContextMenuChip<String?>(
-                      icon: Icons.place_rounded,
+                      icon: _category == ExpenseCategory.travel
+                          // "Where to?" rather than "No place". A travel
+                          // expense is very often the cost of GETTING
+                          // somewhere -- the taxi, the bus, the fuel -- and
+                          // naming the destination is what lets that money be
+                          // read back as "what the trip to SmatErr cost" rather
+                          // than as an unattributed lump in a travel category.
+                          ? Icons.flight_takeoff_rounded
+                          : Icons.place_rounded,
                       label: _locationId == null
-                          ? 'No place'
+                          ? (_category == ExpenseCategory.travel
+                                ? 'Where to?'
+                                : 'No place')
                           : locations
                                     .where((l) => l.id == _locationId)
                                     .firstOrNull
                                     ?.name ??
-                                'No place',
+                                (_category == ExpenseCategory.travel
+                                    ? 'Where to?'
+                                    : 'No place'),
                       value: _locationId,
                       items: [
                         const DropdownMenuItem(
@@ -336,6 +354,29 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
                 ],
               ),
               const SizedBox(height: AppSpacing.lg),
+
+              // ONLY FOR TRAVEL, and only when there is somewhere to be going.
+              //
+              // A travel expense is very often the cost of GETTING somewhere --
+              // the taxi, the bus, the fuel -- and naming the destination is what
+              // lets that money be read back as "what this trip cost to reach",
+              // rather than as an unattributed lump inside a category. It is
+              // free text rather than a place picker because a fare is written
+              // down at the rank, not after saving a map pin for the place it
+              // is going to.
+              if (_category == ExpenseCategory.travel) ...[
+                TextField(
+                  key: const ValueKey('travel-destination-field'),
+                  controller: _destinationController,
+                  textInputAction: TextInputAction.done,
+                  decoration: InputDecoration(
+                    labelText: 'Where to?',
+                    hintText: 'SmatErr',
+                    prefixIcon: const Icon(Icons.flag_outlined),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+              ],
 
               if (_selectedJourney?.isShared ?? false) ...[
                 _PaidByPicker(
@@ -435,6 +476,11 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
               ? (_customCategoryName ?? 'Other')
               : null,
           locationId: _locationId,
+          destinationLabel: _category == ExpenseCategory.travel
+              ? (_destinationController.text.trim().isEmpty
+                    ? null
+                    : _destinationController.text.trim())
+              : null,
           journeyId: _journeyId,
           paymentMethod: _paymentMethod,
           date: _date,
@@ -474,6 +520,13 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
       // Only what the user chose BY HAND goes on the first write. The captured
       // fix is attached below, once it exists.
       locationId: _locationId,
+      // Travel only. Every other category stores null, so the field cannot be
+      // quietly filled in for something it does not mean.
+      destinationLabel: _category == ExpenseCategory.travel
+          ? (_destinationController.text.trim().isEmpty
+                ? null
+                : _destinationController.text.trim())
+          : null,
       customCategoryName: _category == ExpenseCategory.other
           ? (_customCategoryName ?? 'Other')
           : null,

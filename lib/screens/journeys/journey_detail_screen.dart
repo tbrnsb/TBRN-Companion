@@ -291,6 +291,42 @@ class JourneyDetailScreen extends StatelessWidget {
   }
 }
 
+/// Picks a new start time for a journey, date and time.
+///
+/// Separate from the header on purpose rather than inlined: the pickers are
+/// modal and the header is a `StatelessWidget` that rebuilds on every provider
+/// change, so a method opening dialogs from here would fire on unrelated
+/// rebuilds.
+Future<void> pickJourneyStartTime(BuildContext context, Journey journey) async {
+  final journeys = context.read<JourneyProvider>();
+
+  final date = await showDatePicker(
+    context: context,
+    initialDate: journey.startTime,
+    firstDate: DateTime(2020),
+    lastDate: DateTime.now().add(const Duration(days: 365)),
+  );
+  if (date == null || !context.mounted) return;
+
+  final time = await showTimePicker(
+    context: context,
+    initialTime: TimeOfDay.fromDateTime(journey.startTime),
+  );
+  if (!context.mounted) return;
+
+  final picked = DateTime(
+    date.year,
+    date.month,
+    date.day,
+    // A cancelled time picker keeps the old time rather than silently jumping
+    // the trip to midnight -- midnight is a real answer nobody chose.
+    time?.hour ?? journey.startTime.hour,
+    time?.minute ?? journey.startTime.minute,
+  );
+
+  await journeys.updateJourney(journey.copyWith(startTime: picked));
+}
+
 class _JourneyHeader extends StatelessWidget {
   const _JourneyHeader({
     required this.journey,
@@ -366,15 +402,39 @@ class _JourneyHeader extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.xs),
-          Text(
-            end == null
-                // "in progress" alone left the trip with no sense of how long it
-                // had been running. The duration counts up now, so a trip open
-                // for six hours says so rather than showing nothing.
-                ? 'Started $start · ${journey.durationText} so far'
-                : '$start – $end · ${journey.durationText}',
-            style: textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
+          // Tappable, because a planned start is a PLAN and a start is a fact.
+          // A trip set to leave at nine that left at eleven was recorded as
+          // nine, and with no way to correct it every duration on the trip --
+          // including the one on the card -- was wrong from then on, with no way
+          // to tell it apart from a trip that really did leave at nine.
+          InkWell(
+            onTap: () => pickJourneyStartTime(context, journey),
+            borderRadius: BorderRadius.circular(AppSpacing.xs),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      end == null
+                          // "in progress" alone left the trip with no sense of how
+                          // long it had been running. The duration counts up now,
+                          // so a trip open for six hours says so.
+                          ? 'Started $start · ${journey.durationText} so far'
+                          : '$start – $end · ${journey.durationText}',
+                      style: textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.xxs),
+                  Icon(
+                    Icons.edit_calendar_outlined,
+                    size: 13,
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                  ),
+                ],
+              ),
             ),
           ),
           // Legacy fallback ONLY: a journey written before the items became a real

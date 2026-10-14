@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:daily_companion/services/notification_service.dart';
 import 'package:daily_companion/models/index.dart';
 import 'package:daily_companion/services/storage_service.dart';
 import 'package:geolocator/geolocator.dart';
@@ -212,6 +213,7 @@ class LocationProvider extends ChangeNotifier {
 
       _status = LocationStatus.ready;
       _updateCurrentLocation();
+      await _checkArrivals();
       notifyListeners();
     } on TimeoutException {
       // No fix in time. This is a real, common case and deserves its own
@@ -241,6 +243,117 @@ class LocationProvider extends ChangeNotifier {
       }
     }
   }
+
+  /// Places already announced for the current visit.
+  ///
+  /// Without this, standing at a place fires the notification on every position
+  /// update -- which is every few seconds while the app is open, so "you have
+  /// arrived" would repeat until the user turned the phone off.
+  final Set<String> _arrived = {};
+
+  /// How close counts as arriving.
+  ///
+  /// WIDER THAN THE GEOFENCE ON PURPOSE. A place's own radius is the question
+  /// "am I inside this place", which is right for the cluster prompts and wrong
+  /// for arrival: at a 200m radius you are flagged as having arrived several
+  /// streets away, and the user is told they are somewhere they plainly are not.
+  static const double arrivalRadiusMeters = 1000;
+
+  /// Whether to announce arrival at [location] right now, and whether the user
+  /// is inside it at all.
+  ///
+  /// Split out from the loop so the rules are testable without a position fix,
+  /// which a unit test cannot produce and should not try to.
+  static ArrivalDecision shouldAnnounceArrival({
+    required Location location,
+    required double latitude,
+    required double longitude,
+    required bool alreadyAnnounced,
+  }) {
+    if (!location.notificationsEnabled) {
+      return const ArrivalDecision(inside: false, announce: false);
+    }
+
+    final distance = location.calculateDistance(latitude, longitude);
+    final inside = distance <= arrivalRadiusMeters;
+
+    // Re-arm only on leaving, so approaching again announces again. Clearing on
+    // arrival alone would silence every place the user visits twice.
+    return ArrivalDecision(
+      inside: inside,
+      announce: inside && !alreadyAnnounced,
+    );
+  }
+
+  /// Notifies once per approach to any place that asked to be notified about.
+  ///
+  /// SCOPE, STATED PLAINLY: this runs when a position is read, which the app
+  /// does while it is open and the user has asked for a fix. It is NOT a
+  /// background geofence and does not claim to be -- firing on arrival with the
+  /// app killed needs a foreground service and its own permission prompt, which
+  /// is a much larger thing to put in someone's pocket without asking. What this
+  /// does is honest: it tells you when you have arrived while you are using the
+  /// app to record where you are, which is the moment you most want to be told.
+  ///
+  /// A place can opt out individually. See [Location.notificationsEnabled].
+  Future<void> _checkArrivals() async {
+    final position = _currentPosition;
+    if (position == null || _locations.isEmpty) return;
+
+    for (final location in _locations) {
+      // The DECISION is a pure function so it can be tested without a GPS fix,
+      // which is the only way to test it at all -- a real position cannot be
+      // supplied in a unit test, and the logic that matters (who is eligible,
+      // who has already been told) is exactly the part that never needs one.
+      final announce = shouldAnnounceArrival(
+        location: location,
+        latitude: position.latitude,
+        longitude: position.longitude,
+        alreadyAnnounced: _arrived.contains(location.id),
+      );
+      if (!announce.inside) {
+        _arrived.remove(location.id);
+        continue;
+      }
+      if (!announce.announce) continue;
+      _arrived.add(location.id);
+
+      await NotificationService.showTripReminder(
+        title: 'You have arrived at ${location.name}',
+        body: location.journeyId != null
+            ? 'Journey reached. Check what you packed, and confirm you are ready '
+                  'to head back.'
+            : 'Check anything you meant to do here.',
+      );
+    }
+  }
+
+  /// Silences the arrival notification for one place.
+  Future<void> setNotificationsEnabled(
+    String locationId, {
+    required bool enabled,
+  }) async {
+    final location = _locations.firstWhere(
+      (l) => l.id == locationId,
+      orElse: () =>
+          Location(name: '', latitude: 0, longitude: 0, description: ''),
+    );
+    if (location.name.isEmpty || location.notificationsEnabled == enabled) {
+      return;
+    }
+    await updateLocation(location.copyWith(notificationsEnabled: enabled));
+    // Re-arm so switching it back on does not wait for the user to walk out
+    // and back in before the next arrival can be announced.
+    if (enabled) {
+      _arrived.remove(locationId);
+    } else {
+      _arrived.add(locationId);
+    }
+  }
+
+  /// Reset by an explicit test hook, never by the app.
+  @visibleForTesting
+  void forgetArrivals() => _arrived.clear();
 
   // Add new location bookmark
   Future<void> addLocation(Location location) async {
@@ -376,4 +489,17 @@ class LocationProvider extends ChangeNotifier {
       ),
     );
   }
+}
+
+/// Whether the user is inside a place, and whether to announce it.
+///
+/// Two questions rather than one boolean, because they answer different needs:
+/// [inside] drives re-arming the alert for next time, and [announce] drives
+/// showing one now. Collapsing them means either re-announcing on every reading
+/// or never re-announcing a place visited twice.
+class ArrivalDecision {
+  const ArrivalDecision({required this.inside, required this.announce});
+
+  final bool inside;
+  final bool announce;
 }

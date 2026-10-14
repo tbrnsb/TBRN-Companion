@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import 'package:daily_companion/models/index.dart';
 import 'package:daily_companion/providers/journey_provider.dart';
+import 'package:daily_companion/providers/location_provider.dart';
 import 'package:daily_companion/providers/settings_provider.dart';
 import 'package:daily_companion/providers/transaction_provider.dart';
 import 'package:daily_companion/services/place_launcher.dart';
@@ -123,6 +124,41 @@ class LocationDetailScreen extends StatelessWidget {
           ],
 
           const SizedBox(height: AppSpacing.lg),
+          const SizedBox(height: AppSpacing.lg),
+          // PER PLACE, because the reason for one is that a place you saved to
+          // be reminded about and a place you happened to pin are not the same
+          // thing. A single global switch cannot tell those apart, so it is
+          // either on for every pin ever made or off for the one pin wanted.
+          //
+          // The wording says WHEN it fires, because it does not fire whenever
+          // the user wants: the app only knows where it is while it is running
+          // and the user has asked for a fix. A promise of "you will be
+          // notified" that quietly never arrives with the app closed is worse
+          // than an honest limit.
+          AppSurface(
+            tier: AppSurfaceTier.raised,
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: SwitchListTile(
+              key: const ValueKey('place-notifications-toggle'),
+              contentPadding: EdgeInsets.zero,
+              value: location.notificationsEnabled,
+              title: const Text('Notify when I arrive'),
+              subtitle: Text(
+                location.notificationsEnabled
+                    ? 'Within '
+                          '${(LocationProvider.arrivalRadiusMeters / 1000).toStringAsFixed(1)} km, '
+                          'while the app is running'
+                    : 'Turned off for this place',
+                style: textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              onChanged: (value) => context
+                  .read<LocationProvider>()
+                  .setNotificationsEnabled(location.id, enabled: value),
+            ),
+          ),
+
           const SectionHeader('Breakdown'),
           const SizedBox(height: AppSpacing.xs),
           _Breakdown(transactions: transactions, currency: currency),
