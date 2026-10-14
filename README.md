@@ -107,6 +107,51 @@ The gear in the app bar, not a fifth tab.
   import
 - **Deleted**: trashed transactions, which can be put back
 
+## What's new in 1.1.1
+
+Nothing here breaks existing data: every record written by 1.1.0 loads exactly as
+it did, and no storage format changed.
+
+### Fixed
+
+- **A packing list typed while creating a journey never reached the Pack tab**, and
+  the trip's own "Pack for this trip" button stayed on screen for good. A journey
+  created with items now gets a real, tickable checklist immediately.
+- **Your own checklists sat below two decorative cards**, so a packed trip looked
+  unpacked. They come first now.
+- **A category saved as Income was offered when adding an Expense**, so a row could
+  be filed on the wrong half of the ledger — which then misreported the balance,
+  the charts and every budget while looking right.
+- **Renaming a category did not reach the transaction history.** Past rows now
+  follow the rename, with nothing rewritten and no transaction migrated.
+- **Adding a transaction could take ten seconds** when the phone had no GPS fix. The
+  row is written first and the coordinates backfilled.
+- **Four palettes shipped a card tier identical to the page colour**, so the Budgets,
+  Journeys and Active Journey cards rendered as nothing.
+- **A running journey read as "0m"**, and the running total across journeys
+  under-reported by however long you had been away.
+
+### Added
+
+- **"Heading home?"** walks your packing list, then ends the trip — blocked while
+  anything is unticked, with an explicit "End anyway".
+- **Journey durations count up** while a trip is open, and read in days.
+- **A journey can be declared solo** at creation. The shared section is hidden
+  rather than saying "Solo so far", and can be turned back on.
+- **Arrival notifications, per saved place**, at a 1 km radius. On by default,
+  switchable per place.
+- **"Where to?" on a travel expense**, so a taxi fare can name a destination you
+  never saved as a place.
+- **A journey's start time can be corrected** after the fact.
+- **The custom category colour picker stops offering colours already in use**,
+  while still allowing the same colour on income and expense.
+
+### Removed
+
+- **The packing suggestions.** They matched a destination against a keyword list,
+  so an unrecognised trip name got the same eight generic items every time, and
+  they rendered above your own list.
+
 ## What's new in 1.1.0
 
 Nothing in this release breaks your existing data. Every record written by 1.0.0

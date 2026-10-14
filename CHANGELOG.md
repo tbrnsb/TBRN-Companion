@@ -4,6 +4,75 @@ Notable changes to this project. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-10-14
+
+A bug-fix and small-features release. Nothing here breaks existing data: every
+record written by 1.1.0 loads exactly as it did, and no storage format changed.
+
+### Fixed
+
+- **A packing list typed while creating a journey never appeared in the Pack tab.**
+  Items written while starting a trip were kept as plain text on the journey, with
+  no ticks and no place in the Pack tab, and the trip's own "Pack for this trip"
+  button stayed on screen for good — tapping it answered "Already packed for this
+  trip" to someone who had never been able to tick anything. A journey created
+  with items now gets a real checklist in the same breath as the journey.
+- **Your own checklists sat below two decorative cards.** The location reminder and
+  everyday essentials rendered above "All Checklists", so a packed journey looked
+  like its list was missing. Your lists come first now.
+- **A custom category saved as Income was offered when adding an Expense.** The
+  two lists were flattened into one before the pickers ever saw them, so a row
+  could be filed on the wrong half of the ledger — which then misreported the
+  balance, the charts and every budget while looking right.
+- **Renaming a category did not reach the transaction history.** Past transactions
+  kept reading the old name while the picker offered the new one, and searching for
+  the new name could not find the old rows. Categories now carry the names they
+  were previously called, so history follows a rename. Nothing is rewritten and no
+  transaction is migrated.
+- **Adding a transaction could take ten seconds.** The save was queued behind a GPS
+  fix and a proximity question. The row is written first and the coordinates
+  backfilled, so the ledger updates immediately and a fix that never arrives costs
+  only a missing pin.
+- **Four palettes shipped a card tier identical to the page colour.** In Catppuccin
+  Latte, Gruvbox, Solitude and Catppuccin Mocha, `surfaceMid` was the page colour
+  itself, so the Budgets, Journeys and Active Journey cards rendered as nothing.
+- **The same name could not be an expense category and an income category.** The
+  second was silently refused, leaving the income side pointing at the expense
+  record.
+- **A running journey read as "0m".** Its duration only counted once the trip had
+  ended, so every active trip showed a precise-looking wrong answer and the running
+  total across journeys under-reported by however long you had been away.
+
+### Added
+
+- **"Heading home?"** Replaces "Complete journey". It walks your packing list,
+  lets you tick it off, and ends the trip — blocked while anything is unticked,
+  with an explicit "End anyway" rather than a silently disabled button.
+- **Journey durations count up while a trip is open**, and read in days, so a
+  week is "7d 2h" rather than "168h 0m".
+- **A journey can be declared solo** at creation. The shared section is hidden
+  entirely rather than saying "Solo so far" at you. Reversible: adding a
+  participant clears it, and the section offers "This trip is shared after all".
+- **Arrival notifications, per saved place.** You are told when you reach a place,
+  at a 1 km radius rather than the place's own tighter one. On by default, and
+  switchable per place.
+- **"Where to?" on a travel expense.** Free text, so a taxi fare can name a
+  destination you never saved as a place — which is what makes "what did getting
+  to SmatErr cost" answerable.
+- **A journey's start time can be corrected.** A trip planned for nine that left
+  at eleven was wrong for good, with no way to tell it apart from one that really
+  did leave at nine.
+- **The custom category colour picker stops offering colours already in use** —
+  any built-in of that kind, and any other custom category of that kind. The same
+  colour is still allowed on income and expense, since those are separate charts.
+
+### Removed
+
+- **The packing suggestions.** They matched the destination against a keyword
+  list, so a trip called "SmatErr" matched nothing and received the same eight
+  generic items every unrecognised name received. They also rendered above your
+  own list, which is part of why a packed trip looked unpacked.
+
 ## [1.1.0] - 2026-10-04
 
 Nothing in this release breaks your existing data. Every record written by 1.0.0
