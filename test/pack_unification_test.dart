@@ -108,6 +108,125 @@ void main() {
     });
   });
 
+  group('a journey typed with items gets a real checklist', () {
+    // The reported bug: items typed while creating a journey never appeared in
+    // the Pack tab, and the trip's own "Pack for this trip" button stayed on
+    // screen forever. Both had the same cause -- `Journey.items` is a plain
+    // `List<String>` with no ticks, no ids, and no place in the Pack tab, and
+    // the button only ever checked whether a *Checklist* existed, which none
+    // ever did.
+    late JourneyProvider journeys;
+    late ChecklistProvider checklists;
+
+    setUp(() async {
+      journeys = JourneyProvider();
+      checklists = ChecklistProvider();
+      await journeys.initialize();
+      await checklists.initialize();
+      addTearDown(journeys.dispose);
+      addTearDown(checklists.dispose);
+    });
+
+    test('the items become a checklist the trip owns', () async {
+      final journey = await journeys.startJourney(
+        destination: 'SmatErr',
+        origin: 'Home',
+        items: ['Boots', 'Jacket', 'Passport'],
+        checklists: checklists,
+      );
+
+      final owned = checklists.getChecklistsForJourney(journey.id);
+      expect(owned, hasLength(1));
+      expect(owned.single.items.map((i) => i.name).toSet(), {
+        'Boots',
+        'Jacket',
+        'Passport',
+      });
+    });
+
+    test('the pack button question is answered: the trip HAS a list', () async {
+      // The button is gated on this exact condition. While it was false the
+      // button stayed on screen and, tapped, reported "Already packed for this
+      // trip" -- telling the user they had packed when they had never been able
+      // to tick anything.
+      final journey = await journeys.startJourney(
+        destination: 'SmatErr',
+        origin: 'Home',
+        items: ['Boots'],
+        checklists: checklists,
+      );
+
+      expect(checklists.getChecklistsForJourney(journey.id), isNotEmpty);
+      expect(checklists.packProgressFor(journey.id), isNotNull);
+    });
+
+    test('the items are tickable, which is the whole point', () async {
+      final journey = await journeys.startJourney(
+        destination: 'SmatErr',
+        origin: 'Home',
+        items: ['Boots', 'Jacket'],
+        checklists: checklists,
+      );
+
+      expect(checklists.packProgressFor(journey.id)?.total, 2);
+
+      final boots = checklists
+          .getChecklistsForJourney(journey.id)
+          .single
+          .items
+          .firstWhere((i) => i.name == 'Boots');
+      await checklists.toggleItem(boots.id);
+
+      expect(checklists.packProgressFor(journey.id)?.packed, 1);
+      expect(checklists.packProgressFor(journey.id)?.total, 2);
+    });
+
+    test('a journey with NO items still gets no empty list', () async {
+      // An empty checklist is a dead screen with a tick on nothing. The trip
+      // simply has nothing to pack, which is a different fact and the "Pack for
+      // this trip" button is the right answer to it.
+      final journey = await journeys.startJourney(
+        destination: 'Somewhere',
+        origin: 'Home',
+        checklists: checklists,
+      );
+
+      expect(checklists.getChecklistsForJourney(journey.id), isEmpty);
+      expect(checklists.packProgressFor(journey.id), isNull);
+    });
+
+    test(
+      'packing for the same trip again does not make a second list',
+      () async {
+        final journey = await journeys.startJourney(
+          destination: 'SmatErr',
+          origin: 'Home',
+          items: ['Boots'],
+          checklists: checklists,
+        );
+
+        final again = await checklists.packForJourney(journey);
+
+        expect(again, isNull);
+        expect(checklists.getChecklistsForJourney(journey.id), hasLength(1));
+      },
+    );
+
+    test('a LEGACY journey keeps its items reachable', () {
+      // A journey written before this change has items in `Journey.items` and
+      // no checklist. The header still shows them, or they would be visible
+      // nowhere at all.
+      final legacy = Journey(
+        id: 'legacy',
+        destination: 'Old Trip',
+        origin: 'Home',
+        items: ['Old Item'],
+        startTime: DateTime(2026, 3, 1),
+      );
+      expect(legacy.items, ['Old Item']);
+    });
+  });
+
   group('the duplicate guard', () {
     late ChecklistProvider provider;
 

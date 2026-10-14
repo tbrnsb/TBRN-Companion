@@ -195,12 +195,32 @@ class ChecklistProvider extends ChangeNotifier {
       description: 'Packing list for ${journey.title}',
       journeyId: journey.id,
     );
+    return adoptJourneyItems(journey, checklist);
+  }
+
+  /// The trip's list, created and filled in one step.
+  ///
+  /// Split out from [packForJourney] because the two callers want different
+  /// things from it. Packing for a trip that already exists creates the list on
+  /// demand. Creating a trip with items typed into it has to do the same thing
+  /// at the moment the trip is written, because otherwise the items live in
+  /// `Journey.items` -- a plain `List<String>` with no ticks, no ids and no
+  /// place in the Pack tab -- and the trip's own "Pack for this trip" button
+  /// stays on screen forever, since it only ever checked whether a *Checklist*
+  /// existed.
+  ///
+  /// Returns the checklist it filled, or null if [checklist] is null.
+  Future<Checklist?> adoptJourneyItems(
+    Journey journey,
+    Checklist? checklist,
+  ) async {
+    if (checklist == null) return null;
     await addChecklist(checklist);
 
     // The trip's own items, deduped case-insensitively.
     //
     // Nothing is added beyond what the user wrote down. The old build seeded
-    // this list from a keyword match on the destination — "SmatErr" matched no
+    // this list from a keyword match on the destination -- "SmatErr" matched no
     // keyword, so it produced the same generic eight items for every trip whose
     // name was not literally "mountain" or "coast". Those items were the first
     // thing on the Pack tab and the trip's real list was below them, which read

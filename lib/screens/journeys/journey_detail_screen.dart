@@ -62,7 +62,10 @@ class JourneyDetailScreen extends StatelessWidget {
       body: ListView(
         padding: AppSpacing.screenPadding,
         children: [
-          _JourneyHeader(journey: current),
+          _JourneyHeader(
+            journey: current,
+            hasLinkedChecklist: checklists.isNotEmpty,
+          ),
           if (current.notes.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.sm),
             Text(
@@ -289,9 +292,17 @@ class JourneyDetailScreen extends StatelessWidget {
 }
 
 class _JourneyHeader extends StatelessWidget {
-  const _JourneyHeader({required this.journey});
+  const _JourneyHeader({
+    required this.journey,
+    required this.hasLinkedChecklist,
+  });
 
   final Journey journey;
+
+  /// True once the trip owns a real checklist, which is where its items are
+  /// rendered -- as tickable rows -- so repeating them here would show the same
+  /// list twice and only one of the two could ever be ticked.
+  final bool hasLinkedChecklist;
 
   @override
   Widget build(BuildContext context) {
@@ -363,7 +374,17 @@ class _JourneyHeader extends StatelessWidget {
               color: colorScheme.onSurfaceVariant,
             ),
           ),
-          if (journey.items.isNotEmpty) ...[
+          // Legacy fallback ONLY: a journey written before the items became a real
+          // checklist. Those rows live in `Journey.items` and have no ticks and
+          // no entry in the Pack tab, so dropping them here would make them
+          // unreachable from anywhere.
+          //
+          // A journey created now has a linked checklist, rendered as proper
+          // tickable rows further down this screen. Drawing its items here as
+          // well meant the same list appeared twice, in two different visual
+          // forms, one of which could never be ticked -- so the header said
+          // "nothing packed" while the list below said otherwise.
+          if (!hasLinkedChecklist && journey.items.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.sm),
             Wrap(
               spacing: AppSpacing.xs,

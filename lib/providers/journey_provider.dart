@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:daily_companion/providers/checklist_provider.dart';
 import 'package:daily_companion/models/index.dart';
 import 'package:daily_companion/services/notification_service.dart';
 import 'package:daily_companion/services/storage_service.dart';
@@ -245,12 +246,25 @@ class JourneyProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> startJourney({
+  /// Starts a journey and returns it.
+  ///
+  /// [checklists] is not optional in practice: when a journey is created with
+  /// items, those items must become a real checklist in the same breath, or the
+  /// trip carries a packing list nothing can tick, the Pack tab never shows it,
+  /// and the trip's own "Pack for this trip" button stays on screen forever
+  /// reporting that the user has already packed.
+  ///
+  /// The step lives here rather than in the screen that calls it, because that
+  /// was the bug: a caller that forgot it got a journey whose items went
+  /// nowhere. A test that called this method directly, without the screen around
+  /// it, proved exactly that.
+  Future<Journey> startJourney({
     required String destination,
     required String origin,
     String notes = '',
     List<String>? items,
     DateTime? plannedStart,
+    ChecklistProvider? checklists,
   }) async {
     final journey = Journey(
       destination: destination,
@@ -261,6 +275,19 @@ class JourneyProvider extends ChangeNotifier {
       completed: false,
     );
     await addJourney(journey);
+
+    final planned = items ?? const <String>[];
+    if (checklists != null && planned.any((i) => i.trim().isNotEmpty)) {
+      await checklists.adoptJourneyItems(
+        journey,
+        Checklist(
+          name: journey.title.isEmpty ? 'Pack' : 'Pack for ${journey.title}',
+          description: 'Packing list for ${journey.title}',
+          journeyId: journey.id,
+        ),
+      );
+    }
+    return journey;
   }
 
   Future<void> completeJourney(String id) async {

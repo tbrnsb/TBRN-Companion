@@ -258,6 +258,13 @@ class _JourneysScreenState extends State<JourneysScreen> {
             child: FilledButton.icon(
               onPressed: () async {
                 HapticFeedback.heavyImpact();
+
+                // Read at the moment of the action, not watched by the build.
+                // This screen does not render anything from ChecklistProvider, so
+                // depending on it here would mean rebuilding the whole timeline
+                // whenever a packing list changed -- for one value used once,
+                // on one button.
+                final checklists = context.read<ChecklistProvider>();
                 final destination = _destinationController.text.trim();
                 final origin = _originController.text.trim();
                 if (destination.isEmpty || origin.isEmpty) {
@@ -273,12 +280,19 @@ class _JourneysScreenState extends State<JourneysScreen> {
                   return;
                 }
 
+                // The items typed into this journey become a real, tickable
+                // checklist in the same breath as the journey itself. That step
+                // lives inside `startJourney`, not here: a caller that forgot it
+                // produced a journey whose items went nowhere, and the trip's
+                // own "Pack for this trip" button then stayed on screen forever
+                // reporting that the user had already packed.
                 await journeyProvider.startJourney(
                   destination: destination,
                   origin: origin,
                   notes: _notesController.text.trim(),
                   items: List.of(_plannedItems),
                   plannedStart: _plannedStart,
+                  checklists: checklists,
                 );
                 if (!mounted) return;
                 setState(() => _plannedStart = null);
