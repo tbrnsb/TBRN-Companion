@@ -187,7 +187,7 @@ void main() {
     }
   });
 
-  group('the "Complete journey" button is not louder than the trip', () {
+  group('the "Heading home?" button is not louder than the trip', () {
     // THE DEVICE COMPLAINT, second pass: the button was the most saturated
     // thing on the card in every theme, and the eye went to it before the trip
     // name -- which is the one thing the card is FOR. Filled in the warm accent
@@ -214,11 +214,11 @@ void main() {
         // perfectly right elsewhere on the screen.
         expect(tester.widget(cta), isA<OutlinedButton>());
         expect(
-          find.widgetWithText(FilledButton, 'Complete journey'),
+          find.widgetWithText(FilledButton, 'Heading home?'),
           findsNothing,
         );
         expect(
-          find.widgetWithText(OutlinedButton, 'Complete journey'),
+          find.widgetWithText(OutlinedButton, 'Heading home?'),
           findsOneWidget,
         );
 
@@ -254,7 +254,7 @@ void main() {
         );
         expect(side.color.a, greaterThan(0));
         expect(
-          find.text('Complete journey'),
+          find.text('Heading home?'),
           findsOneWidget,
           reason: 'the label itself must survive being restyled',
         );

@@ -368,7 +368,10 @@ class _JourneyHeader extends StatelessWidget {
           const SizedBox(height: AppSpacing.xs),
           Text(
             end == null
-                ? 'Started $start · in progress'
+                // "in progress" alone left the trip with no sense of how long it
+                // had been running. The duration counts up now, so a trip open
+                // for six hours says so rather than showing nothing.
+                ? 'Started $start · ${journey.durationText} so far'
                 : '$start – $end · ${journey.durationText}',
             style: textTheme.bodySmall?.copyWith(
               color: colorScheme.onSurfaceVariant,

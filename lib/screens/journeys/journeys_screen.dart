@@ -10,6 +10,7 @@ import 'package:daily_companion/providers/journey_provider.dart';
 import 'package:daily_companion/providers/location_provider.dart';
 import 'package:daily_companion/screens/journeys/journey_detail_screen.dart';
 import 'package:daily_companion/screens/journeys/journey_detail_sheets.dart';
+import 'package:daily_companion/screens/journeys/heading_home_sheet.dart';
 import 'package:daily_companion/theme/app_accents.dart';
 import 'package:daily_companion/theme/app_chart_colors.dart';
 import 'package:daily_companion/theme/app_theme.dart';
@@ -93,7 +94,10 @@ class _JourneysScreenState extends State<JourneysScreen> {
                     ),
                     reminderHints: journeyProvider.smartReminders,
                     onComplete: () async {
-                      await journeyProvider.completeJourney(active.id);
+                      // The sheet recaps the packing list and ends the trip. It
+                      // returns true only if it actually ended one, so a
+                      // dismissal leaves the trip running.
+                      await HeadingHomeSheet.show(context, active);
                     },
                   ),
                   const SizedBox(height: 12),
@@ -633,10 +637,15 @@ class _ActiveJourneyCard extends StatelessWidget {
           // AN OUTLINED BUTTON, not a filled one.
           //
           // The trip is in progress: it is the card's subject, and the route
-          // name is the thing being looked at. "Complete journey" is the action
-          // that ENDS all of that, so it should be reachable, not louder than
+          // name is the thing being looked at. Ending the trip is the action
+          // that CLOSES all of that, so it should be reachable, not louder than
           // the name. Filled in the warm accent it was the most saturated thing
           // on the card and the eye went to the button before the trip.
+          //
+          // "Heading home?" rather than "Complete journey": it is the moment
+          // described in the first person, and it leads somewhere -- the sheet
+          // that walks the packing list before ending anything. The old label
+          // named a state change with no indication anything else happens.
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
@@ -652,8 +661,8 @@ class _ActiveJourneyCard extends StatelessWidget {
                 ),
               ),
               onPressed: onComplete,
-              icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
-              label: const Text('Complete journey'),
+              icon: const Icon(Icons.home_rounded, size: 18),
+              label: const Text('Heading home?'),
             ),
           ),
         ],

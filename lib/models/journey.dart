@@ -268,17 +268,39 @@ class Journey {
   /// Display name — journeys are destination-centric.
   String get title => destination.isNotEmpty ? destination : origin;
 
+  /// How long the trip ran, in minutes.
+  ///
+  /// For a trip still going this is the time so far, not zero. It used to
+  /// return 0 unless `endTime` was set, so an active trip read as "0m" -- a
+  /// precise-looking wrong answer, which is worse than showing nothing. The
+  /// total this feeds also included the active trip at zero, so the running
+  /// total under-reported by however long the user had been away.
   int get durationMinutes {
-    if (endTime == null) return 0;
-    return endTime!.difference(startTime).inMinutes.abs();
+    final end = endTime ?? DateTime.now();
+    return end.difference(startTime).inMinutes.abs();
   }
 
+  /// True while the trip is still running, so a caller can say "so far" rather
+  /// than implying the trip is over.
+  bool get isRunning => endTime == null;
+
+  /// Human duration, with days so a week-long trip does not read "168h 0m".
   String get durationText {
     final totalMinutes = durationMinutes;
-    final hours = totalMinutes ~/ 60;
+    if (totalMinutes <= 0) return isRunning ? 'Just started' : '0m';
+
+    final days = totalMinutes ~/ (60 * 24);
+    final hours = (totalMinutes ~/ 60) % 24;
     final minutes = totalMinutes % 60;
-    if (hours == 0) return '${minutes}m';
-    return '${hours}h ${minutes}m';
+
+    final parts = <String>[
+      if (days > 0) '${days}d',
+      if (hours > 0) '${hours}h',
+    ];
+    // Minutes only when they carry information: "2d 3h" reads, "2d 3h 0m" is
+    // noise, and "0m" on its own is the only case worth printing.
+    if (minutes > 0 || parts.isEmpty) parts.add('${minutes}m');
+    return parts.join(' ');
   }
 }
 
