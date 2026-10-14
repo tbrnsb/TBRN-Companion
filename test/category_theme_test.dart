@@ -211,6 +211,94 @@ void main() {
       }
     });
   });
+  group('the colour picker withholds what is already in use', () {
+    // A category is identified by its colour on a chart, in a legend and in a
+    // list. Two categories sharing one are two things a person cannot tell
+    // apart, and the picker used to offer every swatch regardless.
+    test('no swatch collides with a built-in EXPENSE category', () {
+      final available = CategoryColours.availableFor(
+        kind: CategoryKind.expense,
+      );
+      final builtin = CategoryRegistry.expenseCategories()
+          .map((m) => m.color.toARGB32())
+          .toSet();
+
+      for (final swatch in available) {
+        expect(
+          builtin,
+          isNot(contains(swatch)),
+          reason: 'a custom expense must not be offered a built-in colour',
+        );
+      }
+    });
+
+    test('no swatch collides with a built-in INCOME category', () {
+      final available = CategoryColours.availableFor(kind: CategoryKind.income);
+      final builtin = CategoryRegistry.incomeCategories()
+          .map((m) => m.color.toARGB32())
+          .toSet();
+
+      for (final swatch in available) {
+        expect(builtin, isNot(contains(swatch)));
+      }
+    });
+
+    test('a colour already used by a custom category is withheld', () {
+      final taken = CategoryColours.swatches.first;
+      final available = CategoryColours.availableFor(
+        kind: CategoryKind.expense,
+        existing: [CustomCategory(name: 'Coffee', colorValue: taken)],
+      );
+
+      expect(available, isNot(contains(taken)));
+    });
+
+    test('the SAME colour is allowed on income and expense', () {
+      // They are different charts, so there is no collision to avoid, and
+      // forcing them apart would invent a rule nobody asked for.
+      final shared = CategoryColours.swatches[1];
+      final available = CategoryColours.availableFor(
+        kind: CategoryKind.income,
+        existing: [
+          CustomCategory(
+            name: 'Refund',
+            colorValue: shared,
+            kind: CategoryKind.expense,
+          ),
+        ],
+      );
+
+      expect(
+        available,
+        contains(shared),
+        reason: 'an expense colour must not block the income picker',
+      );
+    });
+
+    test('editing a category keeps its own colour available', () {
+      // Otherwise opening a category and saving would silently move it.
+      final mine = CategoryColours.swatches[2];
+      final available = CategoryColours.availableFor(
+        kind: CategoryKind.expense,
+        existing: [CustomCategory(name: 'Coffee', colorValue: mine)],
+        keepColour: mine,
+      );
+
+      expect(available, contains(mine));
+    });
+
+    test('something is always offered', () {
+      // A picker with nothing left in it would be a dead screen. The built-ins
+      // are all fixed hexes and the swatch list is longer than they.
+      for (final kind in CategoryKind.values) {
+        expect(
+          CategoryColours.availableFor(kind: kind),
+          isNotEmpty,
+          reason: 'the picker must never be empty',
+        );
+      }
+    });
+  });
 }
 
 /// WCAG relative luminance, then the ratio.

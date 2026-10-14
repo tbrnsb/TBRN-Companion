@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'package:daily_companion/models/expense_category_meta.dart';
+import 'package:daily_companion/models/custom_category.dart';
+
 /// The icon vocabulary a user can give their own category.
 ///
 /// THE SHAPE IS [PlaceIcons]' AND THAT IS THE POINT. A location stores an icon
@@ -408,4 +411,49 @@ class CategoryColours {
     0xFF6B8E4E, // fern
     0xFFA05A7A, // plum
   ];
+
+  /// The swatches still available for a NEW category of [kind].
+  ///
+  /// Two colours are withheld, and both for the same reason: a category is
+  /// identified by its colour on a chart, in a legend and in a list, so two
+  /// categories sharing one is two things a person cannot tell apart.
+  ///
+  ///  - Anything already used by a BUILT-IN category of this kind. The nine
+  ///    expense categories ship with their own colours, and offering the same
+  ///    shade for a custom one put "Coffee" and "Food" in the same colour on the
+  ///    same donut.
+  ///  - Anything already used by another CUSTOM category OF THIS KIND. Income
+  ///    and expense are separate charts, so the same colour on both sides is
+  ///    harmless and is deliberately allowed -- someone may genuinely have a
+  ///    "Refund" on each, and forcing them apart would be inventing a rule the
+  ///    user did not ask for.
+  ///
+  /// Editing an existing category keeps its current colour available, otherwise
+  /// opening it and saving would silently move it to a different colour.
+  ///
+  /// Ordering and the source list are untouched; this only filters.
+  static List<int> availableFor({
+    required CategoryKind kind,
+    Iterable<CustomCategory> existing = const [],
+    int? keepColour,
+  }) {
+    final used = <int>{
+      for (final meta
+          in kind == CategoryKind.income
+              ? CategoryRegistry.incomeCategories()
+              : CategoryRegistry.expenseCategories())
+        meta.color.toARGB32(),
+      for (final category in existing)
+        if (category.kind == kind && category.colorValue != null)
+          category.colorValue!,
+    };
+    // `keepColour` is the category being edited; its own colour must not be
+    // filtered out from under it.
+    if (keepColour != null) used.remove(keepColour);
+
+    return [
+      for (final swatch in swatches)
+        if (!used.contains(swatch)) swatch,
+    ];
+  }
 }

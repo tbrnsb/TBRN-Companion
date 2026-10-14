@@ -114,7 +114,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => const _CategoryEditor(),
+      builder: (_) => _CategoryEditor(allCategories: _custom),
     );
     if (result == null || !mounted) return;
     await StorageService().addCustomCategory(result);
@@ -130,7 +130,8 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => _CategoryEditor(existing: existing),
+      builder: (_) =>
+          _CategoryEditor(existing: existing, allCategories: _custom),
     );
     if (result == null || !mounted) return;
     await StorageService().updateCustomCategory(
@@ -373,9 +374,15 @@ class _BuiltInList extends StatelessWidget {
 
 /// The add/edit form, as a sheet.
 class _CategoryEditor extends StatefulWidget {
-  const _CategoryEditor({this.existing});
+  const _CategoryEditor({this.existing, this.allCategories = const []});
 
   final CustomCategory? existing;
+
+  /// Every category the user has, so a colour already in use is not offered
+  /// again. Passed in rather than read from the registry: the registry is static
+  /// and repopulated asynchronously, so a sheet opened the instant Settings
+  /// loads would see an empty list and offer everything.
+  final List<CustomCategory> allCategories;
 
   @override
   State<_CategoryEditor> createState() => _CategoryEditorState();
@@ -490,7 +497,13 @@ class _CategoryEditorState extends State<_CategoryEditor> {
               spacing: AppSpacing.xs,
               runSpacing: AppSpacing.xs,
               children: [
-                for (final value in CategoryColours.swatches)
+                for (final value in CategoryColours.availableFor(
+                  kind: _kind,
+                  existing: widget.allCategories,
+                  // The category being edited keeps its own colour available, or
+                  // opening it and saving would quietly move it.
+                  keepColour: widget.existing?.colorValue,
+                ))
                   _SwatchChoice(
                     value: value,
                     selected: _colour == value,
