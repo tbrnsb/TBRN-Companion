@@ -233,8 +233,29 @@ class Expense extends Transaction {
   }) : super(type: TransactionType.expense);
 
   String getCategoryName() {
-    if (category == ExpenseCategory.other) return customCategoryName ?? 'Other';
-    return CategoryRegistry.metaFor(category).name;
+    if (category != ExpenseCategory.other) {
+      return CategoryRegistry.metaFor(category).name;
+    }
+    // Resolved through the registry rather than returned raw.
+    //
+    // The stored `customCategoryName` is a snapshot of what the category was
+    // called when the row was written. Renaming "random" to "misc" in Settings
+    // left every past transaction still reading "random" in the ledger, the
+    // search results and the detail screen, while the picker offered "misc" --
+    // so the same category had two names on screen at once, and a search for
+    // the new one could not find the old rows.
+    //
+    // `categoryMeta` below already does this lookup for the colour and icon,
+    // which is why those followed the rename and the label did not. One rule,
+    // now used in both places: a row stores the name it was written with, and
+    // every label is resolved through the registry at render time.
+    //
+    // A row whose category has been DELETED resolves to null and keeps its
+    // stored text. That is the only honest answer available: the name it was
+    // filed under is still the only name that row has ever had.
+    return CategoryRegistry.customByName(customCategoryName)?.name ??
+        customCategoryName ??
+        'Other';
   }
 
   CategoryMeta get categoryMeta =>
@@ -469,8 +490,12 @@ extension TransactionExtensions on Transaction {
       return (this as Expense).getCategoryName();
     }
     final income = this as Income;
-    return income.customCategoryName ??
-        CategoryRegistry.metaForIncome(income.category).name;
+    // Same registry resolution as [Expense.getCategoryName], for the same reason:
+    // a renamed income category kept its old name on every past row.
+    return income.customCategoryName != null
+        ? (CategoryRegistry.customByName(income.customCategoryName)?.name ??
+              income.customCategoryName!)
+        : CategoryRegistry.metaForIncome(income.category).name;
   }
 
   ExpenseCategory? get expenseCategory {

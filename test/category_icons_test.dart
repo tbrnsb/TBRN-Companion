@@ -371,6 +371,163 @@ void main() {
     });
   });
 
+  group('a rename reaches the history', () {
+    // "random" was renamed and every PAST transaction still read the old name in
+    // the ledger, the search results and the detail screen, while the picker
+    // offered the new one. The same category had two names on screen at once,
+    // and searching for the new name could not find the old rows.
+    //
+    // The stored field is a snapshot of the name at write time, so the label is
+    // resolved through the registry at render time instead.
+    test('an old expense row reads the new name', () async {
+      SharedPreferences.setMockInitialValues({});
+      await initTestStorage();
+
+      await StorageService().addCustomCategory(
+        const CustomCategory(name: 'Random'),
+      );
+
+      final provider = TransactionProvider();
+      await provider.initialize();
+      addTearDown(provider.dispose);
+
+      final row = Expense(
+        id: 't1',
+        amount: 100,
+        category: ExpenseCategory.other,
+        description: 'something',
+        customCategoryName: 'Random',
+        date: DateTime(2026, 3, 4),
+      );
+      expect(row.getCategoryName(), 'Random');
+
+      // The rename. Storage matches on the OLD name and writes the new one, so
+      // the registry is re-published under the new id.
+      await StorageService().updateCustomCategory(
+        currentName: 'Random',
+        updated: const CustomCategory(name: 'Misc'),
+      );
+      await provider.loadRecentCustomCategories();
+
+      // The row is untouched on disk -- that is the point -- yet it reads
+      // correctly, because nothing is stored to rename.
+      expect(row.customCategoryName, 'Random');
+      expect(row.getCategoryName(), 'Misc');
+    });
+
+    test('an old income row reads the new name', () async {
+      SharedPreferences.setMockInitialValues({});
+      await initTestStorage();
+
+      await StorageService().addCustomCategory(
+        const CustomCategory(name: 'Random', kind: CategoryKind.income),
+      );
+
+      final provider = TransactionProvider();
+      await provider.initialize();
+      addTearDown(provider.dispose);
+
+      final row = Income(
+        id: 't2',
+        amount: 100,
+        category: IncomeCategory.salary.name,
+        description: 'payday',
+        customCategoryName: 'Random',
+        date: DateTime(2026, 3, 4),
+      );
+      expect(row.getCategoryName(), 'Random');
+
+      await StorageService().updateCustomCategory(
+        currentName: 'Random',
+        updated: const CustomCategory(name: 'Misc', kind: CategoryKind.income),
+        kind: CategoryKind.income,
+      );
+      await provider.loadRecentCustomCategories();
+
+      expect(row.getCategoryName(), 'Misc');
+    });
+
+    test('a DELETED category keeps the name the row was filed under', () async {
+      // There is no new name to show, so the stored text is the only honest
+      // answer. Resolving to "Other" would silently rewrite history.
+      SharedPreferences.setMockInitialValues({});
+      await initTestStorage();
+
+      final row = Expense(
+        id: 't3',
+        amount: 100,
+        category: ExpenseCategory.other,
+        description: 'gone',
+        customCategoryName: 'Deleted Thing',
+        date: DateTime(2026, 3, 4),
+      );
+
+      expect(row.getCategoryName(), 'Deleted Thing');
+    });
+
+    test('a name survives SEVERAL renames', () async {
+      // Someone who renames twice is rarer than someone who renames once, but
+      // the chain is the thing that breaks quietly: if only the immediately
+      // previous name is carried forward, a row written under the first name
+      // stops resolving after the second rename and goes stale without anyone
+      // noticing.
+      SharedPreferences.setMockInitialValues({});
+      await initTestStorage();
+
+      await StorageService().addCustomCategory(
+        const CustomCategory(name: 'Original'),
+      );
+
+      final provider = TransactionProvider();
+      await provider.initialize();
+      addTearDown(provider.dispose);
+
+      final row = Expense(
+        id: 't5',
+        amount: 100,
+        category: ExpenseCategory.other,
+        description: 'still resolvable',
+        customCategoryName: 'Original',
+        date: DateTime(2026, 3, 4),
+      );
+
+      for (final next in ['Middle', 'Final']) {
+        await StorageService().updateCustomCategory(
+          currentName: next == 'Middle' ? 'Original' : 'Middle',
+          updated: CustomCategory(name: next),
+        );
+        await provider.loadRecentCustomCategories();
+      }
+
+      expect(row.getCategoryName(), 'Final');
+    });
+
+    test('the lookup is case-insensitive, as the id scheme is', () async {
+      SharedPreferences.setMockInitialValues({});
+      await initTestStorage();
+
+      await StorageService().addCustomCategory(
+        const CustomCategory(name: 'Filter Coffee'),
+      );
+      final provider = TransactionProvider();
+      await provider.initialize();
+      addTearDown(provider.dispose);
+
+      final row = Expense(
+        id: 't4',
+        amount: 100,
+        category: ExpenseCategory.other,
+        description: 'a coffee',
+        customCategoryName: 'filter coffee',
+        date: DateTime(2026, 3, 4),
+      );
+
+      // The row was written with a different spelling and still resolves to the
+      // canonical one.
+      expect(row.getCategoryName(), 'Filter Coffee');
+    });
+  });
+
   group('an income category is not an expense category', () {
     // A category named "Random" under Income was then offered when adding an
     // EXPENSE. Not a harmless extra choice: the row lands on the wrong half of

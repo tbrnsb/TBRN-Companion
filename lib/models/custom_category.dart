@@ -33,10 +33,26 @@ class CustomCategory {
     this.kind = CategoryKind.expense,
     this.colorValue,
     this.iconKey,
+    this.aliases = const [],
   });
 
   final String name;
   final CategoryKind kind;
+
+  /// Names this category was called before, oldest first.
+  ///
+  /// The id is DERIVED from the name -- `custom:<lowercased name>` -- so a
+  /// rename does not move the category, it destroys one key and create another.
+  /// Every transaction already filed under the old name holds that name as
+  /// plain text, and without this the rename left the whole history reading
+  /// "random" while the picker offered "misc": one category, two names on
+  /// screen, and a search for the new name that could not find the old rows.
+  ///
+  /// Carrying the previous names forward is what lets a past row resolve to the
+  /// category that used to answer to it. Kept on the record rather than in the
+  /// transaction, because there is no reason to rewrite every row and no way to
+  /// reach them all from the rename itself.
+  final List<String> aliases;
 
   /// The colour as a packed ARGB int, or null to use the generic custom colour.
   ///
@@ -90,6 +106,7 @@ class CustomCategory {
     'kind': kind.name,
     if (colorValue != null) 'color': colorValue,
     if (iconKey != null) 'icon': iconKey,
+    if (aliases.isNotEmpty) 'aliases': aliases,
   };
 
   String encode() => CustomCategoryCodec.encode(this);
@@ -151,6 +168,16 @@ class CustomCategoryCodec {
     final kind = decoded['kind'];
     final colour = decoded['color'];
     final iconKey = decoded['icon'];
+    // Read defensively: a record written before aliases existed has no key, and
+    // one written by a build that stored them differently must not be dropped
+    // over a field that only exists to make history read correctly.
+    final rawAliases = decoded['aliases'];
+    final aliases = <String>[
+      if (rawAliases is List)
+        for (final alias in rawAliases)
+          if (alias is String && alias.trim().isNotEmpty && alias != name)
+            alias,
+    ];
     return CustomCategory(
       name: name,
       kind: kind == CategoryKind.income.name
@@ -161,6 +188,7 @@ class CustomCategoryCodec {
       // record written by the build that briefly offered emoji has a key here
       // this catalogue has never heard of, so it falls back to the generic
       // sparkle -- which is exactly what it was drawing before.
+      aliases: aliases,
       iconKey: iconKey is String && CategoryIcons.isKnown(iconKey)
           ? iconKey
           : null,

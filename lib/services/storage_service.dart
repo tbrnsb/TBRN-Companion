@@ -494,10 +494,26 @@ class StorageService {
       if (stored is! String) continue;
       final parsed = CustomCategory.fromStored(stored);
       if (parsed == null) continue;
-      if (matches(parsed)) {
-        await _expenseCategoriesBox.put(key, updated.encode());
-        return;
-      }
+      if (!matches(parsed)) continue;
+
+      // CARRY THE OLD NAME FORWARD, or every transaction already filed under it
+      // keeps reading the name it was written with for the rest of time. The id
+      // is derived from the name, so a rename destroys the old key outright and
+      // there is nothing on the old row to find.
+      final renamed = wanted == updated.name.trim().toLowerCase()
+          ? updated
+          : CustomCategory(
+              name: updated.name,
+              kind: updated.kind,
+              colorValue: updated.colorValue,
+              iconKey: updated.iconKey,
+              aliases: [
+                parsed.name,
+                ...parsed.aliases.where((a) => a != parsed.name),
+              ],
+            );
+      await _expenseCategoriesBox.put(key, renamed.encode());
+      return;
     }
   }
 

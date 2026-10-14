@@ -234,10 +234,57 @@ class CategoryRegistry {
   /// Replaces the held records. Called by the app once storage has been read.
   static void setCustomCategories(Iterable<CustomCategory> categories) {
     _customById = {for (final c in categories) c.id: c};
+    // Rebuilt from scratch every publish, never patched. A rename has to leave
+    // the old name pointing at the new record for every past transaction, and an
+    // alias that outlived the category it named would resurrect a deleted one.
+    _aliases = {
+      for (final c in categories)
+        for (final alias in c.aliases) alias.toLowerCase(): c.name,
+    };
   }
 
   /// The record for [id], or null when the user has not added it.
   static CustomCategory? customById(String id) => _customById[id];
+
+  /// The record for a BARE NAME, as a transaction stores it, or null.
+  ///
+  /// A row holds the name it was written with, not an id, so a label that wants
+  /// to follow a rename has to look the record up by name. Lowercased to match
+  /// the id scheme, which is lowercased for the same reason: "Coffee" and
+  /// "coffee" are one category to a person and two rows without it.
+  ///
+  /// FOLLOWS A RENAME. The id is derived from the name, so renaming a category
+  /// destroys the old key -- a plain lookup by the old name finds nothing and
+  /// every past row keeps reading the name it was written with. That is the bug
+  /// this method exists to fix, and a direct lookup cannot fix it on its own.
+  /// `_aliases` carries each category's previous names, so an old row resolves
+  /// to the category that used to answer to it.
+  ///
+  /// Null when the category has been deleted, which is a real answer and not a
+  /// failure -- the caller keeps whatever text the row was filed under, because
+  /// there is no new name to show.
+  static CustomCategory? customByName(String? name) {
+    if (name == null || name.trim().isEmpty) return null;
+    final key = name.trim().toLowerCase();
+
+    final direct = _customById['custom:$key'];
+    if (direct != null) return direct;
+
+    // An alias chain, bounded, so a name reused across several renames still
+    // lands. The bound is a guard against a cycle rather than a real limit: two
+    // categories cannot hold each other's names as aliases, because an alias is
+    // only ever recorded from a category that actually held the name.
+    var target = _aliases[key];
+    for (var hops = 0; target != null && hops < 8; hops++) {
+      final resolved = _customById['custom:${target.toLowerCase()}'];
+      if (resolved != null) return resolved;
+      target = _aliases[target.toLowerCase()];
+    }
+    return null;
+  }
+
+  /// Previous name (lowercased) -> current name, built on every publish.
+  static Map<String, String> _aliases = const {};
 
   /// Every category the user has added, in the order they were given.
   static List<CustomCategory> get customCategories =>
