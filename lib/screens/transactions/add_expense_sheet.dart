@@ -58,6 +58,11 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
   String? _locationId;
   String? _journeyId;
 
+  /// The position already on this row, so the save can tell a fresh fix from the
+  /// one it is replacing. Null on a new expense.
+  double? _latitude;
+  double? _longitude;
+
   /// Which participant fronted this, on a shared trip.
   ///
   /// Null on a personal trip and on an expense saved before this field existed,
@@ -102,6 +107,8 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
     _paymentMethod = existing?.paymentMethod ?? PaymentMethod.cash;
     _date = existing?.date ?? DateTime.now();
     _locationId = existing?.locationId;
+    _latitude = existing?.latitude;
+    _longitude = existing?.longitude;
     _journeyId =
         existing?.journeyId ??
         widget.initialJourneyId ??
@@ -449,8 +456,52 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
       return;
     }
 
-    // THE COORDINATES ARE CAPTURED FIRST, and unconditionally, before anything
-    // else is decided. They are the fact — where the phone was — and they do not
+    // THE WRITE GOES FIRST, and it no longer waits for a GPS fix.
+    //
+    // This used to read: capture a position (up to 10s on a cold fix), ask
+    // whether to link a nearby place, and only then write the row. So the save
+    // the user pressed was blocked behind the network and the satellite, and on
+    // a bad signal they watched a spinner for ten seconds to record a coffee.
+    //
+    // The coordinates are a bonus, not the transaction. Writing first puts the
+    // row in the ledger on the next frame -- notifyListeners fires inside
+    // addTransaction -- so the list updates while any position work happens
+    // behind it, and a fix that never arrives costs nothing but a missing pin.
+    final row = Expense(
+      amount: double.parse(_amountController.text),
+      category: _category,
+      description: description,
+      // Only what the user chose BY HAND goes on the first write. The captured
+      // fix is attached below, once it exists.
+      locationId: _locationId,
+      customCategoryName: _category == ExpenseCategory.other
+          ? (_customCategoryName ?? 'Other')
+          : null,
+      journeyId: _journeyId,
+      paymentMethod: _paymentMethod,
+      paidByParticipantId: _paidByParticipantId,
+      latitude: _latitude,
+      longitude: _longitude,
+      // WHEN THE FIX WAS TAKEN, which is not `date`: a transaction logged today
+      // for last Tuesday carries Tuesday's date and today's position, and
+      // conflating them misreports how fresh the fix is.
+      locationCapturedAt: _latitude != null
+          ? DateTime.now()
+          : widget.existing?.locationCapturedAt,
+      date: _date,
+    );
+    final written = await provider.addTransaction(row);
+    if (!mounted) return;
+    if (!written) {
+      setState(() {
+        _saving = false;
+        _saveError = provider.error ?? 'Could not save. Please try again.';
+      });
+      return;
+    }
+
+    // THE POSITION IS CAPTURED FIRST, and unconditionally, before anything else
+    // is decided. They are the fact — where the phone was — and they do not
     // depend on whether the user links this to a saved place, agrees to a prompt,
     // or has location permission at all. Everything below is optional; this is
     // not.
@@ -459,7 +510,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
     // The proximity question is only asked when there is a fix to ask about, and
     // only when the user has not already chosen a place by hand. Asking over a
     // manual choice would be the app second-guessing them.
-    String? locationId = _locationId;
+    var locationId = _locationId;
     if (position != null && locationId == null && mounted) {
       final linked = await TransactionLocationService.confirmProximity(
         context,
@@ -470,37 +521,27 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
       );
       if (linked != null) locationId = linked.id;
     }
-
-    final saved = await provider.addTransaction(
-      Expense(
-        amount: double.parse(_amountController.text),
-        category: _category,
-        description: description,
-        locationId: locationId,
-        customCategoryName: _category == ExpenseCategory.other
-            ? (_customCategoryName ?? 'Other')
-            : null,
-        journeyId: _journeyId,
-        paymentMethod: _paymentMethod,
-        paidByParticipantId: _paidByParticipantId,
-        latitude: position?.latitude,
-        longitude: position?.longitude,
-        // WHEN THE FIX WAS TAKEN, which is not `date`: a transaction logged today
-        // for last Tuesday carries Tuesday's date and today's position, and
-        // conflating them misreports how fresh the fix is.
-        locationCapturedAt: position != null
-            ? DateTime.now()
-            : widget.existing?.locationCapturedAt,
-        date: _date,
-      ),
-    );
     if (!mounted) return;
-    if (!saved) {
-      setState(() {
-        _saving = false;
-        _saveError = provider.error ?? 'Could not save. Please try again.';
-      });
-      return;
+
+    // Backfill onto the row just written, rather than blocking the write on it.
+    // Skipped when there is nothing to add, so the common case -- a manual place
+    // and no fix -- costs no second write at all.
+    final hasNewPosition =
+        position != null &&
+        (position.latitude != _latitude ||
+            position.longitude != _longitude ||
+            locationId != _locationId);
+    if (hasNewPosition) {
+      await provider.updateTransaction(
+        row.copyWith(
+          locationId: locationId,
+          clearLocation: locationId == null,
+          latitude: position.latitude,
+          longitude: position.longitude,
+          locationCapturedAt: DateTime.now(),
+        ),
+      );
+      if (!mounted) return;
     }
 
     // The spot-naming offer, AFTER the write, because the cluster count has to

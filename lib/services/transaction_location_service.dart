@@ -26,10 +26,16 @@ class TransactionLocationService {
   /// Bounded on purpose. An unbounded read would leave the Save button spinning
   /// on a cold GPS in a basement, and a transaction the user asked to record is
   /// worth more than the coordinates on it.
-  static const Duration _fixTimeout = Duration(seconds: 8);
+  ///
+  /// Shortened from 8s. The save no longer waits on this — the row is written
+  /// first and backfilled after — so this bound is no longer on the path between
+  /// the user pressing Save and their money being recorded. It only decides
+  /// whether a pin gets attached, and a pin the user did not ask for is worth
+  /// three seconds of patience, not eight.
+  static const Duration _fixTimeout = Duration(seconds: 3);
 
   /// The wall-clock bound on top of the plugin's own.
-  static const Duration _hardTimeout = Duration(seconds: 10);
+  static const Duration _hardTimeout = Duration(seconds: 4);
 
   /// A position for this transaction, if one is obtainable WITHOUT ASKING.
   ///

@@ -214,6 +214,11 @@ class _IncomeEditSheetState extends State<IncomeEditSheet> {
   /// raw coordinates are captured regardless, and stay null here until either
   /// the user picks from the chip or agrees to a proximity prompt.
   String? _locationId;
+
+  /// The position already on this row, so the save can tell a fresh fix from the
+  /// one it is replacing. Null on a new income row.
+  double? _latitude;
+  double? _longitude;
   bool _saving = false;
   String? _saveError;
 
@@ -232,6 +237,8 @@ class _IncomeEditSheetState extends State<IncomeEditSheet> {
     _category = existing?.category ?? 'salary';
     _date = existing?.date ?? DateTime.now();
     _locationId = existing?.locationId;
+    _latitude = existing?.latitude;
+    _longitude = existing?.longitude;
   }
 
   @override
@@ -468,14 +475,28 @@ class _IncomeEditSheetState extends State<IncomeEditSheet> {
         ),
       );
     } else {
-      // THE SAME FOUR RULES AS AN EXPENSE, in the same order, because they are
-      // the same question: capture the position, ask about a nearby saved place,
-      // save the coordinates either way, then offer to name the spot if it keeps
-      // coming up. Money arriving somewhere is recorded in the same place, by the
-      // same phone, at the same moment as money leaving it.
+      // THE SAME RULES AS AN EXPENSE, in the same order, for the same reason:
+      // the write goes first and the position is backfilled. Money arriving
+      // somewhere is recorded in the same place, by the same phone, at the same
+      // moment as money leaving it -- but neither form should make the user wait
+      // on a satellite to record that it happened.
+      final row = Income(
+        amount: double.parse(_amountController.text),
+        category: _category,
+        description: description,
+        // Only a hand-chosen place goes on the first write.
+        locationId: _locationId,
+        latitude: _latitude,
+        longitude: _longitude,
+        locationCapturedAt: _latitude != null ? DateTime.now() : null,
+        date: _date,
+      );
+      saved = await provider.addTransaction(row);
+      if (!mounted) return;
+
       final position = await TransactionLocationService.capturePosition();
 
-      String? locationId = _locationId;
+      var locationId = _locationId;
       if (position != null && locationId == null && mounted) {
         final linked = await TransactionLocationService.confirmProximity(
           context,
@@ -486,19 +507,25 @@ class _IncomeEditSheetState extends State<IncomeEditSheet> {
         );
         if (linked != null) locationId = linked.id;
       }
+      if (!mounted) return;
 
-      saved = await provider.addTransaction(
-        Income(
-          amount: double.parse(_amountController.text),
-          category: _category,
-          description: description,
-          locationId: locationId,
-          latitude: position?.latitude,
-          longitude: position?.longitude,
-          locationCapturedAt: position != null ? DateTime.now() : null,
-          date: _date,
-        ),
-      );
+      final hasNewPosition =
+          position != null &&
+          (position.latitude != _latitude ||
+              position.longitude != _longitude ||
+              locationId != _locationId);
+      if (saved && hasNewPosition) {
+        await provider.updateTransaction(
+          row.copyWith(
+            locationId: locationId,
+            clearLocation: locationId == null,
+            latitude: position.latitude,
+            longitude: position.longitude,
+            locationCapturedAt: DateTime.now(),
+          ),
+        );
+        if (!mounted) return;
+      }
 
       if (saved && mounted) {
         await _maybeOfferToSaveSpot(provider, position);
