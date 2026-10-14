@@ -319,6 +319,18 @@ void main() {
 
       final p = await seedProviders(tester);
       await tester.runAsync(() async {
+        // The context card is seeded deliberately. Without one in the tree the
+        // ordering cannot be observed, so the assertion below would pass even
+        // with the old card-first layout -- which is exactly the bug, and it
+        // means a test that only checks "the list is on screen" proves nothing.
+        final essentials = Checklist(
+          name: 'Everyday Essentials',
+          description: '',
+          isEverydayEssentials: true,
+        );
+        await p.checklists.addChecklist(essentials);
+        await p.checklists.addItemByName(essentials.id, 'Toothbrush');
+
         final checklist = Checklist(
           name: 'Pack for Pokhara',
           description: '',
@@ -330,9 +342,35 @@ void main() {
       await tester.pumpWidget(appOf(p, const ChecklistsScreen()));
       await settleUi(tester);
 
-      // The user's own list is on screen, not buried under a decorative card.
-      expect(find.text('All Checklists'), findsOneWidget);
+      expect(find.text('Your Checklists'), findsOneWidget);
       expect(find.text('Pack for Pokhara'), findsOneWidget);
+
+      // The user's own list comes FIRST, the context card second. They used to
+      // be the other way round, so someone who had packed a dozen things into a
+      // journey scrolled past decoration before finding their own list and
+      // concluded it was missing. It was never missing; it was below the fold.
+      //
+      // `first` is deliberate. A reversal renders the card twice rather than
+      // moving it, so `findsOneWidget` here would fail on the symptom and hide
+      // the cause. Comparing positions of the FIRST match states the rule
+      // directly: the user's heading is above the card, and the card is above
+      // nothing that matters.
+      final userHeading = tester.getTopLeft(find.text('Your Checklists'));
+      final packRow = tester.getTopLeft(find.text('Pack for Pokhara'));
+      final contextCard = tester.getTopLeft(
+        find.text('Everyday Essentials').first,
+      );
+
+      expect(
+        userHeading.dy,
+        lessThan(packRow.dy),
+        reason: 'the heading must sit above the row it introduces',
+      );
+      expect(
+        userHeading.dy,
+        lessThan(contextCard.dy),
+        reason: "the user's own list is not below a context card",
+      );
     });
 
     testWidgets('the Journeys timeline shows where a trip got to', (

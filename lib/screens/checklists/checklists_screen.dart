@@ -51,6 +51,37 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                 // Clears the FAB; see AppSpacing.screenPaddingWithFab.
                 padding: AppSpacing.screenPaddingWithFab,
                 children: [
+                  // The user's OWN lists come first. The context cards used to
+                  // render above them, so a person who had packed a dozen things
+                  // into a journey scrolled past decoration before reaching
+                  // their own checklist and concluded it was missing. It was
+                  // never missing; it was below the fold.
+                  //
+                  // Nothing is hidden for it. Both cards still render when they
+                  // apply, directly under the list, and both are derived from
+                  // data the user created rather than guessed at.
+                  if (isEmpty)
+                    EmptyState(
+                      icon: Icons.checklist_rounded,
+                      title: 'No checklists yet',
+                      message: journeyProvider.activeJourney == null
+                          ? 'Create your first checklist'
+                          : 'Create a checklist, or pack for the trip you have going',
+                      actionLabel: 'Create Checklist',
+                      onAction: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const AddChecklistScreen(),
+                          ),
+                        );
+                      },
+                    )
+                  else ...[
+                    const SectionHeader('Your Checklists'),
+                    const SizedBox(height: AppSpacing.sm),
+                    ..._buildChecklistCards(context, checklistProvider),
+                  ],
+                  const SizedBox(height: AppSpacing.md),
                   if (locationLinkedChecklists.isNotEmpty)
                     _buildLocationReminderCard(
                       context,
@@ -62,32 +93,6 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                       checklistProvider.everydayEssentials!,
                     ),
                     const SizedBox(height: 8),
-                  ],
-                  const SizedBox(height: AppSpacing.md),
-                  if (isEmpty)
-                    // The suggestions above stay on screen here on purpose. The
-                    // old empty state short-circuited the whole list, so the
-                    // card was invisible to anyone with no checklists — which is
-                    // exactly the person with a trip and nothing packed for it.
-                    EmptyState(
-                      icon: Icons.checklist_rounded,
-                      title: 'No checklists yet',
-                      message:
-                          'Create your first checklist, or pack for the trip '
-                          'above',
-                      actionLabel: 'Create Checklist',
-                      onAction: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const AddChecklistScreen(),
-                          ),
-                        );
-                      },
-                    )
-                  else ...[
-                    const SectionHeader('All Checklists'),
-                    const SizedBox(height: AppSpacing.sm),
-                    ..._buildChecklistCards(context, checklistProvider),
                   ],
                 ],
               );
