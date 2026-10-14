@@ -500,6 +500,20 @@ void main() {
       await provider.initialize();
 
       final trip = journeys.journeys.firstWhere((j) => j.isShared);
+
+      // Trash one trip expense so the two views are not the same list.
+      //
+      // This assertion below is only meaningful when something differs, and the
+      // fixture seeds no trashed rows — `grep -c 'isDeleted' test/seed_fixture.dart`
+      // is 0 — so without this the guard compared one list against itself and
+      // failed from the day it was written. The settlement maths above it was
+      // never wrong; the guard had no divergence to find. Hence the stamp here
+      // rather than a deleted guard: the invariant is real, the DATA was missing.
+      final tripExpenses = await provider.getLiveTransactionsForJourney(
+        trip.id,
+      );
+      await provider.moveToTrash(tripExpenses.first.id);
+
       final forSettlement = await provider.getTransactionsByJourney(trip.id);
       final forDisplay = await provider.getLiveTransactionsForJourney(trip.id);
 
@@ -519,13 +533,27 @@ void main() {
       // And the two views genuinely differ, so the test above is not comparing a
       // number against itself.
       expect(forSettlement.length, greaterThan(0));
-      final myLedgerDescriptions = provider.transactions
-          .map((t) => t.description)
-          .toSet();
       expect(
-        forDisplay.any((t) => !myLedgerDescriptions.contains(t.description)),
-        isTrue,
-        reason: 'the display twin drops rows my ledger does not have',
+        forSettlement.length,
+        forDisplay.length + 1,
+        reason: 'exactly the trashed row is in the settlement and not the list',
+      );
+      // The trashed row is the one that differs — named directly rather than
+      // inferred from a personal ledger.
+      //
+      // The guard used to compare [forDisplay] against `provider.transactions`,
+      // which is the MY-ledger view: it drops anything another participant paid,
+      // and on a shared trip that is most of the trip. So it was asserting that
+      // the display list contains a row my ledger lacks — a claim about whose
+      // money it is, wearing the costume of a claim about trash. It failed on a
+      // shared trip because Raj's and Sita's rows are excluded by design.
+      final trashedDescription = forSettlement
+          .firstWhere((t) => !forDisplay.any((d) => d.id == t.id))
+          .description;
+      expect(
+        trashedDescription,
+        isNotEmpty,
+        reason: 'the row the display twin drops is the trashed one',
       );
     });
   });
