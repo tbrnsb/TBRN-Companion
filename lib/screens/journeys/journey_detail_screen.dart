@@ -12,7 +12,6 @@ import 'package:daily_companion/screens/checklists/add_checklist_screen.dart';
 import 'package:daily_companion/screens/checklists/checklist_detail_screen.dart';
 import 'package:daily_companion/screens/journeys/trip_shared_section.dart';
 import 'package:daily_companion/screens/transactions/add_transaction_sheet.dart';
-import 'package:daily_companion/services/packing_suggestions.dart';
 import 'package:daily_companion/screens/transactions/expense_detail_screen.dart';
 import 'package:daily_companion/theme/app_theme.dart';
 import 'package:daily_companion/utils/format.dart';
@@ -403,11 +402,6 @@ class _PackForTripButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final itemCount = journey.items.where((i) => i.trim().isNotEmpty).length;
-    final suggestionCount = PackingSuggestions.forTrip(
-      destination: journey.destination,
-      startTime: journey.startTime,
-      endTime: journey.endTime,
-    ).length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -440,11 +434,12 @@ class _PackForTripButton extends StatelessWidget {
         const SizedBox(height: AppSpacing.xxs),
         Text(
           itemCount > 0
-              ? 'Starts with the $itemCount ${itemCount == 1 ? 'item' : 'items'} '
-                    'you already listed, plus $suggestionCount more for '
+              ? 'Starts with the $itemCount '
+                    '${itemCount == 1 ? 'item' : 'items'} you already listed.'
+              : itemCount == 0
+              ? 'Adds an empty list you can fill in for '
                     '${journey.destination.isEmpty ? 'this trip' : journey.destination}.'
-              : 'Adds $suggestionCount things worth taking for '
-                    '${journey.destination.isEmpty ? 'this trip' : journey.destination}.',
+              : '',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),

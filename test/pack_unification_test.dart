@@ -11,7 +11,6 @@ import 'package:daily_companion/providers/settings_provider.dart';
 import 'package:daily_companion/providers/transaction_provider.dart';
 import 'package:daily_companion/screens/checklists/checklists_screen.dart';
 import 'package:daily_companion/screens/journeys/journeys_screen.dart';
-import 'package:daily_companion/services/packing_suggestions.dart';
 import 'package:daily_companion/services/storage_service.dart';
 import 'package:daily_companion/theme/app_theme.dart';
 
@@ -21,19 +20,6 @@ import 'visual_smoke_test.dart' show initTestStorage;
 /// Deliberately tall: the Pack screen is a long scroll and a lazy list disposes
 /// rows scrolled past, so a test that only scrolls down can report a false pass.
 const _tall = Size(360, 2800);
-const _tallWide = Size(412, 2800);
-
-List<String> namesFor({
-  String? destination,
-  DateTime? startTime,
-  DateTime? endTime,
-}) {
-  return PackingSuggestions.forTrip(
-    destination: destination,
-    startTime: startTime,
-    endTime: endTime,
-  ).map((s) => s.name).toList();
-}
 
 void main() {
   setUpAll(() async {
@@ -43,151 +29,6 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     await StorageService().clear();
-  });
-
-  group('reading a trip', () {
-    test('a mountain trip is a mountain trip', () {
-      for (final name in [
-        'Annapurna Base Camp',
-        'Mount Fuji',
-        'Everest Base Camp',
-        'Cape Town trail',
-        'Glacier view',
-      ]) {
-        expect(
-          PackingSuggestions.kindFor(name),
-          TripKind.mountain,
-          reason: '"$name" did not read as mountain',
-        );
-      }
-    });
-
-    test('coast, forest, desert and lake are told apart', () {
-      // Only names the vocabulary actually covers. There is no gazetteer and no
-      // network, so "Maldives" reads as a city — an honest, documented limit
-      // rather than something the engine pretends to know.
-      expect(PackingSuggestions.kindFor('Gold Coast'), TripKind.coast);
-      expect(PackingSuggestions.kindFor('Sentosa Island'), TripKind.coast);
-      expect(
-        PackingSuggestions.kindFor('Chitwan National Park'),
-        TripKind.forest,
-      );
-      expect(PackingSuggestions.kindFor('Sahara'), TripKind.desert);
-      expect(PackingSuggestions.kindFor('Pokhara'), TripKind.lake);
-      expect(PackingSuggestions.kindFor('Kathmandu'), TripKind.city);
-      expect(PackingSuggestions.kindFor('Staycation'), TripKind.home);
-    });
-
-    test('an unknown destination is a city, not a failure', () {
-      // There is no gazetteer and no network, so the default has to be the most
-      // common case rather than nothing.
-      expect(PackingSuggestions.kindFor('Qzxwv'), TripKind.city);
-      expect(PackingSuggestions.kindFor(null), TripKind.home);
-      expect(PackingSuggestions.kindFor(''), TripKind.home);
-    });
-
-    test('a cold month gets warm-weather things a warm month does not', () {
-      final january = DateTime(2026, 1, 10);
-      final june = DateTime(2026, 6, 10);
-
-      final winter = namesFor(destination: 'Kathmandu', startTime: january);
-      final summer = namesFor(destination: 'Kathmandu', startTime: june);
-
-      expect(winter, contains('Warm jacket'));
-      expect(summer, isNot(contains('Warm jacket')));
-    });
-
-    test('length is read from the dates', () {
-      final start = DateTime(2026, 3, 1);
-      expect(
-        PackingSuggestions.profileFor(
-          destination: 'Pokhara',
-          startTime: start,
-          endTime: start,
-        ).nights,
-        0,
-        reason: 'a same-day trip is a day trip, not an under-a-day one',
-      );
-      expect(
-        PackingSuggestions.profileFor(
-          destination: 'Pokhara',
-          startTime: start,
-          endTime: start.add(const Duration(days: 5)),
-        ).nights,
-        5,
-      );
-    });
-
-    test('a trip with no end date is treated as a short one', () {
-      final profile = PackingSuggestions.profileFor(
-        destination: 'Pokhara',
-        startTime: DateTime(2026, 3, 1),
-      );
-      expect(profile.nights, 2);
-      expect(profile.lengthLabel, '2 nights');
-    });
-  });
-
-  group('two different trips get two different lists', () {
-    // THE POINT OF THE STAGE. The old engine keyword-matched the destination
-    // name, so a mountain trip and a beach trip both fell through to the same
-    // generic essentials.
-    test('a mountain trip and a beach trip share almost nothing', () {
-      final mountain = namesFor(destination: 'Annapurna Base Camp');
-      final beach = namesFor(destination: 'Gokarna beach resort');
-
-      expect(mountain, contains('Warm layers'));
-      expect(beach, contains('Swimwear'));
-      expect(mountain, isNot(contains('Swimwear')));
-      expect(beach, isNot(contains('First aid kit')));
-    });
-
-    test('a city weekend is not a trek', () {
-      final city = namesFor(destination: 'Tokyo');
-      expect(city, contains('Wallet'));
-      expect(city, isNot(contains('Warm layers')));
-    });
-
-    test('the same trip twice gives the same list', () {
-      expect(
-        namesFor(destination: 'Pokhara', startTime: DateTime(2026, 3, 1)),
-        namesFor(destination: 'Pokhara', startTime: DateTime(2026, 3, 1)),
-      );
-    });
-  });
-
-  group('the suggestion list itself', () {
-    final suggestions = PackingSuggestions.forTrip(destination: 'Annapurna');
-
-    test('is short enough to scan', () {
-      expect(suggestions.length, lessThanOrEqualTo(PackingSuggestions.limit));
-      expect(suggestions, isNotEmpty);
-    });
-
-    test('has no duplicates, case-insensitively', () {
-      final seen = suggestions.map((s) => s.name.toLowerCase()).toSet();
-      expect(seen, hasLength(suggestions.length));
-    });
-
-    test('every entry says why', () {
-      for (final s in suggestions) {
-        expect(s.name, isNotEmpty);
-        expect(s.reason, isNotEmpty);
-      }
-    });
-
-    test('always includes the things you cannot shop for on arrival', () {
-      for (final destination in [
-        'Annapurna',
-        'Maldives',
-        'Tokyo',
-        'Sahara',
-        'Chitwan',
-      ]) {
-        final list = namesFor(destination: destination);
-        expect(list, contains('Medication'), reason: destination);
-      }
-    });
   });
 
   group('packing for a trip, at the provider layer', () {
@@ -217,7 +58,20 @@ void main() {
 
       expect(created, isNotNull);
       expect(created!.journeyId, 'trip-1');
-      expect(created.items, isNotEmpty);
+    });
+
+    test('adds nothing the trip did not itself list', () async {
+      // The build seeded a list from a keyword match on the destination, so a
+      // trip called "SmatErr" matched nothing and got the same generic eight
+      // items every other unrecognised name got. Those guesses were the first
+      // thing on the Pack tab and pushed the trip's real list below the fold,
+      // which read as the list not existing.
+      final created = await provider.packForJourney(
+        trip(items: ['Boots', 'Jacket']),
+      );
+      final names = created!.items.map((i) => i.name).toSet();
+
+      expect(names, {'Boots', 'Jacket'});
     });
 
     test("folds in the trip's own items", () async {
@@ -227,12 +81,6 @@ void main() {
       final names = created!.items.map((i) => i.name).toList();
 
       expect(names, containsAll(['Boots', 'Jacket']));
-    });
-
-    test("the trip's own items come before the suggestions", () async {
-      final created = await provider.packForJourney(trip(items: ['Boots']));
-
-      expect(created!.items.first.name, 'Boots');
     });
 
     test('a second call does not make a second list', () async {
@@ -448,31 +296,43 @@ void main() {
       }
     }
 
-    testWidgets('the Pack screen names the trip it is thinking about', (
+    testWidgets('the Pack screen shows no suggestion card for an active trip', (
       tester,
     ) async {
-      usePhoneLayout(tester, _tallWide);
-
-      final p = await seedProviders(tester);
-      await tester.pumpWidget(appOf(p, const ChecklistsScreen()));
-      await settleUi(tester);
-
-      expect(find.text('For Pokhara'), findsOneWidget);
-    });
-
-    testWidgets('the Pack screen fits at 360dp with eight suggestions', (
-      tester,
-    ) async {
+      // A trip is seeded, so the old build rendered "For Pokhara" plus eight
+      // suggested items ABOVE the trip's own list. That card is gone, and the
+      // empty state is what a trip with nothing packed now looks like.
       usePhoneLayout(tester, _tall);
 
       final p = await seedProviders(tester);
       await tester.pumpWidget(appOf(p, const ChecklistsScreen()));
       await settleUi(tester);
 
-      // The card survives the empty state: a user with a trip and no
-      // checklists is the one who needs the suggestions most.
-      expect(find.text('For Pokhara'), findsOneWidget);
+      expect(find.text('For Pokhara'), findsNothing);
       expect(find.text('No checklists yet'), findsOneWidget);
+    });
+
+    testWidgets("the trip's own checklist is visible without scrolling to it", (
+      tester,
+    ) async {
+      usePhoneLayout(tester, _tall);
+
+      final p = await seedProviders(tester);
+      await tester.runAsync(() async {
+        final checklist = Checklist(
+          name: 'Pack for Pokhara',
+          description: '',
+          journeyId: 'trip-1',
+        );
+        await p.checklists.addChecklist(checklist);
+        await p.checklists.addItemByName(checklist.id, 'Boots');
+      });
+      await tester.pumpWidget(appOf(p, const ChecklistsScreen()));
+      await settleUi(tester);
+
+      // The user's own list is on screen, not buried under a decorative card.
+      expect(find.text('All Checklists'), findsOneWidget);
+      expect(find.text('Pack for Pokhara'), findsOneWidget);
     });
 
     testWidgets('the Journeys timeline shows where a trip got to', (

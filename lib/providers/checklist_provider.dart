@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:daily_companion/models/index.dart';
-import 'package:daily_companion/services/packing_suggestions.dart';
 import 'package:daily_companion/services/storage_service.dart';
 import 'package:daily_companion/utils/iterable_ext.dart';
 
@@ -198,17 +197,17 @@ class ChecklistProvider extends ChangeNotifier {
     );
     await addChecklist(checklist);
 
-    // The trip's own items first — they are what the user actually wrote down —
-    // then the suggestions, deduped against them.
+    // The trip's own items, deduped case-insensitively.
+    //
+    // Nothing is added beyond what the user wrote down. The old build seeded
+    // this list from a keyword match on the destination — "SmatErr" matched no
+    // keyword, so it produced the same generic eight items for every trip whose
+    // name was not literally "mountain" or "coast". Those items were the first
+    // thing on the Pack tab and the trip's real list was below them, which read
+    // as the list not existing at all.
     final names = <String>[
       for (final item in journey.items)
         if (item.trim().isNotEmpty) item.trim(),
-      for (final suggestion in PackingSuggestions.forTrip(
-        destination: journey.destination,
-        startTime: journey.startTime,
-        endTime: journey.endTime,
-      ))
-        suggestion.name,
     ];
 
     var seen = <String>{};
