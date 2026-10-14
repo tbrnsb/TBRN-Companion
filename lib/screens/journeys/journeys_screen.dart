@@ -48,6 +48,15 @@ class _JourneysScreenState extends State<JourneysScreen> {
   final DateTime _timelineMonth = DateTime.now();
   DateTime? _plannedStart;
 
+  /// Ticked at creation to say this trip is the user's alone.
+  ///
+  /// Off by default, because the existing behaviour -- show the shared section,
+  /// say "Solo so far", offer the field -- is the right answer for a trip nobody
+  /// has joined yet. This is the answer for a trip the user does not want
+  /// shared at all, and it has to be chosen deliberately rather than inferred
+  /// from an empty roster, which is exactly the state it exists to differ from.
+  bool _solo = false;
+
   @override
   void dispose() {
     _destinationController.dispose();
@@ -249,6 +258,26 @@ class _JourneysScreenState extends State<JourneysScreen> {
               ),
             ],
           ),
+          const SizedBox(height: AppSpacing.xs),
+          // A checkbox, not a switch: the label is the whole point, and a
+          // switch with no words beside it is a guess about what is on.
+          CheckboxListTile(
+            value: _solo,
+            onChanged: (value) => setState(() => _solo = value ?? false),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: Text(
+              'Solo trip',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            subtitle: Text(
+              'No people section, no splitting.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
           const SizedBox(height: 12),
           TextField(
             controller: _notesController,
@@ -296,6 +325,7 @@ class _JourneysScreenState extends State<JourneysScreen> {
                   notes: _notesController.text.trim(),
                   items: List.of(_plannedItems),
                   plannedStart: _plannedStart,
+                  isSolo: _solo,
                   checklists: checklists,
                 );
                 if (!mounted) return;
@@ -305,7 +335,12 @@ class _JourneysScreenState extends State<JourneysScreen> {
                 _originController.clear();
                 _notesController.clear();
                 _itemEntryController.clear();
-                setState(_plannedItems.clear);
+                setState(() {
+                  _plannedItems.clear();
+                  // Reset with the rest of the form, or the next journey the
+                  // user writes is silently solo because the last one was.
+                  _solo = false;
+                });
                 if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(

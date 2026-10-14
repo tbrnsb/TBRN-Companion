@@ -33,7 +33,15 @@ class TripSharedSection extends StatelessWidget {
     // used to hide this section too, which made the feature unreachable: the
     // only call site of addParticipant in the whole app is the field below, so a
     // solo trip could never become a shared one. There was no other way in.
-    if (journey == null) return const SizedBox.shrink();
+    //
+    // `isSolo` is different from an empty roster and does hide it. A trip with
+    // no participants is a shared trip nobody has joined YET, and "Solo so far"
+    // plus the field is the right answer to that. A trip the user declared solo
+    // is one they said they did not want to share, and repeating the offer every
+    // time they open it is the app not believing them. The escape hatch is at
+    // the end of this section, not in place of it being absent -- they can turn
+    // sharing back on whenever they like.
+    if (journey == null || journey.isSolo) return const SizedBox.shrink();
 
     final hasPeople = journey.participants.isNotEmpty;
 
@@ -78,6 +86,22 @@ class TripSharedSection extends StatelessWidget {
                 const SizedBox(height: AppSpacing.md),
               ],
               _AddParticipantField(journey: journey),
+              const SizedBox(height: AppSpacing.xs),
+              // THE WAY OUT. Without it a trip marked solo could only get its
+              // shared section back by restarting the app, because the section
+              // is hidden entirely while the flag is set.
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: const ValueKey('make-trip-shared'),
+                  onPressed: () => context.read<JourneyProvider>().setSolo(
+                    journeyId,
+                    solo: false,
+                  ),
+                  icon: const Icon(Icons.group_add_outlined, size: 16),
+                  label: const Text('This trip is shared after all'),
+                ),
+              ),
               if (journey.isShared) ...[
                 const SizedBox(height: AppSpacing.md),
                 SizedBox(

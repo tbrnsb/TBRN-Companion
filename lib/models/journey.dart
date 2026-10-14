@@ -51,6 +51,19 @@ class Journey {
   /// snapshot both compute identically.
   final List<String> settledTransfers;
 
+  /// The user said this trip is theirs alone, at the moment they made it.
+  ///
+  /// NOT the same as having no participants. A journey with an empty roster is
+  /// a shared trip nobody has joined yet, and the app says "Solo so far" and
+  /// offers the field to add people. This flag is the answer to "there is no
+  /// shared section, I did not want one" -- the section is not shown at all,
+  /// because a person who said so should not have to look at it to be reminded.
+  ///
+  /// Reversible. Adding a participant clears it, so a trip that starts solo can
+  /// become shared and a trip that starts shared can become solo; nothing here
+  /// is a one-way door.
+  final bool isSolo;
+
   /// A short code friends can read aloud to confirm they are on the same trip.
   ///
   /// It identifies the trip and does NOTHING else: no sync, no room, no live
@@ -98,6 +111,7 @@ class Journey {
     List<TripParticipant>? participants,
     this.localParticipantId,
     List<String>? settledTransfers,
+    this.isSolo = false,
     this.tripCode,
     List<String>? removedIds,
   }) : id = id ?? const Uuid().v4(),
@@ -159,6 +173,7 @@ class Journey {
       'participants': participantsToJson(participants),
       'localParticipantId': localParticipantId,
       'settledTransfers': settledTransfers,
+      'isSolo': isSolo,
       'tripCode': tripCode,
       'removedIds': removedIds,
     };
@@ -183,6 +198,10 @@ class Journey {
           ? null
           : DateTime.tryParse(json['endTime']),
       completed: json['completed'] == 1 || json['completed'] == true,
+      // Absent means false: a trip written before this flag existed was never
+      // declared solo, and treating "unknown" as "solo" would hide the shared
+      // section on every existing trip.
+      isSolo: json['isSolo'] == true,
       createdAt: DateTime.parse(
         json['createdAt'] ?? DateTime.now().toIso8601String(),
       ),
@@ -208,6 +227,7 @@ class Journey {
     List<TripParticipant>? participants,
     String? localParticipantId,
     List<String>? settledTransfers,
+    bool? isSolo,
     String? tripCode,
     List<String>? removedIds,
     bool clearLocalParticipant = false,
@@ -229,6 +249,7 @@ class Journey {
           ? null
           : (localParticipantId ?? this.localParticipantId),
       settledTransfers: settledTransfers ?? this.settledTransfers,
+      isSolo: isSolo ?? this.isSolo,
       tripCode: clearTripCode ? null : (tripCode ?? this.tripCode),
       removedIds: removedIds ?? this.removedIds,
     );

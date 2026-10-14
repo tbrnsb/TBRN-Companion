@@ -227,6 +227,91 @@ void main() {
     });
   });
 
+  group('a solo trip is not a shared trip nobody joined', () {
+    // "There should be an option to put this as a solo journey, so there is no
+    // add people to it."
+    //
+    // The distinction matters because they LOOK the same: a journey with no
+    // participants and a journey declared solo are both lists of one. But the
+    // first is a shared trip waiting for people and keeps offering the field;
+    // the second is a trip the user said they did not want to share, and shows
+    // the section not at all.
+    test('the flag survives a save and reload', () async {
+      final journeys = JourneyProvider();
+      addTearDown(journeys.dispose);
+      await journeys.initialize();
+
+      final journey = await journeys.startJourney(
+        destination: 'SmatErr',
+        origin: 'Home',
+        isSolo: true,
+      );
+      expect(journey.isSolo, isTrue);
+      expect(journeys.getJourneyById(journey.id)!.isSolo, isTrue);
+    });
+
+    test('a trip with no participants and NOT solo keeps its shared section', () {
+      // The default is unchanged. This is the regression the flag could cause:
+      // treating "unknown" as "solo" would hide sharing on every trip.
+      final shared = Journey(
+        destination: 'Somewhere',
+        origin: 'Here',
+        startTime: DateTime(2026, 3, 1),
+      );
+      expect(shared.participants, isEmpty);
+      expect(shared.isSolo, isFalse);
+    });
+
+    test('adding a participant takes the trip out of solo', () async {
+      final journeys = JourneyProvider();
+      addTearDown(journeys.dispose);
+      await journeys.initialize();
+
+      final journey = await journeys.startJourney(
+        destination: 'SmatErr',
+        origin: 'Home',
+        isSolo: true,
+      );
+
+      await journeys.addParticipant(journey.id, 'Raj');
+
+      // Otherwise the trip would hide the very section the user is using.
+      expect(journeys.getJourneyById(journey.id)!.isSolo, isFalse);
+    });
+
+    test('a solo trip can be made shared again', () async {
+      // The way out matters as much as the way in: the section is hidden while
+      // the flag is set, so without this the only way back is restarting.
+      final journeys = JourneyProvider();
+      addTearDown(journeys.dispose);
+      await journeys.initialize();
+
+      final journey = await journeys.startJourney(
+        destination: 'SmatErr',
+        origin: 'Home',
+        isSolo: true,
+      );
+
+      await journeys.setSolo(journey.id, solo: false);
+
+      expect(journeys.getJourneyById(journey.id)!.isSolo, isFalse);
+    });
+
+    test('a journey written before the flag existed is not solo', () {
+      final legacy = Journey.fromJson({
+        'destination': 'Old Trip',
+        'origin': 'Home',
+        'startTime': DateTime(2026, 3, 1).toIso8601String(),
+        'createdAt': DateTime(2026, 3, 1).toIso8601String(),
+        'updatedAt': DateTime(2026, 3, 1).toIso8601String(),
+      });
+
+      // Absent means false. Reading "unknown" as "solo" would hide the shared
+      // section on every journey already on the device.
+      expect(legacy.isSolo, isFalse);
+    });
+  });
+
   group('the duplicate guard', () {
     late ChecklistProvider provider;
 

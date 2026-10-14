@@ -264,6 +264,7 @@ class JourneyProvider extends ChangeNotifier {
     String notes = '',
     List<String>? items,
     DateTime? plannedStart,
+    bool isSolo = false,
     ChecklistProvider? checklists,
   }) async {
     final journey = Journey(
@@ -273,6 +274,7 @@ class JourneyProvider extends ChangeNotifier {
       items: items ?? const [],
       startTime: plannedStart ?? DateTime.now(),
       completed: false,
+      isSolo: isSolo,
     );
     await addJourney(journey);
 
@@ -333,8 +335,23 @@ class JourneyProvider extends ChangeNotifier {
     await _saveSharedTripFields(
       journey,
       participants: [...journey.participants, participant],
+      // Adding somebody is the clearest possible statement that this is no
+      // longer a solo trip, so the flag stops applying. Otherwise a trip marked
+      // solo would hide the very section the user is now trying to use.
+      isSolo: false,
     );
     return participant;
+  }
+
+  /// Declares a trip solo, or takes the declaration back.
+  ///
+  /// The way out matters as much as the way in. A trip marked solo hides its
+  /// shared section entirely, so without this the user could only get the
+  /// section back by restarting the app.
+  Future<void> setSolo(String journeyId, {required bool solo}) async {
+    final journey = getJourneyById(journeyId);
+    if (journey == null || journey.isSolo == solo) return;
+    await _saveSharedTripFields(journey, isSolo: solo);
   }
 
   Future<void> removeParticipant(String journeyId, String participantId) async {
@@ -584,6 +601,7 @@ class JourneyProvider extends ChangeNotifier {
     List<String>? settledTransfers,
     String? tripCode,
     List<String>? removedIds,
+    bool? isSolo,
   }) async {
     await updateJourney(
       journey.copyWith(
@@ -593,6 +611,7 @@ class JourneyProvider extends ChangeNotifier {
         settledTransfers: settledTransfers,
         tripCode: tripCode,
         removedIds: removedIds,
+        isSolo: isSolo,
       ),
     );
   }
