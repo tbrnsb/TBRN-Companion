@@ -114,6 +114,12 @@ it did, and no storage format changed.
 
 ### Fixed
 
+- **Notifications were dropped in silence on Android 13 and newer**, because the
+  app never asked the phone for the permission an alert needs — every arrival
+  alert, trip reminder and budget alert was discarded while the per-place toggle
+  said ON. The permission is now asked for, and a Settings row tells you whether
+  the phone will show this app's alerts and opens system settings when it will
+  not.
 - **A packing list typed while creating a journey never reached the Pack tab**, and
   the trip's own "Pack for this trip" button stayed on screen for good. A journey
   created with items now gets a real, tickable checklist immediately.
@@ -136,8 +142,10 @@ it did, and no storage format changed.
 - **"Heading home?"** walks your packing list, then ends the trip — blocked while
   anything is unticked, with an explicit "End anyway".
 - **Journey durations count up** while a trip is open, and read in days.
-- **A journey can be declared solo** at creation. The shared section is hidden
-  rather than saying "Solo so far", and can be turned back on.
+- **A journey can be declared solo** at creation. The shared block keeps its
+  header with "Solo" beside it and offers "This trip is shared after all" to
+  turn sharing back on; the roster, the add field and the splitting UI stay
+  hidden.
 - **Arrival notifications, per saved place**, at a 1 km radius. On by default,
   switchable per place.
 - **"Where to?" on a travel expense**, so a taxi fare can name a destination you

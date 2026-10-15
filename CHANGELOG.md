@@ -11,6 +11,60 @@ record written by 1.1.0 loads exactly as it did, and no storage format changed.
 
 ### Fixed
 
+- **Notifications were dropped in silence on Android 13 and newer.** Those
+  versions require an app to ask permission before it may show a notification,
+  and the app never asked — so every arrival alert, trip reminder and budget
+  alert was discarded by the system before it appeared, while the per-place
+  toggle read ON the whole time. The permission is now requested, so an alert
+  you can switch on is an alert that can reach you.
+- **Turning on a place's alerts did not ask the phone for permission.** Only
+  the Settings page ever put the request on screen, so a place switched on from
+  its own screen could read enabled on a phone that had never been asked. The
+  first switch-on now asks.
+- **Settings could report a phone with notifications ON as "Off"** — and never
+  looked again. The row read the permission once and kept that answer for as
+  long as the screen stayed up, and a read that timed out was painted as a
+  plain "Off", indistinguishable from alerts really being blocked. It now tells
+  "Unknown" from "Off" and lets you check again.
+- **A solo trip could never be made shared again.** The one control that could
+  do it, "This trip is shared after all", sat inside the shared section — which
+  drew nothing at all for a trip declared solo — so the flag set at creation
+  could not be undone from anywhere in the app. A solo trip now gets that
+  control.
+- **The per-place notification switch did not redraw.** The tap was saved, but
+  the switch kept showing its old state, so a place you had just turned ON
+  still read OFF until something else redrew the screen.
+- **"Clear packed items" deleted every ticked item with one mis-tap.** It was
+  the only destructive action in the app that did not ask first, and it cannot
+  be undone. It now asks.
+- **Ending a trip whose id matched nothing ended whichever trip happened to be
+  running.** A stale screen, a trip already ended elsewhere, or one deleted
+  since could close an unrelated journey with no error and no undo. An id that
+  matches nothing now ends nothing.
+- **Deleting a trip did not promote another running trip.** The active-trip
+  slot was merely cleared, so with another unfinished trip still on the list
+  the app went quiet — no active card, no "Heading home?" prompt, no reminders
+  — for a trip that was genuinely under way. The slot is recomputed now, and
+  the other trip is picked up.
+- **Income categories were still offered when adding an expense.** The first
+  pass cleaned the pickers but not the history-derived "Recent" row, which
+  brought its own mixed list to the top of the sheet — so a row could still be
+  filed on the wrong half of the ledger by the shortest route on the screen.
+- **The colour picker's "stops offering colours already in use" rule removed
+  nothing.** The built-in colours and the swatch list did not overlap, so
+  nothing was ever filtered out and the income and expense grids came out
+  identical. The grid now differs by kind, and colour names no longer repeat —
+  eleven colours were called "orange", and the swatch the palette calls amber
+  was labelled "orange".
+- **Journeys could not be deleted at all.** A trip you were finished with had
+  no way off the phone.
+- **A journey that owned a real checklist listed its items twice** — tickable
+  on the trip's own screen, and again as untickable chips on the checklists
+  list, where the same bag appeared packed in one place and not the other.
+- **The checklist's per-item delete button had no accessible name**, four
+  icon-only controls drew 40x40 hit boxes where 48x48 is the standard, and
+  lists that reorder were rebuilt without keys — so items could jump when they
+  moved.
 - **A packing list typed while creating a journey never appeared in the Pack tab.**
   Items written while starting a trip were kept as plain text on the journey, with
   no ticks and no place in the Pack tab, and the trip's own "Pack for this trip"
@@ -50,12 +104,20 @@ record written by 1.1.0 loads exactly as it did, and no storage format changed.
   with an explicit "End anyway" rather than a silently disabled button.
 - **Journey durations count up while a trip is open**, and read in days, so a
   week is "7d 2h" rather than "168h 0m".
-- **A journey can be declared solo** at creation. The shared section is hidden
-  entirely rather than saying "Solo so far" at you. Reversible: adding a
-  participant clears it, and the section offers "This trip is shared after all".
+- **A journey can be declared solo** at creation. The shared block does not
+  disappear — it draws its "Shared" header with "Solo" beside it, one line
+  saying there is nothing to split and nobody to add, and the single control
+  "This trip is shared after all", which turns sharing back on. What stays
+  hidden is the roster, the add field and the splitting UI, because those
+  belong to a trip that is going to be shared. The start-trip checkbox reads
+  "Nobody to add, nothing to split."
 - **Arrival notifications, per saved place.** You are told when you reach a place,
   at a 1 km radius rather than the place's own tighter one. On by default, and
   switchable per place.
+- **A Settings row that says whether the phone will show this app's alerts.**
+  It reads the permission rather than assuming it, and when alerts are blocked
+  it opens the system settings page — the only place they can be switched back
+  on.
 - **"Where to?" on a travel expense.** Free text, so a taxi fare can name a
   destination you never saved as a place — which is what makes "what did getting
   to SmatErr cost" answerable.
