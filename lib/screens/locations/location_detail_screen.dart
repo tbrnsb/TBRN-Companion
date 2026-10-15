@@ -6,9 +6,11 @@ import 'package:daily_companion/providers/journey_provider.dart';
 import 'package:daily_companion/providers/location_provider.dart';
 import 'package:daily_companion/providers/settings_provider.dart';
 import 'package:daily_companion/providers/transaction_provider.dart';
+import 'package:daily_companion/services/notification_service.dart';
 import 'package:daily_companion/services/place_launcher.dart';
 import 'package:daily_companion/theme/app_theme.dart';
 import 'package:daily_companion/utils/format.dart';
+import 'package:daily_companion/utils/location_settings.dart';
 import 'package:daily_companion/widgets/section_header.dart';
 
 import '../transactions/expense_detail_screen.dart';
@@ -171,9 +173,7 @@ class LocationDetailScreen extends StatelessWidget {
                   color: colorScheme.onSurfaceVariant,
                 ),
               ),
-              onChanged: (value) => context
-                  .read<LocationProvider>()
-                  .setNotificationsEnabled(place.id, enabled: value),
+              onChanged: (value) => _setNotifications(context, place, value),
             ),
           ),
 
@@ -208,6 +208,66 @@ class LocationDetailScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Turns one place's arrival alerts on or off — and, when they go ON, makes
+/// sure the phone will actually show them.
+///
+/// WHY THIS EXISTS. This switch is the moment a person actually WANTS an
+/// alert, and on Android 13+ `POST_NOTIFICATIONS` starts denied on a fresh
+/// install: flipping it ON while the permission is unasked left the toggle
+/// reading ON and the system quietly dropping every arrival alert, with no
+/// screen saying why. The Settings "Alerts" row could ask, but only for a user
+/// who went looking for it.
+///
+/// The permission is asked for AT MOST ONCE per install — see
+/// [NotificationService.hasAskedPermission]. A second request after a refusal
+/// is a silent no-op Android never shows anyone, so from then on this path
+/// skips the prompt and goes straight to the explanation plus a way into
+/// system Settings, which is the only route left.
+///
+/// Deliberately here rather than inside
+/// `LocationProvider.setNotificationsEnabled`: recording the switch is a data
+/// change and needs no cooperation from the user, while asking and explaining
+/// both need a screen. The provider is untouched.
+Future<void> _setNotifications(
+  BuildContext context,
+  Location place,
+  bool enabled,
+) async {
+  // Read BEFORE the first await: a BuildContext must not be read across an
+  // async gap, so the two things needed afterwards are captured up front.
+  final messenger = ScaffoldMessenger.of(context);
+  final locations = context.read<LocationProvider>();
+
+  await locations.setNotificationsEnabled(place.id, enabled: enabled);
+
+  // Turning alerts OFF needs no permission — a switch that stops saying yes is
+  // not blocked by anything, and prompting here would ask the user to decide
+  // about notifications while they are in the middle of declining them.
+  if (!enabled) return;
+
+  final allowed = await NotificationService.ensurePermission();
+  if (!context.mounted || allowed) return;
+
+  // The system said no, or has already been asked and said no — the same
+  // answer either way for this user. Neither can be fixed from here, so the
+  // message says what the phone is doing and the action goes to the one place
+  // that can change it.
+  messenger.showSnackBar(
+    SnackBar(
+      content: Text(
+        'Your phone is blocking alerts from this app, so arrival alerts at '
+        '${place.name} will not appear. Allow notifications for this app in '
+        'your phone settings.',
+      ),
+      duration: const Duration(seconds: 8),
+      action: SnackBarAction(
+        label: 'Settings',
+        onPressed: () => openAppSettingsForLocation(context),
+      ),
+    ),
+  );
 }
 
 class _Header extends StatelessWidget {
