@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 
 import 'package:daily_companion/models/index.dart';
@@ -9,6 +10,7 @@ import 'package:daily_companion/providers/location_provider.dart';
 import 'package:daily_companion/providers/settings_provider.dart';
 import 'package:daily_companion/providers/transaction_provider.dart';
 import 'package:daily_companion/services/csv_export.dart';
+import 'package:daily_companion/services/notification_service.dart';
 import 'package:daily_companion/screens/transactions/csv_import_sheet.dart';
 import 'package:daily_companion/screens/budgets/budgets_screen.dart';
 import 'package:daily_companion/screens/settings/category_management_screen.dart';
@@ -97,6 +99,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: AppSpacing.screenPadding,
         children: [
+          // WHY THIS ONE LEADS, when the groups below are ordered by how often
+          // people change them.
+          //
+          // It is not a preference, it is a precondition. When the system
+          // permission is off, every alert the app can show is dropped by the
+          // phone in silence: the per-place toggle says ON, the trip reminder
+          // fires, and nothing arrives — with no error anywhere in the app.
+          // A row that decides whether everything else here can mean anything
+          // is worth seeing before everything else here.
+          SettingsGroup(
+            title: 'Alerts',
+            footnote:
+                'Shown while the app is running. The phone has to be allowed '
+                'to display them.',
+            children: const [_NotificationsRow()],
+          ),
+
+          const SizedBox(height: AppSpacing.lg),
+
           // HOW IT IS ARRANGED, and why.
           //
           // One row per setting, whatever the number of options behind it, and
@@ -641,4 +662,205 @@ class _DataProviders {
     // would otherwise linger.
     transactions.goToCurrentMonth(),
   ]);
+}
+
+/// The "can alerts appear at all?" row.
+///
+/// Why this exists: every alert control in the app — the per-place "Notify
+/// when I arrive" switch, the trip reminders — is silently void while the
+/// system permission is off, and no screen said so. The user's evidence was a
+/// toggle reading ON and a phone showing nothing.
+///
+/// It is a row, not a nav row and not a dropdown: it opens neither an in-app
+/// screen nor a sheet of choices, so it has neither a chevron nor an expand
+/// caret — those two marks mean "there is more of this app behind me" on this
+/// page, and this row leads out to system Settings or puts a system prompt on
+/// screen.
+class _NotificationsRow extends StatefulWidget {
+  const _NotificationsRow();
+
+  @override
+  State<_NotificationsRow> createState() => _NotificationsRowState();
+}
+
+class _NotificationsRowState extends State<_NotificationsRow> {
+  /// What the phone says, or null while that is still being read.
+  bool? _enabled;
+
+  /// Whether the system prompt has been answered before. Decides between
+  /// asking and sending the user to Settings — see
+  /// [NotificationService.hasAskedPermission].
+  bool _asked = false;
+
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Read on the way up rather than only on tap: the row's whole job is to
+    // show a state the user never sees otherwise.
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final enabled = await NotificationService.notificationsEnabled();
+    final asked = await NotificationService.hasAskedPermission();
+    if (!mounted) return;
+    setState(() {
+      _enabled = enabled;
+      _asked = asked;
+    });
+  }
+
+  /// One tap, two possible answers.
+  ///
+  /// Not asked yet: the prompt can still be put on screen, so ask. Asked
+  /// already: Android swallows a second request, so the switch in system
+  /// Settings is the only route left — one app's page deep, since nothing in
+  /// pubspec opens the notifications sub-page directly and none may be added.
+  Future<void> _onTap() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      if (_asked) {
+        await Geolocator.openAppSettings();
+      } else {
+        await NotificationService.ensurePermission();
+      }
+    } catch (_) {
+      // Neither a permission prompt nor a Settings intent is allowed to take
+      // the tap down: the row keeps reporting whatever it could read.
+    }
+    await _refresh();
+    if (!mounted) return;
+    setState(() => _busy = false);
+  }
+
+  /// The state word on the right.
+  ///
+  /// Measured against real Roboto on a 412pt phone, the value column this row
+  /// shares with the ones around it is 81.3px wide, and "Off — tap to enable"
+  /// is 119px: it would have ellipsised down to "Off — tap t…", dropping the
+  /// hint, which is the one thing the Off state has to say. So the word is the
+  /// state alone and the action lives under the label ([_supporting]), where
+  /// the column is 162.7px and the sentence fits intact.
+  String get _state {
+    final enabled = _enabled;
+    if (enabled == null) return 'Checking\u2026';
+    return enabled ? 'On' : 'Off';
+  }
+
+  /// The line under the label: what this row governs, or what to do while it
+  /// is off. Every supporting line on this page is a short phrase ("Light,
+  /// dark or system" is the longest at 112.5px) — this one started at 171.3px
+  /// and was the only one that would have been trimmed by its column.
+  String get _supporting {
+    if (_enabled == false) return 'Tap to turn them on';
+    return 'Trip and arrival alerts';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final enabled = _enabled;
+
+    return Semantics(
+      button: true,
+      label: 'Notifications, currently $_state',
+      child: InkWell(
+        key: const ValueKey('settings-row-notifications'),
+        onTap: _busy ? null : _onTap,
+        borderRadius: BorderRadius.circular(AppRadii.medium),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
+          child: Row(
+            // Same structure as the option and nav rows above: the label sits
+            // at the TOP of the row and the state word on its own axis, so a
+            // column of values down the page lines up. A `start` Row hands its
+            // children a loose height, which is why the centring is at the Row
+            // and the label is pinned back to the top by its Align.
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Align(
+                alignment: Alignment.topLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Icon(
+                    Icons.notifications_rounded,
+                    size: 20,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              // flex 2, the same share every other row on this page gives its
+              // label. Without it the label column and the state word split the
+              // free space evenly and the state lands ~45px off the value
+              // column the rows above and below use.
+              Expanded(
+                flex: 2,
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Notifications',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyLarge,
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 1),
+                        child: Text(
+                          _supporting,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            height: 1.25,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Flexible(
+                child: Text(
+                  _state,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  // The state is the value on this row, in the accent like the
+                  // other rows' values — and in the error colour when it is
+                  // the one state that is costing the user their alerts.
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: enabled == true
+                        ? scheme.primary
+                        : enabled == false
+                        ? scheme.error
+                        : scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              // Every other row ends with an 8px gap and a 20px caret; this one
+              // has neither — it navigates nowhere, and a chevron would promise
+              // a screen it does not open. The space is still reserved, so the
+              // state word sits on the same x as the values around it instead
+              // of drifting right by the width of a caret.
+              const SizedBox(width: AppSpacing.xs + 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

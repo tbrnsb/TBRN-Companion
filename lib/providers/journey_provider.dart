@@ -175,9 +175,16 @@ class JourneyProvider extends ChangeNotifier {
         final reminder = elapsedMinutes < 30
             ? 'Your trip is active — double-check essentials before leaving.'
             : 'You are on the road. Keep your journey plan and destination notes close.';
-        NotificationService.showTripReminder(
-          title: 'Journey update',
-          body: reminder,
+        // Explicitly unawaited: this runs inside a periodic Timer's sync
+        // callback, where a bare future would be fire-and-forget by accident
+        // rather than by decision. `unawaited` says the alert is best-effort —
+        // a reminder that cannot be posted must not stop the tick that keeps
+        // the card live.
+        unawaited(
+          NotificationService.showTripReminder(
+            title: 'Journey update',
+            body: reminder,
+          ),
         );
         _lastReminderAt = DateTime.now();
       }
@@ -292,12 +299,23 @@ class JourneyProvider extends ChangeNotifier {
     return journey;
   }
 
+  /// Ends the trip with [id].
+  ///
+  /// An id that matches NOTHING does nothing at all. It used to answer a
+  /// missing id with the active journey — `orElse: () => _activeJourney ??
+  /// Journey(destination: '', origin: '')` — so a stale id (a screen that
+  /// rebuilt, a trip already ended somewhere else, a trip that has since been
+  /// deleted) silently ended whichever trip happened to be running. The caller
+  /// asked to end one trip and a different, unrelated one ended, with no error
+  /// and no undo.
+  ///
+  /// The empty-destination guard that used to follow is gone with the
+  /// sentinel: it existed only to catch the placeholder the fallback produced
+  /// when there was no active journey either, and it also refused to end a
+  /// real trip that happened to be named nothing.
   Future<void> completeJourney(String id) async {
-    final journey = _journeys.firstWhere(
-      (item) => item.id == id,
-      orElse: () => _activeJourney ?? Journey(destination: '', origin: ''),
-    );
-    if (journey.destination.isEmpty && journey.origin.isEmpty) return;
+    final journey = getJourneyById(id);
+    if (journey == null) return;
 
     if (journey == _activeJourney) {
       _activeJourney = null;

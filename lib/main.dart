@@ -14,6 +14,16 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await StorageService().initialize();
   await NotificationService.initialize();
+  // AFTER initialize() — the plugin will not ask before it is initialized —
+  // and non-fatal, so a phone that refuses to answer still starts the app.
+  // Without this the POST_NOTIFICATIONS permission is never requested on
+  // Android 13+, where it starts denied, and every alert below is dropped by
+  // the system while the app's own toggles say ON.
+  try {
+    await NotificationService.ensurePermission();
+  } catch (_) {
+    // The permission prompt is a best effort — see above.
+  }
   // Awaited before the first frame so the app never renders with default
   // currency/theme and then flashes to the persisted values.
   final settings = SettingsProvider();

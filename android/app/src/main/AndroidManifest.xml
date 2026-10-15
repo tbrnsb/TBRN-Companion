@@ -7,10 +7,24 @@
       system Settings. geolocator cannot request a permission the manifest
       never declares, so it failed before it ever asked.
 
-      FINE/COARSE are what let the app read a position at all. BACKGROUND is
-      what lets an arrival geofence fire while the app is closed, which is the
-      entire point of the saved-place alerts. Android 11+ grants it separately
-      as "Allow all the time" and the user can revoke it at any time.
+      FINE/COARSE are what let the app read a position at all, and the only
+      runtime prompt for them is `Geolocator.requestPermission()` — asked from
+      a user action ("Use current location", the locate button), never at
+      startup.
+
+      BACKGROUND IS DECLARED, NOT REQUESTED, and that is deliberate. The
+      saved-place arrival check runs only while the app is open and has a fix:
+      `LocationProvider._checkArrivals` says so in as many words, and the place
+      screen repeats it ("Within 1.0 km, while the app is running"). This build
+      does NOT do background geofencing — nothing asks for "Allow all the time",
+      there is no background location request flow, and no foreground service
+      would keep a check alive after the app is closed. Firing on arrival with
+      the app killed is a much larger thing to put in someone's pocket without
+      asking, which is exactly why it was left out.
+
+      The declaration itself is kept rather than removed, because deleting a
+      manifest permission is a behaviour change beyond what this comment fixes.
+      As long as nothing requests it, it grants nothing and blocks nothing.
     -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />

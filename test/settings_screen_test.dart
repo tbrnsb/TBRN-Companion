@@ -1,6 +1,9 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,6 +18,7 @@ import 'package:daily_companion/screens/locations/locations_screen.dart';
 import 'package:daily_companion/widgets/app_gear.dart';
 import 'package:daily_companion/providers/transaction_provider.dart';
 import 'package:daily_companion/screens/settings_screen.dart';
+import 'package:daily_companion/services/notification_service.dart';
 import 'package:daily_companion/services/storage_service.dart';
 import 'package:daily_companion/theme/app_theme.dart';
 import 'package:daily_companion/widgets/settings_controls.dart';
@@ -342,6 +346,156 @@ void main() {
               'and that is what makes this row taller than the rows around it',
         );
       }
+    });
+  });
+
+  // The row that answers the question the rest of the app never asked: CAN the
+  // phone show an alert at all? Everything else here — the per-place toggle,
+  // the trip reminders — is silently void while that permission is off, and
+  // until this row existed no screen said so.
+  group('the alerts row reports what the phone will actually do', () {
+    const channel = MethodChannel('dexterous.com/flutter/local_notifications');
+    final calls = <MethodCall>[];
+
+    /// What `areNotificationsEnabled` will say.
+    var enabled = true;
+
+    /// What the permission prompt will answer.
+    var grantOnRequest = true;
+
+    setUpAll(() {
+      // The plugin resolves its implementation from the target platform, and
+      // nothing registers a plugin in a test: the Android implementation has
+      // to be installed by hand.
+      FlutterLocalNotificationsPlatform.instance =
+          AndroidFlutterLocalNotificationsPlugin();
+    });
+
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      NotificationService.resetForTesting();
+      calls.clear();
+      enabled = true;
+      grantOnRequest = true;
+
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            calls.add(call);
+            switch (call.method) {
+              case 'areNotificationsEnabled':
+                return enabled;
+              case 'requestNotificationsPermission':
+                // Answering the prompt is what changes the state the row
+                // then reads back, so the grant has to move the switch.
+                enabled = grantOnRequest;
+                return grantOnRequest;
+              default:
+                return null;
+            }
+          });
+    });
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    /// Runs [body] as if it were running on Android.
+    ///
+    /// The plugin resolves its implementation from the target platform and
+    /// this machine reports linux — a platform with nothing to ask — so the
+    /// override has to be on while the row is built and tapped. It must be
+    /// OFF again before the test body ends: flutter_test checks every
+    /// foundation debug variable before `tearDown` runs, and a leftover
+    /// override fails the test as "changed by the test".
+    Future<void> onAndroid(Future<void> Function() body) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      try {
+        await body();
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    }
+
+    testWidgets('it says On when the phone will show alerts', (tester) {
+      return onAndroid(() async {
+        usePhoneLayout(tester, const Size(412, 2600));
+        await tester.pumpWidget(_app());
+        await settleUi(tester);
+
+        final row = find.byKey(const ValueKey('settings-row-notifications'));
+        expect(row, findsOneWidget);
+        expect(find.text('On'), findsOneWidget);
+        expect(find.text('Off'), findsNothing);
+        expect(find.text('Trip and arrival alerts'), findsOneWidget);
+      });
+    });
+
+    testWidgets('it says Off, and the tap asks for the permission', (tester) {
+      return onAndroid(() async {
+        usePhoneLayout(tester, const Size(412, 2600));
+        enabled = false;
+        await tester.pumpWidget(_app());
+        await settleUi(tester);
+
+        expect(find.text('Off'), findsOneWidget);
+        // The tap hint lives under the label: the value column is 81.3px and
+        // "Off — tap to enable" is 119px of Roboto, so it would arrive trimmed
+        // to "Off — tap t…" — the hint, gone.
+        expect(find.text('Tap to turn them on'), findsOneWidget);
+        expect(find.text('Trip and arrival alerts'), findsNothing);
+
+        await tester.tap(
+          find.byKey(const ValueKey('settings-row-notifications')),
+        );
+        await settleUi(tester);
+
+        expect(
+          calls.map((c) => c.method),
+          contains('requestNotificationsPermission'),
+          reason:
+              'a permission that was never asked for must be asked for on the '
+              'tap that offers to enable it',
+        );
+        // The prompt was granted, and the row reports the new state rather
+        // than sitting on the one it read at startup.
+        expect(find.text('On'), findsOneWidget);
+      });
+    });
+
+    testWidgets('once the prompt has been answered, a tap goes to Settings', (
+      tester,
+    ) {
+      return onAndroid(() async {
+        usePhoneLayout(tester, const Size(412, 2600));
+        // Android answers the prompt at most once, so a second attempt is a
+        // dialog nobody sees — the only route left is system Settings. The
+        // geolocator settings intent has no plugin behind it in a test, which
+        // is fine: what this asserts is that the tap does NOT ask again and
+        // does not blow up on the way.
+        SharedPreferences.setMockInitialValues({
+          'notification_permission_asked': true,
+        });
+        NotificationService.resetForTesting();
+        enabled = false;
+        await tester.pumpWidget(_app());
+        await settleUi(tester);
+
+        expect(find.text('Off'), findsOneWidget);
+        expect(find.text('Tap to turn them on'), findsOneWidget);
+
+        await tester.tap(
+          find.byKey(const ValueKey('settings-row-notifications')),
+        );
+        await settleUi(tester);
+
+        expect(
+          calls.where((c) => c.method == 'requestNotificationsPermission'),
+          isEmpty,
+          reason: 'the prompt has been used up; asking again is a no-op',
+        );
+        expect(tester.takeException(), isNull);
+      });
     });
   });
 }
