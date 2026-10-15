@@ -130,9 +130,18 @@ class NotificationService {
 
   /// Records that the prompt has been put on screen, in memory and in prefs.
   ///
-  /// Written BEFORE the request goes out, so an answer that never arrives
-  /// (the activity is torn down mid-prompt) still counts as asked rather than
-  /// producing a second prompt on the next attempt.
+  /// Written AFTER the request comes back, never before — and in a `finally`,
+  /// so a prompt that throws still counts as an attempt. The old ordering wrote
+  /// the flag on the way out, to survive an answer that never arrives; that was
+  /// the wrong trade. A process killed while the system dialog is up (OOM kill,
+  /// swipe-away, a crash) never resumes, so "written first" persisted `true`
+  /// for a prompt the user may never have seen, and every later
+  /// [ensurePermission] then answered false WITHOUT asking: the per-place
+  /// toggle recorded `enabled=true`, the user waited for alerts the phone would
+  /// never show, and nothing pointed at Settings. Written last, a request that
+  /// never returns leaves the flag false and the next launch simply asks again —
+  /// and a repeat Android decides to swallow is harmless, because it just
+  /// answers false.
   static Future<void> _markPermissionAsked() async {
     _permissionAsked = true;
     try {
@@ -167,8 +176,14 @@ class NotificationService {
       if (android != null) {
         if (await android.areNotificationsEnabled() ?? false) return true;
         if (await hasAskedPermission()) return false;
-        await _markPermissionAsked();
-        return await android.requestNotificationsPermission() ?? false;
+        try {
+          return await android.requestNotificationsPermission() ?? false;
+        } finally {
+          // AFTER the request, so a process that dies mid-prompt leaves the
+          // flag false and gets asked again next launch. See
+          // [_markPermissionAsked].
+          await _markPermissionAsked();
+        }
       }
 
       final ios = _plugin
@@ -178,8 +193,11 @@ class NotificationService {
       if (ios != null) {
         if ((await ios.checkPermissions())?.isEnabled ?? false) return true;
         if (await hasAskedPermission()) return false;
-        await _markPermissionAsked();
-        return await ios.requestPermissions() ?? false;
+        try {
+          return await ios.requestPermissions() ?? false;
+        } finally {
+          await _markPermissionAsked();
+        }
       }
 
       // No runtime permission on this platform — nothing to ask.

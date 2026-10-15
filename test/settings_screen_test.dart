@@ -360,6 +360,10 @@ void main() {
     /// What `areNotificationsEnabled` will say.
     var enabled = true;
 
+    /// Whether it never says anything at all — a platform channel that has
+    /// stalled, which is how the row used to sit on "Checking…" forever.
+    var hang = false;
+
     /// What the permission prompt will answer.
     var grantOnRequest = true;
 
@@ -376,6 +380,7 @@ void main() {
       NotificationService.resetForTesting();
       calls.clear();
       enabled = true;
+      hang = false;
       grantOnRequest = true;
 
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -383,6 +388,11 @@ void main() {
             calls.add(call);
             switch (call.method) {
               case 'areNotificationsEnabled':
+                if (hang) {
+                  // Never answered: the row's read is now waiting on a
+                  // platform that is not going to reply.
+                  return Completer<dynamic>().future;
+                }
                 return enabled;
               case 'requestNotificationsPermission':
                 // Answering the prompt is what changes the state the row
@@ -495,6 +505,65 @@ void main() {
           reason: 'the prompt has been used up; asking again is a no-op',
         );
         expect(tester.takeException(), isNull);
+
+        // The intent never comes back here, and the tap path is bounded for
+        // the same reason the read is: a Settings call that never returns
+        // would leave `_busy` set and this row un-tappable for the rest of the
+        // screen's life. Wait out the deadline and it is live again.
+        await tester.pump(const Duration(seconds: 5));
+        await settleUi(tester);
+        expect(
+          tester
+              .widget<InkWell>(
+                find.byKey(const ValueKey('settings-row-notifications')),
+              )
+              .onTap,
+          isNotNull,
+          reason: 'the row recovers its tap once the bounded wait is over',
+        );
+      });
+    });
+
+    testWidgets('a phone that never answers lands on Off, not on '
+        'Checking…', (tester) {
+      return onAndroid(() async {
+        usePhoneLayout(tester, const Size(412, 2600));
+        // THE FAULT. `_refresh` ran once, on the way up, and `_enabled` only
+        // left null when `areNotificationsEnabled` came back. A channel that
+        // stalls leaves it waiting forever: the row showed "Checking…", with
+        // no timeout and no retry, and there was nothing on it to tap.
+        hang = true;
+        await tester.pumpWidget(_app());
+        await settleUi(tester);
+
+        // Honest while it waits — the read really is still outstanding.
+        expect(find.text('Checking\u2026'), findsOneWidget);
+
+        // And bounded: app-time is advanced in slices until the row settles,
+        // and it is given a few seconds' worth of clock and no more.
+        for (
+          var i = 0;
+          i < 20 && find.text('Checking\u2026').evaluate().isNotEmpty;
+          i++
+        ) {
+          await tester.pump(const Duration(milliseconds: 500));
+        }
+
+        expect(
+          find.text('Checking\u2026'),
+          findsNothing,
+          reason:
+              'a hung read must resolve to a definite state; "Checking…" is a '
+              'moment, not a place the row can sit',
+        );
+        expect(
+          find.text('Off'),
+          findsOneWidget,
+          reason:
+              'the state nothing was able to check is "not allowed", which is '
+              'what the service already reports for an unreachable platform',
+        );
+        expect(find.text('Tap to turn them on'), findsOneWidget);
       });
     });
   });

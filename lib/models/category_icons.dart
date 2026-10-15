@@ -444,20 +444,29 @@ class CategoryColours {
   ///
   /// An income colour is therefore offered on the expense side and vice versa.
   /// They are never in the same chart, and that is exactly the distinction the
-  /// second bullet is making.
+  /// second bullet is making. Cross-kind LISTS are where that trade shows:
+  /// transaction search, a CSV export and a place's breakdown put both kinds
+  /// in one row of results, so an expense custom can sit there wearing the
+  /// hue that labels Salary. It was accepted because every row states its own
+  /// kind in words and the two never share a chart — withholding the other
+  /// side's hues would break the sharing the bullet above deliberately allows.
+  ///
+  /// ORDERED, and the order is part of the contract: the hand-picked [swatches]
+  /// come first and the opposite kind's built-in hues last, so the first
+  /// colour offered in a cross-kind list is never one that already belongs to
+  /// a built-in category somewhere else on the screen.
   ///
   /// Editing an existing category keeps its current colour available, otherwise
   /// opening it and saving would silently move it to a different colour.
   ///
-  /// De-duplicated, in first-occurrence order: a value that is both a swatch
-  /// and a built-in is one colour, not the same colour twice.
+  /// De-duplicated, in that order: a value that is both a swatch and a
+  /// built-in is one colour, not the same colour twice.
   static List<int> availableFor({
     required CategoryKind kind,
     Iterable<CustomCategory> existing = const [],
     int? keepColour,
   }) {
-    final pool = <int>{
-      ...swatches,
+    final builtIns = <int>{
       for (final meta in CategoryRegistry.expenseCategories())
         meta.color.toARGB32(),
       for (final meta in CategoryRegistry.incomeCategories())
@@ -478,10 +487,23 @@ class CategoryColours {
     // filtered out from under it.
     if (keepColour != null) used.remove(keepColour);
 
-    return [
-      for (final swatch in pool)
-        if (!used.contains(swatch)) swatch,
-    ];
+    final available = <int>[];
+    void offer(int value) {
+      if (used.contains(value) || available.contains(value)) return;
+      available.add(value);
+    }
+
+    // Swatches FIRST, built-ins last — hand-picked, then the hues that already
+    // label a built-in of the opposite kind. Written as two passes rather than
+    // inherited from a set literal's insertion order, so the cross-kind lists
+    // above cannot lose the ordering to an edit that never mentions it.
+    for (final swatch in swatches) {
+      offer(swatch);
+    }
+    for (final hue in builtIns) {
+      offer(hue);
+    }
+    return available;
   }
 
   /// What a colour is called, so it is identified by a word rather than by

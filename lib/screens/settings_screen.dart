@@ -684,7 +684,17 @@ class _NotificationsRow extends StatefulWidget {
 }
 
 class _NotificationsRowState extends State<_NotificationsRow> {
+  /// How long one read of the phone is given before it is given up on.
+  ///
+  /// Long enough that a busy phone is not mistaken for a hang, short enough
+  /// that "Checking…" is a moment rather than a state the row sits on.
+  static const Duration _readTimeout = Duration(seconds: 4);
+
   /// What the phone says, or null while that is still being read.
+  ///
+  /// Null is a moment, never a resting state: [_bounded] puts a deadline on
+  /// every read, so the row always reaches "On" or "Off" — and "Checking…"
+  /// cannot outlive the wait it is waiting on.
   bool? _enabled;
 
   /// Whether the system prompt has been answered before. Decides between
@@ -702,9 +712,30 @@ class _NotificationsRowState extends State<_NotificationsRow> {
     _refresh();
   }
 
+  /// One read of the phone, with a deadline on it.
+  ///
+  /// Every path here crosses a platform channel, and a channel that never
+  /// answers — a stalled method channel, a plugin race at startup — left this
+  /// row on "Checking…" for as long as the screen stayed up, with no retry and
+  /// nothing on it to tap. A hang is resolved to the state the service already
+  /// reports when the platform cannot be reached AT ALL: false, which is the
+  /// claim nothing here was able to check, plus the row's own way out.
+  static Future<bool> _bounded(Future<bool> read) async {
+    try {
+      return await read.timeout(_readTimeout);
+    } catch (_) {
+      // Includes the timeout itself.
+      return false;
+    }
+  }
+
   Future<void> _refresh() async {
-    final enabled = await NotificationService.notificationsEnabled();
-    final asked = await NotificationService.hasAskedPermission();
+    // Each read is bounded separately, so the permission history still lands
+    // when it is the state read that has stalled. A false "asked" is the safe
+    // direction to be wrong in: the tap then tries the prompt once more, and a
+    // request Android decides to swallow simply answers false.
+    final enabled = await _bounded(NotificationService.notificationsEnabled());
+    final asked = await _bounded(NotificationService.hasAskedPermission());
     if (!mounted) return;
     setState(() {
       _enabled = enabled;
@@ -722,10 +753,13 @@ class _NotificationsRowState extends State<_NotificationsRow> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
+      // Bounded, like the read above: `_busy` is what disables this row, and a
+      // call that never returns would leave it un-tappable for the rest of the
+      // screen's life.
       if (_asked) {
-        await Geolocator.openAppSettings();
+        await Geolocator.openAppSettings().timeout(_readTimeout);
       } else {
-        await NotificationService.ensurePermission();
+        await NotificationService.ensurePermission().timeout(_readTimeout);
       }
     } catch (_) {
       // Neither a permission prompt nor a Settings intent is allowed to take

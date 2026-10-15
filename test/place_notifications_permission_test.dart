@@ -302,4 +302,44 @@ void main() {
       await tester.pumpAndSettle();
     });
   });
+
+  testWidgets('the SnackBar\'s Settings action is safe once the screen is '
+      'gone', (tester) {
+    return onAndroid(() async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+      grantOnRequest = false;
+
+      await pumpPlace(tester, place());
+      await toggleOn(tester);
+      expect(
+        find.textContaining('Your phone is blocking alerts'),
+        findsOneWidget,
+      );
+
+      // The action is captured HERE, while the screen is still on the tree.
+      final action = tester.widget<SnackBarAction>(find.byType(SnackBarAction));
+      expect(action.label, 'Settings');
+
+      // Then the screen goes — a back press, a pop from anywhere else — and
+      // only afterwards is the action tapped. It fires up to eight seconds
+      // after it was built, so whatever it uses has to be safe by then.
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      action.onPressed();
+      await settleUi(tester);
+
+      expect(
+        settingsCalls.map((c) => c.method),
+        isEmpty,
+        reason:
+            'the screen that built the SnackBar is gone; a stale context must '
+            'not open Settings on a tap nobody is looking at',
+      );
+      expect(tester.takeException(), isNull);
+
+      // Let the SnackBar's own dismissal timer, if any survived the unmount,
+      // run out rather than ending the test with it pending.
+      await tester.pump(const Duration(seconds: 9));
+      await tester.pumpAndSettle();
+    });
+  });
 }

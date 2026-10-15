@@ -378,6 +378,60 @@ void main() {
       expect(available, contains(mine));
     });
 
+    test(
+      'hand-picked swatches come before the other kind\'s built-in hues',
+      () {
+        // ORDER, because the two kinds do share a screen: a transaction search
+        // result, a CSV export and a place's breakdown all show expense and
+        // income rows in one list. Sharing the hues is deliberate and stays —
+        // but the colour a picker puts in front of the user first must be one
+        // that belongs to nobody, not one that already labels a built-in
+        // category of the opposite kind.
+        final swatchSet = CategoryColours.swatches.toSet();
+        final expenseBuiltIns = {
+          for (final meta in CategoryRegistry.expenseCategories())
+            meta.color.toARGB32(),
+        };
+        final incomeBuiltIns = {
+          for (final meta in CategoryRegistry.incomeCategories())
+            meta.color.toARGB32(),
+        };
+
+        for (final kind in CategoryKind.values) {
+          final available = CategoryColours.availableFor(kind: kind);
+          final otherSide = kind == CategoryKind.expense
+              ? incomeBuiltIns
+              : expenseBuiltIns;
+
+          // Stated so the ordering assertion cannot pass on an empty list.
+          expect(available.where(swatchSet.contains), isNotEmpty);
+          expect(available.where(otherSide.contains), isNotEmpty);
+
+          var pastTheSwatches = false;
+          for (final value in available) {
+            if (swatchSet.contains(value)) {
+              expect(
+                pastTheSwatches,
+                isFalse,
+                reason:
+                    'a hand-picked swatch is offered after a built-in hue, on '
+                    'the ${kind.name} side',
+              );
+            } else {
+              pastTheSwatches = true;
+              expect(
+                otherSide.contains(value),
+                isTrue,
+                reason:
+                    'everything past the swatch block is the opposite kind\'s '
+                    'built-ins, and this is neither',
+              );
+            }
+          }
+        }
+      },
+    );
+
     test('something is always offered', () {
       // A picker with nothing left in it would be a dead screen. The built-ins
       // are all fixed hexes and the swatch list is longer than they.

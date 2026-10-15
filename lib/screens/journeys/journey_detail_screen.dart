@@ -32,6 +32,13 @@ class JourneyDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     // Selected rather than watched: this screen draws one trip, so a change to
     // any other trip used to rebuild it for nothing.
+    //
+    // INVARIANT, because this comparison is by IDENTITY: [Journey] has no
+    // `operator ==`, so a provider that mutated a Journey in place would leave
+    // this select reading the same instance and rebuilding nothing. Every
+    // provider must therefore REPLACE the instance rather than edit it —
+    // `_checklists[i].items` in `checklist_provider.dart` mutates in place and
+    // is the known exception, and it must never be read through a `select`.
     final current =
         context.select<JourneyProvider, Journey?>(
           (p) => p.getJourneyById(journey.id),

@@ -298,6 +298,87 @@ void main() {
       expect(journeys.getJourneyById(journey.id)!.isSolo, isFalse);
     });
 
+    test('going solo takes the people off the trip', () async {
+      // THE FAULT. `setSolo` only flipped the flag. A trip that already had a
+      // roster kept every one of them on the record while every screen switched
+      // to the solo branch: a trip that says nobody is on it, still carrying
+      // the people it used to carry, and a roster that came back the moment
+      // the flag was taken off.
+      final journeys = JourneyProvider();
+      addTearDown(journeys.dispose);
+      await journeys.initialize();
+
+      final journey = await journeys.startJourney(
+        destination: 'SmatErr',
+        origin: 'Home',
+      );
+      await journeys.addParticipant(journey.id, 'Raj');
+      await journeys.addParticipant(journey.id, 'Mina');
+
+      await journeys.setSolo(journey.id, solo: true);
+
+      final saved = journeys.getJourneyById(journey.id)!;
+      expect(saved.isSolo, isTrue);
+      expect(
+        saved.participants,
+        isEmpty,
+        reason:
+            'a solo trip has nobody on it; a roster left behind by a flag is '
+            'a roster the solo screens cannot show and the trip cannot lose',
+      );
+    });
+
+    test('going solo on a trip with nobody leaves it with nobody', () async {
+      final journeys = JourneyProvider();
+      addTearDown(journeys.dispose);
+      await journeys.initialize();
+
+      final journey = await journeys.startJourney(
+        destination: 'SmatErr',
+        origin: 'Home',
+      );
+
+      await journeys.setSolo(journey.id, solo: true);
+
+      final saved = journeys.getJourneyById(journey.id)!;
+      expect(saved.isSolo, isTrue);
+      expect(saved.participants, isEmpty);
+    });
+
+    test('taking the solo flag back off invents no participants', () async {
+      // Both directions are reachable — the flag is set at creation and taken
+      // off from the trip's own Shared block — so the way back has to leave
+      // the trip as empty as it found it. A trip with nobody on it is a shared
+      // trip nobody has joined yet, not a trip with a roster.
+      final journeys = JourneyProvider();
+      addTearDown(journeys.dispose);
+      await journeys.initialize();
+
+      final journey = await journeys.startJourney(
+        destination: 'SmatErr',
+        origin: 'Home',
+        isSolo: true,
+      );
+      expect(journeys.getJourneyById(journey.id)!.participants, isEmpty);
+
+      await journeys.setSolo(journey.id, solo: false);
+
+      final shared = journeys.getJourneyById(journey.id)!;
+      expect(shared.isSolo, isFalse);
+      expect(
+        shared.participants,
+        isEmpty,
+        reason: 'un-soloing must not invent the people the trip never had',
+      );
+      expect(shared.isShared, isFalse);
+
+      // And the trip can go back to solo without losing anything twice.
+      await journeys.setSolo(journey.id, solo: true);
+      final soloAgain = journeys.getJourneyById(journey.id)!;
+      expect(soloAgain.isSolo, isTrue);
+      expect(soloAgain.participants, isEmpty);
+    });
+
     test('a journey written before the flag existed is not solo', () {
       final legacy = Journey.fromJson({
         'destination': 'Old Trip',

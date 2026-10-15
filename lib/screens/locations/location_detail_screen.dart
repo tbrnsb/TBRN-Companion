@@ -269,7 +269,16 @@ Future<void> _setNotifications(
       duration: const Duration(seconds: 8),
       action: SnackBarAction(
         label: 'Settings',
-        onPressed: () => openAppSettingsForLocation(context),
+        onPressed: () {
+          // Checked HERE, immediately before the context is used, and not with
+          // the `mounted` check above: this callback runs whenever the user
+          // gets round to tapping it — up to eight seconds later, and the
+          // prompt that put this SnackBar up could have taken the screen off
+          // the tree in the meantime. A stale context that opens a settings
+          // intent is a crash on a tap that was meant to fix the problem.
+          if (!context.mounted) return;
+          openAppSettingsForLocation(context);
+        },
       ),
     ),
   );

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -21,6 +23,16 @@ void main() {
 
   /// What the permission prompt will answer.
   var grantOnRequest = true;
+
+  /// Whether the permission prompt never answers at all — the process died
+  /// with the system dialog on screen, so the request is still outstanding.
+  var hangOnRequest = false;
+
+  /// Whether the permission prompt throws instead of answering.
+  var throwOnRequest = false;
+
+  /// The completer behind a hung prompt, so a test can let it finish.
+  Completer<dynamic>? pendingRequest;
 
   /// Whether the channel fails outright rather than answering.
   var broken = false;
@@ -49,6 +61,9 @@ void main() {
     recorded.clear();
     enabled = true;
     grantOnRequest = true;
+    hangOnRequest = false;
+    throwOnRequest = false;
+    pendingRequest = null;
     broken = false;
 
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -61,6 +76,14 @@ void main() {
             case 'areNotificationsEnabled':
               return enabled;
             case 'requestNotificationsPermission':
+              if (hangOnRequest) {
+                final completer = Completer<dynamic>();
+                pendingRequest = completer;
+                return completer.future;
+              }
+              if (throwOnRequest) {
+                throw PlatformException(code: 'prompt-down');
+              }
               return grantOnRequest;
             default:
               return null;
@@ -69,6 +92,10 @@ void main() {
   });
 
   tearDown(() {
+    // A prompt that never came back is only ever held open inside a test that
+    // finishes it; do not carry one into the next one.
+    pendingRequest?.complete(false);
+    pendingRequest = null;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_channel, null);
     debugDefaultTargetPlatformOverride = null;
@@ -181,6 +208,69 @@ void main() {
       });
     },
   );
+
+  group('the flag records an attempt the system actually saw, not one it might '
+      'have missed', () {
+    // THE DEFECT. `_markPermissionAsked` used to run BEFORE the request went
+    // out. A process killed while the system prompt is on screen — OOM kill,
+    // swipe-away, a crash — never comes back to do anything, but the flag
+    // had already been persisted as `true`. From then on every
+    // `ensurePermission()` answered false WITHOUT prompting, the per-place
+    // toggle still recorded `enabled=true`, and the user waited for alerts
+    // the phone would never deliver with no error and no hint to go to
+    // Settings. So the request is what commits the flag, in a `finally`: a
+    // prompt that returns anything at all — grant, refusal, or a throw —
+    // counts, and a prompt that never returns is as if it never happened.
+    test('a prompt that never returns leaves the flag unwritten', () async {
+      enabled = false;
+      hangOnRequest = true;
+
+      final hanging = NotificationService.ensurePermission();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(
+        await NotificationService.hasAskedPermission(),
+        isFalse,
+        reason:
+            'the prompt never came back, so nothing was ever asked; a flag '
+            'written here would silence every later attempt',
+      );
+
+      // The recovery the flag being false is FOR: the next attempt asks
+      // again, rather than answering false from a prompt nobody ever saw.
+      hangOnRequest = false;
+      grantOnRequest = true;
+
+      expect(await NotificationService.ensurePermission(), isTrue);
+      expect(
+        methods().where((m) => m == 'requestNotificationsPermission'),
+        hasLength(2),
+        reason:
+            'a prompt swallowed by the process dying mid-dialog must be '
+            'asked for again on the next attempt',
+      );
+
+      // Let the outstanding request finish so it is not left dangling.
+      pendingRequest!.complete(false);
+      pendingRequest = null;
+      expect(await hanging, isFalse);
+    });
+
+    test('a prompt that throws still counts as an attempt', () async {
+      enabled = false;
+      throwOnRequest = true;
+
+      expect(await NotificationService.ensurePermission(), isFalse);
+      expect(
+        await NotificationService.hasAskedPermission(),
+        isTrue,
+        reason:
+            'the system WAS asked — the throw came back from the prompt '
+            'itself — so this attempt must be recorded, or the next one is '
+            'a dialog Android silently swallows',
+      );
+    });
+  });
 
   group('a platform that cannot be reached never takes the caller down', () {
     test('a failing channel reports false instead of throwing', () async {

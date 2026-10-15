@@ -309,10 +309,13 @@ class JourneyProvider extends ChangeNotifier {
   /// asked to end one trip and a different, unrelated one ended, with no error
   /// and no undo.
   ///
-  /// The empty-destination guard that used to follow is gone with the
-  /// sentinel: it existed only to catch the placeholder the fallback produced
-  /// when there was no active journey either, and it also refused to end a
-  /// real trip that happened to be named nothing.
+  /// What it does with a trip it DOES find: stamps the end time, marks it
+  /// completed, saves it, and takes it out of the active-trip slot. The slot
+  /// is cleared directly when the id being ended is the one running — so the
+  /// trip just ended is not still treated as active even if the save fails —
+  /// and is then recomputed from whatever unfinished trips remain. Any other
+  /// trip is only stamped and saved: an id aimed elsewhere never touches the
+  /// trip that is running now.
   Future<void> completeJourney(String id) async {
     final journey = getJourneyById(id);
     if (journey == null) return;
@@ -371,7 +374,17 @@ class JourneyProvider extends ChangeNotifier {
   Future<void> setSolo(String journeyId, {required bool solo}) async {
     final journey = getJourneyById(journeyId);
     if (journey == null || journey.isSolo == solo) return;
-    await _saveSharedTripFields(journey, isSolo: solo);
+    await _saveSharedTripFields(
+      journey,
+      isSolo: solo,
+      // Going solo EMPTIES the roster. Flipping the flag alone left the
+      // participants on the record while the trip switched to the solo branch
+      // of every screen: a trip that says nobody is on it, still carrying the
+      // people it used to carry, and a roster that came back the moment the
+      // flag was taken off. Taking the flag off empties nothing — there is no
+      // roster to restore, and inventing one would be worse.
+      participants: solo ? const <TripParticipant>[] : null,
+    );
   }
 
   Future<void> removeParticipant(String journeyId, String participantId) async {
