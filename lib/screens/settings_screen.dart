@@ -684,18 +684,31 @@ class _NotificationsRow extends StatefulWidget {
 }
 
 class _NotificationsRowState extends State<_NotificationsRow> {
-  /// How long one read of the phone is given before it is given up on.
+  /// How long the row waits for the phone before it gives up.
   ///
   /// Long enough that a busy phone is not mistaken for a hang, short enough
-  /// that "Checking…" is a moment rather than a state the row sits on.
+  /// that "Checking…" is a moment rather than a state the row sits on. Both
+  /// reads go out TOGETHER and each is bounded by this one deadline, so the
+  /// row waits at most this long — not this twice over, which is what two
+  /// sequential bounded reads cost.
   static const Duration _readTimeout = Duration(seconds: 4);
 
-  /// What the phone says, or null while that is still being read.
+  /// What the phone says: the answer, or null when there is not one.
   ///
-  /// Null is a moment, never a resting state: [_bounded] puts a deadline on
-  /// every read, so the row always reaches "On" or "Off" — and "Checking…"
-  /// cannot outlive the wait it is waiting on.
+  /// Null covers two very different things and [_gaveUp] is what tells them
+  /// apart. While a read is genuinely outstanding the row says "Checking…";
+  /// once a read has given up the row says "Unknown" and offers the retry,
+  /// because a read that never came back has read nothing and may not claim
+  /// "Off" — that was the defect: an unknown painted as Off, in the error
+  /// colour, with nothing able to re-read it.
   bool? _enabled;
+
+  /// Whether the last read gave up rather than still being in flight.
+  ///
+  /// True exactly when [_enabled] is null after the deadline passed or the
+  /// channel threw, which is what turns "Checking…" into "Unknown" and turns
+  /// the tap into a re-read.
+  bool _gaveUp = false;
 
   /// Whether the system prompt has been answered before. Decides between
   /// asking and sending the user to Settings — see
@@ -703,6 +716,13 @@ class _NotificationsRowState extends State<_NotificationsRow> {
   bool _asked = false;
 
   bool _busy = false;
+
+  /// Serial number of the newest read.
+  ///
+  /// A read started at startup that is still outstanding when the user taps
+  /// would otherwise land LATER than the answer the tap just fetched and
+  /// overwrite it with its own stale "Unknown". Only the newest read writes.
+  int _readGeneration = 0;
 
   @override
   void initState() {
@@ -717,33 +737,44 @@ class _NotificationsRowState extends State<_NotificationsRow> {
   /// Every path here crosses a platform channel, and a channel that never
   /// answers — a stalled method channel, a plugin race at startup — left this
   /// row on "Checking…" for as long as the screen stayed up, with no retry and
-  /// nothing on it to tap. A hang is resolved to the state the service already
-  /// reports when the platform cannot be reached AT ALL: false, which is the
-  /// claim nothing here was able to check, plus the row's own way out.
-  static Future<bool> _bounded(Future<bool> read) async {
+  /// nothing on it to tap. So the wait is bounded, and what comes back when it
+  /// expires is NULL, not false: false is a claim — "the permission is off" —
+  /// and nothing here was able to check it. The row paints null as an honest
+  /// unknown with its own way out.
+  static Future<bool?> _bounded(Future<bool> read) async {
     try {
       return await read.timeout(_readTimeout);
     } catch (_) {
       // Includes the timeout itself.
-      return false;
+      return null;
     }
   }
 
   Future<void> _refresh() async {
-    // Each read is bounded separately, so the permission history still lands
-    // when it is the state read that has stalled. A false "asked" is the safe
-    // direction to be wrong in: the tap then tries the prompt once more, and a
-    // request Android decides to swallow simply answers false.
-    final enabled = await _bounded(NotificationService.notificationsEnabled());
-    final asked = await _bounded(NotificationService.hasAskedPermission());
-    if (!mounted) return;
+    final generation = ++_readGeneration;
+    // Both reads go out together, each bounded by the SAME deadline, so
+    // "Checking…" lasts [_readTimeout] at most rather than twice it. They are
+    // still bounded separately: the permission history lands even when it is
+    // the state read that has stalled. A false "asked" is the safe direction
+    // to be wrong in — the tap then tries the prompt once more, and a request
+    // Android decides to swallow simply answers false.
+    final answers = await Future.wait<bool?>([
+      _bounded(NotificationService.notificationsEnabled()),
+      _bounded(NotificationService.hasAskedPermission()),
+    ]);
+    if (!mounted || generation != _readGeneration) return;
     setState(() {
-      _enabled = enabled;
-      _asked = asked;
+      _enabled = answers[0];
+      _gaveUp = answers[0] == null;
+      _asked = answers[1] ?? false;
     });
   }
 
-  /// One tap, two possible answers.
+  /// One tap, three possible answers.
+  ///
+  /// Nothing could be read: this is the retry. Re-read, and only re-read —
+  /// acting on a state nobody knows would mean prompting on a guess, and the
+  /// prompt is one-shot.
   ///
   /// Not asked yet: the prompt can still be put on screen, so ask. Asked
   /// already: Android swallows a second request, so the switch in system
@@ -752,18 +783,21 @@ class _NotificationsRowState extends State<_NotificationsRow> {
   Future<void> _onTap() async {
     if (_busy) return;
     setState(() => _busy = true);
-    try {
-      // Bounded, like the read above: `_busy` is what disables this row, and a
-      // call that never returns would leave it un-tappable for the rest of the
-      // screen's life.
-      if (_asked) {
-        await Geolocator.openAppSettings().timeout(_readTimeout);
-      } else {
-        await NotificationService.ensurePermission().timeout(_readTimeout);
+    final retry = _gaveUp;
+    if (!retry) {
+      try {
+        // Bounded, like the read above: `_busy` is what disables this row, and
+        // a call that never returns would leave it un-tappable for the rest of
+        // the screen's life.
+        if (_asked) {
+          await Geolocator.openAppSettings().timeout(_readTimeout);
+        } else {
+          await NotificationService.ensurePermission().timeout(_readTimeout);
+        }
+      } catch (_) {
+        // Neither a permission prompt nor a Settings intent is allowed to take
+        // the tap down: the row keeps reporting whatever it could read.
       }
-    } catch (_) {
-      // Neither a permission prompt nor a Settings intent is allowed to take
-      // the tap down: the row keeps reporting whatever it could read.
     }
     await _refresh();
     if (!mounted) return;
@@ -778,9 +812,15 @@ class _NotificationsRowState extends State<_NotificationsRow> {
   /// hint, which is the one thing the Off state has to say. So the word is the
   /// state alone and the action lives under the label ([_supporting]), where
   /// the column is 162.7px and the sentence fits intact.
+  ///
+  /// Three states, and the last one is not a third spelling of Off: while the
+  /// phone is still being asked, "Checking…"; when that ask gave up,
+  /// "Unknown" — a resting state, which is why it is not drawn in the error
+  /// colour and why the line under the label offers a re-read instead of a
+  /// permission change.
   String get _state {
     final enabled = _enabled;
-    if (enabled == null) return 'Checking\u2026';
+    if (enabled == null) return _gaveUp ? 'Unknown' : 'Checking\u2026';
     return enabled ? 'On' : 'Off';
   }
 
@@ -790,6 +830,7 @@ class _NotificationsRowState extends State<_NotificationsRow> {
   /// and was the only one that would have been trimmed by its column.
   String get _supporting {
     if (_enabled == false) return 'Tap to turn them on';
+    if (_gaveUp) return 'Tap to check again';
     return 'Trip and arrival alerts';
   }
 

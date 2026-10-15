@@ -243,9 +243,15 @@ class JourneyProvider extends ChangeNotifier {
     try {
       await _storage.deleteJourney(id);
       _journeys.removeWhere((j) => j.id == id);
-      if (_activeJourney?.id == id) {
-        _activeJourney = null;
-      }
+      // Recomputed, not merely cleared, and the same way `addJourney`,
+      // `updateJourney` and `loadJourneys` recompute it. Clearing the slot
+      // when the deleted trip was the running one left it EMPTY with another
+      // unfinished trip still in the list, and nothing promoted that trip
+      // until some unrelated write came along — the active card, the
+      // "Heading home?" prompt and the trip reminders all went quiet for a
+      // trip that was genuinely running. A deleted trip is out of `_journeys`
+      // before this runs, so it can never be picked again.
+      _refreshActiveJourney();
       notifyListeners();
     } catch (e) {
       _error = 'Failed to delete journey: $e';

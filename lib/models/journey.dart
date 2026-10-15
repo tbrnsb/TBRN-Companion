@@ -55,13 +55,23 @@ class Journey {
   ///
   /// NOT the same as having no participants. A journey with an empty roster is
   /// a shared trip nobody has joined yet, and the app says "Solo so far" and
-  /// offers the field to add people. This flag is the answer to "there is no
-  /// shared section, I did not want one" -- the section is not shown at all,
-  /// because a person who said so should not have to look at it to be reminded.
+  /// offers the field to add people. This flag takes the OTHER branch of that
+  /// same "Shared" block on the trip screen — it is not a switch that hides the
+  /// block. What that branch draws is a header with "Solo" beside it, one line
+  /// saying there is nothing to split and nobody to add, and a single control,
+  /// "This trip is shared after all", which clears the flag.
   ///
-  /// Reversible. Adding a participant clears it, so a trip that starts solo can
-  /// become shared and a trip that starts shared can become solo; nothing here
-  /// is a one-way door.
+  /// How the flag comes OFF in this app: that control, and nothing else you
+  /// can reach. `addParticipant` clears it too, but its only call site is the
+  /// add field, and that field is drawn only in the non-solo branch above — so
+  /// a solo trip offers no way to add anybody, which leaves the one control as
+  /// the only route out.
+  ///
+  /// How it comes back ON: nothing, at present. The only `setSolo` call site
+  /// in the app passes `solo: false`, so a trip that starts shared cannot be
+  /// marked solo again — a control for doing so is missing, not hidden. What
+  /// CAN still set it is the start-trip form, which writes the flag once when
+  /// the trip is created.
   final bool isSolo;
 
   /// A short code friends can read aloud to confirm they are on the same trip.

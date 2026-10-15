@@ -218,9 +218,10 @@ void main() {
     // `ensurePermission()` answered false WITHOUT prompting, the per-place
     // toggle still recorded `enabled=true`, and the user waited for alerts
     // the phone would never deliver with no error and no hint to go to
-    // Settings. So the request is what commits the flag, in a `finally`: a
-    // prompt that returns anything at all — grant, refusal, or a throw —
-    // counts, and a prompt that never returns is as if it never happened.
+    // Settings. So the request is what commits the flag — but only once it
+    // RETURNS: a prompt that answers, grant or refusal, counts, and a prompt
+    // that throws or never returns displayed nothing and is as if it never
+    // happened.
     test('a prompt that never returns leaves the flag unwritten', () async {
       enabled = false;
       hangOnRequest = true;
@@ -256,18 +257,32 @@ void main() {
       expect(await hanging, isFalse);
     });
 
-    test('a prompt that throws still counts as an attempt', () async {
+    test('a prompt that throws leaves the flag unwritten', () async {
       enabled = false;
       throwOnRequest = true;
 
       expect(await NotificationService.ensurePermission(), isFalse);
       expect(
         await NotificationService.hasAskedPermission(),
-        isTrue,
+        isFalse,
         reason:
-            'the system WAS asked — the throw came back from the prompt '
-            'itself — so this attempt must be recorded, or the next one is '
-            'a dialog Android silently swallows',
+            'the throw put nothing on screen, so nothing was asked; recording '
+            'it would spend Android\u2019s one ask per install on a prompt the '
+            'user never saw, and no later attempt could ever ask again',
+      );
+
+      // The recovery the flag being false is FOR: with the failure recorded as
+      // "not asked", the next attempt reaches the prompt at all.
+      throwOnRequest = false;
+      grantOnRequest = true;
+
+      expect(await NotificationService.ensurePermission(), isTrue);
+      expect(
+        methods().where((m) => m == 'requestNotificationsPermission'),
+        hasLength(2),
+        reason:
+            'a failure that showed nothing must not have burned the one-shot '
+            'ask; the second attempt has to reach the prompt',
       );
     });
   });

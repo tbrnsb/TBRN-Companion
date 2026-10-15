@@ -130,18 +130,24 @@ class NotificationService {
 
   /// Records that the prompt has been put on screen, in memory and in prefs.
   ///
-  /// Written AFTER the request comes back, never before — and in a `finally`,
-  /// so a prompt that throws still counts as an attempt. The old ordering wrote
-  /// the flag on the way out, to survive an answer that never arrives; that was
-  /// the wrong trade. A process killed while the system dialog is up (OOM kill,
-  /// swipe-away, a crash) never resumes, so "written first" persisted `true`
+  /// Called only once the request has RETURNED — never before it goes out, and
+  /// never from a `finally`.
+  ///
+  /// Written BEFORE the request, a process killed while the system dialog is
+  /// up (OOM kill, swipe-away, a crash) never resumed, so `true` was persisted
   /// for a prompt the user may never have seen, and every later
   /// [ensurePermission] then answered false WITHOUT asking: the per-place
   /// toggle recorded `enabled=true`, the user waited for alerts the phone would
-  /// never show, and nothing pointed at Settings. Written last, a request that
-  /// never returns leaves the flag false and the next launch simply asks again —
-  /// and a repeat Android decides to swallow is harmless, because it just
-  /// answers false.
+  /// never show, and nothing pointed at Settings.
+  ///
+  /// Written from a `finally` after the request, a throw — a
+  /// `MissingPluginException` from a plugin nothing registered, a
+  /// `PlatformException` from a channel that is down — displayed NOTHING and
+  /// still burned the one ask Android grants per install, so the user lost
+  /// their only prompt to a failure they never saw. A throw now skips this
+  /// method entirely and leaves the flag unwritten: the next attempt asks
+  /// again, and a repeat Android decides to swallow is harmless, because it
+  /// just answers false.
   static Future<void> _markPermissionAsked() async {
     _permissionAsked = true;
     try {
@@ -176,14 +182,13 @@ class NotificationService {
       if (android != null) {
         if (await android.areNotificationsEnabled() ?? false) return true;
         if (await hasAskedPermission()) return false;
-        try {
-          return await android.requestNotificationsPermission() ?? false;
-        } finally {
-          // AFTER the request, so a process that dies mid-prompt leaves the
-          // flag false and gets asked again next launch. See
-          // [_markPermissionAsked].
-          await _markPermissionAsked();
-        }
+        final answered =
+            await android.requestNotificationsPermission() ?? false;
+        // Only a request that CAME BACK is an attempt worth recording. A throw
+        // skips this line and the flag stays unwritten, so the next call asks
+        // again. See [_markPermissionAsked].
+        await _markPermissionAsked();
+        return answered;
       }
 
       final ios = _plugin
@@ -193,11 +198,9 @@ class NotificationService {
       if (ios != null) {
         if ((await ios.checkPermissions())?.isEnabled ?? false) return true;
         if (await hasAskedPermission()) return false;
-        try {
-          return await ios.requestPermissions() ?? false;
-        } finally {
-          await _markPermissionAsked();
-        }
+        final answered = await ios.requestPermissions() ?? false;
+        await _markPermissionAsked();
+        return answered;
       }
 
       // No runtime permission on this platform — nothing to ask.

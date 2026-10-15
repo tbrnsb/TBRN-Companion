@@ -524,14 +524,17 @@ void main() {
       });
     });
 
-    testWidgets('a phone that never answers lands on Off, not on '
-        'Checking…', (tester) {
+    testWidgets('a phone that never answers is reported as unknown, never '
+        'as Off — and a second tap re-reads it', (tester) {
       return onAndroid(() async {
         usePhoneLayout(tester, const Size(412, 2600));
-        // THE FAULT. `_refresh` ran once, on the way up, and `_enabled` only
-        // left null when `areNotificationsEnabled` came back. A channel that
-        // stalls leaves it waiting forever: the row showed "Checking…", with
-        // no timeout and no retry, and there was nothing on it to tap.
+        // THE FAULT. `_bounded` mapped a timeout AND a thrown channel to
+        // `false`, `_refresh` stored that into `_enabled`, and nothing read
+        // the phone again: a slow plugin at startup painted "Off" in the
+        // error colour with "Tap to turn them on" on a phone whose
+        // notifications ARE on, permanently. A read that gave up has not read
+        // anything — it may not claim "Off", it must say so honestly, and it
+        // has to hand the user the retry the old row never offered.
         hang = true;
         await tester.pumpWidget(_app());
         await settleUi(tester);
@@ -553,17 +556,59 @@ void main() {
           find.text('Checking\u2026'),
           findsNothing,
           reason:
-              'a hung read must resolve to a definite state; "Checking…" is a '
-              'moment, not a place the row can sit',
+              'a hung read must resolve; "Checking…" is a moment, not a place '
+              'the row can sit',
         );
         expect(
           find.text('Off'),
-          findsOneWidget,
+          findsNothing,
           reason:
-              'the state nothing was able to check is "not allowed", which is '
-              'what the service already reports for an unreachable platform',
+              'nothing was read, so nothing here may report the permission as '
+              'missing — that is the defect: an unknown reported as Off, in '
+              'the error colour, forever',
         );
-        expect(find.text('Tap to turn them on'), findsOneWidget);
+        expect(find.text('On'), findsNothing);
+        expect(
+          find.text('Unknown'),
+          findsOneWidget,
+          reason: 'a read that gave up has to say what it does not know',
+        );
+        // And it is not painted as Off either. The error colour is what this
+        // row uses for "this is what is costing you your alerts", and nothing
+        // was read, so there is no such claim to make.
+        final scheme = Theme.of(tester.element(find.text('Unknown')))
+            .colorScheme;
+        expect(
+          tester.widget<Text>(find.text('Unknown')).style?.color,
+          scheme.onSurfaceVariant,
+          reason: 'an unknown is not an error the user caused',
+        );
+        expect(
+          find.text('Tap to check again'),
+          findsOneWidget,
+          reason: 'the terminal unknown state has to offer the retry',
+        );
+
+        // The retry: the phone answers this time.
+        hang = false;
+        await tester.tap(
+          find.byKey(const ValueKey('settings-row-notifications')),
+        );
+        await settleUi(tester);
+
+        expect(
+          find.text('On'),
+          findsOneWidget,
+          reason: 'the second tap re-reads the phone instead of guessing',
+        );
+        expect(
+          calls.where((c) => c.method == 'requestNotificationsPermission'),
+          isEmpty,
+          reason:
+              're-reading is not asking: the retry must never spend the '
+              'one-shot permission prompt on a row that only wanted to check',
+        );
+        expect(tester.takeException(), isNull);
       });
     });
   });
