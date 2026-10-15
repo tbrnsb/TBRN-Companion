@@ -491,6 +491,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         lastDay = day;
         widgets.add(
           Padding(
+            // The header belongs to its day, not to its position: adding a
+            // transaction to an earlier day shifts every header underneath,
+            // and an unkeyed child is then rebuilt from scratch rather than
+            // moved.
+            key: ValueKey<String>('day-${day.toIso8601String()}'),
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.xxs,
               AppSpacing.sm,
@@ -509,7 +514,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           ),
         );
       }
-      widgets.add(_TransactionTile(transaction: transaction));
+      widgets.add(
+        // Stable identity for a row that moves: a new transaction, a delete or
+        // a month change all reorder this list.
+        _TransactionTile(
+          key: ValueKey<String>(transaction.id),
+          transaction: transaction,
+        ),
+      );
     }
     return widgets;
   }
@@ -1067,7 +1079,7 @@ class _FilterButton extends StatelessWidget {
 }
 
 class _TransactionTile extends StatelessWidget {
-  const _TransactionTile({required this.transaction});
+  const _TransactionTile({super.key, required this.transaction});
 
   final Transaction transaction;
 

@@ -140,6 +140,10 @@ void main() {
         await tester.pumpWidget(_app(provider));
         await settleUi(tester);
 
+        // Icon-only control: the tooltip is its accessible name, and it had
+        // none, so a screen reader heard "button" and nothing else.
+        expect(find.byTooltip('Delete item'), findsWidgets);
+
         final map = checklist.items.firstWhere((i) => i.name == 'Map');
 
         await tester.runAsync(() async {
@@ -256,7 +260,7 @@ void main() {
       );
       await settleUi(tester);
 
-      expect(find.text('Reset Checklist?'), findsOneWidget);
+      expect(find.text('Reset checklist?'), findsOneWidget);
       expect(
         find.text('This will uncheck all items. Are you sure?'),
         findsOneWidget,
@@ -265,6 +269,57 @@ void main() {
       // an implicit break when a case ends in a void-returning call, which is
       // why the analyzer is silent about the missing `break`s here.
       expect(find.byType(AlertDialog), findsOneWidget);
+    });
+
+    testWidgets('Clear packed items confirms before it deletes anything', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+
+      final provider = await _seed(tester);
+      await tester.pumpWidget(_app(provider));
+      await settleUi(tester);
+
+      // "Boots" is checked in the seed, so the action is offered.
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await settleUi(tester);
+      await tester.tap(
+        find.widgetWithText(PopupMenuItem<String>, 'Clear packed items'),
+      );
+      await settleUi(tester);
+
+      expect(find.text('Clear packed items?'), findsOneWidget);
+      expect(
+        find.textContaining('This action cannot be undone'),
+        findsOneWidget,
+      );
+      expect(find.byType(AlertDialog), findsOneWidget);
+
+      // Cancel on the left, the action on the right — the order every other
+      // destructive confirmation in the app uses.
+      final labels = tester
+          .widgetList<TextButton>(
+            find.descendant(
+              of: find.byType(AlertDialog),
+              matching: find.byType(TextButton),
+            ),
+          )
+          .map((button) => (button.child! as Text).data)
+          .toList();
+      expect(labels, ['Cancel', 'Clear']);
+
+      // Backing out removes nothing. The confirmed path is not driven here:
+      // a tap starts the Hive write in the fake-async zone, where it cannot
+      // finish and holds the box lock for every later test in the file.
+      await tester.tap(find.text('Cancel'));
+      await settleUi(tester);
+
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('Boots'), findsOneWidget);
+      expect(
+        provider.checklists.single.items.where((i) => i.isChecked),
+        hasLength(1),
+      );
     });
   });
 }

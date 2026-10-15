@@ -608,7 +608,8 @@ class _BudgetRow extends StatelessWidget {
                 IconButton(
                   key: ValueKey('budget-edit-$storageKey'),
                   tooltip: hasLimit ? 'Change limit' : 'Set a limit',
-                  visualDensity: VisualDensity.compact,
+                  // No `visualDensity: compact` here: compact sizes this to
+                  // 40x40, under the 48 floor.
                   onPressed: () => _editLimit(context),
                   icon: const Icon(Icons.tune_rounded, size: 18),
                 ),

@@ -26,7 +26,11 @@ class TripSummaryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final journey = context.watch<JourneyProvider>().getJourneyById(journeyId);
+    // Selected rather than watched: this screen renders ONE trip, and watching
+    // the provider rebuilt it whenever any other trip in the app changed.
+    final journey = context.select<JourneyProvider, Journey?>(
+      (p) => p.getJourneyById(journeyId),
+    );
 
     if (journey == null) {
       return Scaffold(

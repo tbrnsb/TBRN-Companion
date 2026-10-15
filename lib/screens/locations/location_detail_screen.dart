@@ -55,10 +55,15 @@ class LocationDetailScreen extends StatelessWidget {
     // the switch and the sentence under it could disagree with each other.
     //
     // Null only when the place has since been deleted, and then the snapshot is
-    // the least-wrong thing to keep drawing rather than throwing on a route
+    // the least-worst thing to keep drawing rather than throwing on a route
     // that is already on screen.
+    //
+    // Selected rather than watched: this screen draws one place, so watching
+    // the provider rebuilt it whenever any other place in the app changed.
     final place =
-        context.watch<LocationProvider>().getLocationById(location.id) ??
+        context.select<LocationProvider, Location?>(
+          (p) => p.getLocationById(location.id),
+        ) ??
         location;
 
     // Every transaction ever filed against this place, across all months and

@@ -135,11 +135,27 @@ class _JourneysScreenState extends State<JourneysScreen> {
                   const AppSurface(
                     tier: AppSurfaceTier.flat,
                     padding: EdgeInsets.all(AppSpacing.lg),
-                    child: Center(child: Text('No journeys logged yet.')),
+                    // Says what the section is for AND where the next trip
+                    // comes from. The bare sentence it replaced named neither
+                    // the screen nor a way forward, and the card that starts a
+                    // trip sits directly above it.
+                    child: Center(
+                      child: Text(
+                        'Your trips will be listed here. Use "Start a new '
+                        'journey" above to log the first one.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
                   )
                 else
                   ...journeyProvider.journeys.map(
-                    (journey) => _JourneyTile(journey: journey),
+                    // Newest first, so the next trip inserts at the top and
+                    // every tile below shifts: keyed so they move rather than
+                    // rebuild.
+                    (journey) => _JourneyTile(
+                      key: ValueKey<String>(journey.id),
+                      journey: journey,
+                    ),
                   ),
               ],
             ),
@@ -505,13 +521,14 @@ class _ActiveJourneyCard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final accents = AppAccents.of(context);
 
-    // Watched, not read: a trip usually starts with no checklist and gains one
-    // moments later, and this card has to redraw when it does. Null-progress on
-    // the tile below is the same signal seen from the other end.
-    final hasLinkedChecklist = context
-        .watch<ChecklistProvider>()
-        .getChecklistsForJourney(journey.id)
-        .isNotEmpty;
+    // Selected, not watched: a trip usually starts with no checklist and gains
+    // one moments later, and this card has to redraw when it does — but that is
+    // a bool, and watching the whole provider redrew it on every checklist
+    // change to any trip in the app. Null-progress on the tile below is the
+    // same signal seen from the other end.
+    final hasLinkedChecklist = context.select<ChecklistProvider, bool>(
+      (p) => p.getChecklistsForJourney(journey.id).isNotEmpty,
+    );
 
     // The card this is drawn on, so both accents can be resolved FOR it rather
     // than assumed. On Gruvbox the container is `selection` #504945 and both
@@ -765,7 +782,7 @@ class _PackProgressLine extends StatelessWidget {
 }
 
 class _JourneyTile extends StatelessWidget {
-  const _JourneyTile({required this.journey});
+  const _JourneyTile({super.key, required this.journey});
 
   final Journey journey;
 
@@ -915,7 +932,9 @@ class _PackingListEditor extends StatelessWidget {
                   Expanded(child: Text(item, style: textTheme.bodyMedium)),
                   IconButton(
                     tooltip: 'Remove $item',
-                    visualDensity: VisualDensity.compact,
+                    // No `visualDensity: compact` here: compact sizes this to
+                    // 40x40, which is under the 48 floor the remove target is
+                    // supposed to clear. The icon stays 18 either way.
                     icon: const Icon(Icons.close_rounded, size: 18),
                     onPressed: () => onRemove(item),
                   ),

@@ -30,8 +30,13 @@ class JourneyDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final journeys = context.watch<JourneyProvider>();
-    final current = journeys.getJourneyById(journey.id) ?? journey;
+    // Selected rather than watched: this screen draws one trip, so a change to
+    // any other trip used to rebuild it for nothing.
+    final current =
+        context.select<JourneyProvider, Journey?>(
+          (p) => p.getJourneyById(journey.id),
+        ) ??
+        journey;
     final checklists = context
         .watch<ChecklistProvider>()
         .getChecklistsForJourney(current.id);

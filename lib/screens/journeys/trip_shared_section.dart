@@ -31,8 +31,11 @@ class TripSharedSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final journeys = context.watch<JourneyProvider>();
-    final journey = journeys.getJourneyById(journeyId);
+    // Selected rather than watched: this section draws one trip, so a change to
+    // any other trip used to rebuild it for nothing.
+    final journey = context.select<JourneyProvider, Journey?>(
+      (p) => p.getJourneyById(journeyId),
+    );
     // A vanished journey is the only reason to render nothing at all. An EMPTY
     // roster used to hide this section too, which made the feature unreachable:
     // the only call site of addParticipant in the whole app is the field below,
@@ -395,7 +398,10 @@ class _ParticipantRow extends StatelessWidget {
           IconButton(
             key: ValueKey('remove-${total.id}'),
             tooltip: 'Remove ${total.name}',
-            visualDensity: VisualDensity.compact,
+            // No `visualDensity: compact` here: compact sizes this to 40x40,
+            // and the remove control is the one that costs somebody their
+            // share of a settlement — it should not be the smallest thing on
+            // the row.
             icon: const Icon(Icons.close_rounded, size: 18),
             onPressed: onRemove,
           ),

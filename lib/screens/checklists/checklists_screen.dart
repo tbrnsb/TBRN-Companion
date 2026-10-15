@@ -20,9 +20,14 @@ class ChecklistsScreen extends StatefulWidget {
 class _ChecklistsScreenState extends State<ChecklistsScreen> {
   @override
   Widget build(BuildContext context) {
-    // Watched here, outside the Consumer below, because the FAB decision needs
-    // the same "is it empty" answer the empty state is built from.
-    final isEmpty = context.watch<ChecklistProvider>().checklists.isEmpty;
+    // Selected, not watched: this is ONE bool off the provider, and watching
+    // the whole thing rebuilt the app bar and the Consumer below on every
+    // checklist change in the app. The Consumer does its own watching for the
+    // body; this only has to know when the list crosses the empty/not-empty
+    // line, which is the same answer the empty state is built from.
+    final isEmpty = context.select<ChecklistProvider, bool>(
+      (p) => p.checklists.isEmpty,
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -214,6 +219,10 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
       checklist,
     ) {
       return Column(
+        // Stable identity: a new checklist lands at the top of this list and
+        // every card underneath shifts, so an unkeyed child is rebuilt from
+        // scratch instead of moved.
+        key: ValueKey<String>(checklist.id),
         children: [
           InkWell(
             onTap: () {

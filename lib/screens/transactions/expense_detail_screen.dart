@@ -21,13 +21,15 @@ class ExpenseDetailScreen extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
 
+    // Selected rather than watched: this screen draws ONE expense, so watching
+    // the provider rebuilt it whenever any other transaction in the app moved.
     final current =
-        context
-            .watch<TransactionProvider>()
-            .transactions
-            .where((t) => t.id == expense.id)
-            .whereType<Expense>()
-            .firstOrNull ??
+        context.select<TransactionProvider, Expense?>(
+          (p) => p.transactions
+              .where((t) => t.id == expense.id)
+              .whereType<Expense>()
+              .firstOrNull,
+        ) ??
         expense;
 
     final meta = current.categoryMeta;

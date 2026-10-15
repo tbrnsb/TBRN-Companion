@@ -86,6 +86,29 @@ void main() {
     // it protects is still a test.
   });
 
+  group('an empty journey tab explains itself', () {
+    testWidgets('the recent-journeys empty copy names the next action', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phoneSmall);
+      final journeys = await _provider(tester);
+
+      await tester.pumpWidget(_app(journeys));
+      await settleUi(tester);
+
+      expect(find.text('Recent journeys'), findsOneWidget);
+      expect(
+        find.text(
+          'Your trips will be listed here. Use "Start a new journey" above to '
+          'log the first one.',
+        ),
+        findsOneWidget,
+      );
+      // The action the copy points at is on the same screen.
+      expect(find.text('Start a new journey'), findsOneWidget);
+    });
+  });
+
   group('what you are taking is a list', () {
     testWidgets('items are added one at a time and shown back', (tester) async {
       usePhoneLayout(tester, TestViewports.phonePortrait);
@@ -156,6 +179,18 @@ void main() {
       );
       await tester.tap(find.byTooltip('Add to the list'));
       await settleUi(tester);
+
+      // Icon-only, so its own box is the target: it has to clear 48. Measured
+      // on the button, not on `find.byTooltip` — that finder matches the
+      // tooltip widget *inside* the button, whose box measures 40 even when
+      // the button around it is a full 48.
+      final removeSize = tester.getSize(
+        find.byWidgetPredicate(
+          (w) => w is IconButton && w.tooltip == 'Remove Boots',
+        ),
+      );
+      expect(removeSize.width, greaterThanOrEqualTo(48.0));
+      expect(removeSize.height, greaterThanOrEqualTo(48.0));
 
       await tester.tap(find.byTooltip('Remove Boots'));
       await settleUi(tester);

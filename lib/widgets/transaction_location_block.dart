@@ -7,7 +7,6 @@ import 'package:daily_companion/providers/location_provider.dart';
 import 'package:daily_companion/services/place_launcher.dart';
 import 'package:daily_companion/theme/app_theme.dart';
 import 'package:daily_companion/utils/format.dart';
-import 'package:daily_companion/utils/iterable_ext.dart';
 
 import '../screens/journeys/journey_detail_screen.dart';
 import '../screens/locations/location_detail_screen.dart';
@@ -32,10 +31,14 @@ class TransactionLocationBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final locations = context.watch<LocationProvider>().locations;
-    final location = transaction.locationId == null
+    // Selected rather than watched: one id is resolved, so watching the whole
+    // provider rebuilt the detail screen whenever any other place changed.
+    final locationId = transaction.locationId;
+    final location = locationId == null
         ? null
-        : locations.where((l) => l.id == transaction.locationId).firstOrNull;
+        : context.select<LocationProvider, Location?>(
+            (p) => p.getLocationById(locationId),
+          );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

@@ -100,9 +100,7 @@ class ChecklistDetailScreen extends StatelessWidget {
                   );
                   break;
                 case 'clearCompleted':
-                  await context.read<ChecklistProvider>().clearCompletedItems(
-                    shown.id,
-                  );
+                  _showClearPackedConfirmation(context, shown);
                   break;
                 case 'reset':
                   _showResetConfirmation(context, shown);
@@ -196,6 +194,9 @@ class ChecklistDetailScreen extends StatelessWidget {
     ChecklistItem item,
   ) {
     return ListTile(
+      // Stable identity for a row the list is built from: items are added and
+      // removed, so an unkeyed child is rebuilt rather than moved.
+      key: ValueKey<String>(item.id),
       contentPadding: EdgeInsets.zero,
       leading: Checkbox(
         value: item.isChecked,
@@ -205,6 +206,7 @@ class ChecklistDetailScreen extends StatelessWidget {
       ),
       title: AppCheckableLabel(text: item.name, checked: item.isChecked),
       trailing: IconButton(
+        tooltip: 'Delete item',
         icon: Icon(
           Icons.delete_outline_rounded,
           color: Theme.of(context).colorScheme.error,
@@ -257,7 +259,7 @@ class ChecklistDetailScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete Item?'),
+        title: const Text('Delete item?'),
         content: Text('Are you sure you want to delete "${item.name}"?'),
         actions: [
           TextButton(
@@ -276,11 +278,46 @@ class ChecklistDetailScreen extends StatelessWidget {
     );
   }
 
+  /// Clears every ticked item, which is a delete of as many rows as are
+  /// checked and therefore gets the same confirmation the single-item delete
+  /// gets. It used to run the moment the menu entry was tapped: the one
+  /// destructive action on this screen that had no way back.
+  void _showClearPackedConfirmation(BuildContext context, Checklist current) {
+    final packed = current.items.where((i) => i.isChecked).length;
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Clear packed items?'),
+        content: Text(
+          'This removes the $packed ticked '
+          '${packed == 1 ? 'item' : 'items'} from this checklist. '
+          'This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              // The write starts here, inside the button handler, for the same
+              // reason as every other delete in this file: it belongs to the
+              // zone the tap came from.
+              context.read<ChecklistProvider>().clearCompletedItems(current.id);
+              Navigator.pop(dialogContext);
+            },
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showResetConfirmation(BuildContext context, Checklist current) {
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Reset Checklist?'),
+        title: const Text('Reset checklist?'),
         content: const Text('This will uncheck all items. Are you sure?'),
         actions: [
           TextButton(

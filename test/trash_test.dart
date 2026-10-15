@@ -561,6 +561,16 @@ void main() {
         provider.loadTrashedTransactions,
       )))!.single.id;
 
+      // The irreversible control is icon-only, so it has to clear the 48 floor
+      // by size rather than by its neighbours. It used to carry
+      // `visualDensity: compact`, which measures 40x40 — under the floor and
+      // under a thumb.
+      final forever = tester.getSize(
+        find.byKey(ValueKey('trash-forever-$targetId')),
+      );
+      expect(forever.width, greaterThanOrEqualTo(48.0));
+      expect(forever.height, greaterThanOrEqualTo(48.0));
+
       await tester.tap(find.byKey(ValueKey('trash-forever-$targetId')));
       await settleUi(tester);
 

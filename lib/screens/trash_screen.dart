@@ -264,7 +264,9 @@ class _TrashRow extends StatelessWidget {
             IconButton(
               key: ValueKey('trash-forever-${transaction.id}'),
               tooltip: 'Delete forever',
-              visualDensity: VisualDensity.compact,
+              // No `visualDensity: compact` here: compact sizes this to
+              // 40x40, and the irreversible button is the one that should
+              // clear the 48 floor rather than sit under it.
               onPressed: onDeleteForever,
               icon: Icon(
                 Icons.delete_forever_rounded,

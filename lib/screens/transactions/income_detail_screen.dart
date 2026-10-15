@@ -25,13 +25,15 @@ class IncomeDetailScreen extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
+    // Selected rather than watched: this screen draws ONE income, so watching
+    // the provider rebuilt it whenever any other transaction in the app moved.
     final current =
-        context
-            .watch<TransactionProvider>()
-            .transactions
-            .where((t) => t.id == income.id)
-            .whereType<Income>()
-            .firstOrNull ??
+        context.select<TransactionProvider, Income?>(
+          (p) => p.transactions
+              .where((t) => t.id == income.id)
+              .whereType<Income>()
+              .firstOrNull,
+        ) ??
         income;
 
     final meta = current.categoryMeta;
