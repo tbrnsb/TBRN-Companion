@@ -440,14 +440,29 @@ void main() {
       },
     );
 
-    test('recent categories resolve income metadata for income', () async {
+    test('recent categories never surface an income row', () async {
+      // It used to be the other way round: this list resolved income metadata
+      // so that a salary row could be CHIPPED on the expense form. Offering it
+      // at all is the fault — see `offeredOnExpenseForm`.
       final provider = await _providerFor(2024, 1);
       await provider.addTransaction(_income(200, 'salary'));
+      await provider.addTransaction(
+        _expense(80, ExpenseCategory.travel, date: DateTime(2024, 1, 12)),
+      );
 
       final recent = provider.recentCategories;
 
-      expect(recent.single.id, 'salary');
-      expect(recent.single.name, 'Salary');
+      expect(recent.single.id, 'travel');
+      expect(recent.every((m) => m.id != 'salary'), isTrue);
+    });
+
+    test('income alone leaves recent categories empty', () async {
+      final provider = await _providerFor(2024, 1);
+      await provider.addTransaction(_income(200, 'salary'));
+
+      // Not `single` on a one-element list: an empty list is the honest answer,
+      // because the expense picker has nothing of its own to show.
+      expect(provider.recentCategories, isEmpty);
     });
 
     test('recent categories keep a custom expense name', () async {
@@ -523,10 +538,23 @@ void main() {
 
       // Two food expenses beat one travel expense.
       expect(popular.first.id, 'food');
-      expect(popular.map((m) => m.id).toSet(), {'food', 'travel', 'salary'});
-      // An income category keeps its own metadata instead of being reported
-      // as an expense.
-      expect(popular.firstWhere((m) => m.id == 'salary').name, 'Salary');
+      // Salary does not win a slot, and it does not set the fallback either.
+      expect(popular.map((m) => m.id).toSet(), {'food', 'travel'});
+    });
+
+    test('income alone leaves popular categories empty', () async {
+      final provider = await _providerFor(2024, 1);
+      await provider.addTransaction(_income(999, 'salary'));
+      await provider.addTransaction(_income(500, 'freelance'));
+
+      // No expense has ever been filed, so this is the fallback path rather
+      // than a ranking of what the user spends on.
+      final popular = provider.popularCategories;
+      final incomeIds = {
+        for (final m in CategoryRegistry.incomeCategories()) m.id,
+      };
+      expect(popular.map((m) => m.id).toSet().intersection(incomeIds), isEmpty);
+      expect(popular, isNotEmpty);
     });
 
     test(

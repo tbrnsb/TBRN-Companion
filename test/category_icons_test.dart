@@ -606,4 +606,83 @@ void main() {
       expect(provider.recentIncomeCategories, contains('Refund'));
     });
   });
+
+  group('a swatch is named, not described', () {
+    // THE FAULT. Names came from bucketing hue into nine bands, and the grid
+    // has thirty-nine colours in it once the built-ins join the pool. Eleven
+    // of them came out as "orange", seven as "green", five as "red" — and the
+    // swatch the palette itself calls amber was LABELLED "orange", while the
+    // one called orange was labelled "orange" too. A word a dozen colours
+    // answer to is not a name; it is the comparison problem the name existed
+    // to remove.
+    // The whole palette, de-duplicated: a colour offered on both sides is one
+    // colour and must have one name, not two pickers that disagree.
+    Set<int> offered() => {
+      ...CategoryColours.availableFor(kind: CategoryKind.expense),
+      ...CategoryColours.availableFor(kind: CategoryKind.income),
+    };
+
+    test('no two offered colours answer to the same name', () {
+      final byName = <String, int>{};
+      for (final value in offered()) {
+        final name = CategoryColours.nameOf(value);
+        final clashing = byName[name];
+        expect(
+          clashing,
+          isNull,
+          reason:
+              '"$name" is the name of two colours: '
+              '#${clashing?.toRadixString(16)} and '
+              '#${value.toRadixString(16)}. It cannot identify either.',
+        );
+        byName[name] = value;
+      }
+      expect(byName.length, offered().length);
+    });
+
+    test('a swatch is called what the palette calls it', () {
+      // The authored name, not whatever its hue happens to land nearest. An
+      // amber labelled "orange" is a legend that contradicts the source.
+      expect(CategoryColours.nameOf(0xFFD8A657), 'amber');
+      expect(CategoryColours.nameOf(0xFFDE741D), 'orange');
+      expect(CategoryColours.nameOf(0xFFA9B665), 'olive');
+      expect(CategoryColours.nameOf(0xFF7A6A9E), 'mauve');
+      expect(CategoryColours.nameOf(0xFF5E8C7E), 'pine');
+    });
+
+    test('a built-in colour has a name of its own', () {
+      // These joined the offered pool in the same change, so they need names
+      // too. Named for what they look like rather than after the category, so
+      // the legend of one chart does not read as a second list of categories.
+      expect(CategoryColours.nameOf(0xFFA6712B), 'ochre');
+      expect(CategoryColours.nameOf(0xFF7E5A2E), 'walnut');
+      expect(CategoryColours.nameOf(0xFF2F6E7E), 'petrol');
+    });
+
+    test('the vocabulary names every colour it can offer', () {
+      // Completeness, not just uniqueness. Uniqueness passes for a palette that
+      // fell back to a hue name nobody else happens to use — 'purple' would
+      // have slipped through — so the count is asserted too: a built-in colour
+      // added without a name is a colour the legend would describe instead of
+      // name.
+      expect(CategoryColours.namedColourCount, offered().length);
+      for (final value in offered()) {
+        expect(
+          CategoryColours.nameOf(value),
+          isNot(startsWith('dark ')),
+          reason:
+              '#${value.toRadixString(16)} is named by its hue, not by name',
+        );
+      }
+    });
+
+    test('a colour outside the vocabulary falls back to its hue', () {
+      // A record written by an older build can hold a colour this list has
+      // never heard of. Naming its hue is wrong in the same way as before, but
+      // it is still something to read rather than an empty label.
+      final fallback = CategoryColours.nameOf(0xFF123456);
+      expect(fallback, isNotEmpty);
+      expect(fallback, isNot(startsWith(' ')));
+    });
+  });
 }

@@ -293,10 +293,11 @@ class _JourneysScreenState extends State<JourneysScreen> {
                 HapticFeedback.heavyImpact();
 
                 // Read at the moment of the action, not watched by the build.
-                // This screen does not render anything from ChecklistProvider, so
-                // depending on it here would mean rebuilding the whole timeline
-                // whenever a packing list changed -- for one value used once,
-                // on one button.
+                // This screen's own build does not watch ChecklistProvider --
+                // the active card and each trip row do, for their own state --
+                // so pulling it in here too would only add a second reason for
+                // the whole timeline to rebuild over one value used once, on
+                // one button.
                 final checklists = context.read<ChecklistProvider>();
                 final destination = _destinationController.text.trim();
                 final origin = _originController.text.trim();
@@ -504,6 +505,14 @@ class _ActiveJourneyCard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final accents = AppAccents.of(context);
 
+    // Watched, not read: a trip usually starts with no checklist and gains one
+    // moments later, and this card has to redraw when it does. Null-progress on
+    // the tile below is the same signal seen from the other end.
+    final hasLinkedChecklist = context
+        .watch<ChecklistProvider>()
+        .getChecklistsForJourney(journey.id)
+        .isNotEmpty;
+
     // The card this is drawn on, so both accents can be resolved FOR it rather
     // than assumed. On Gruvbox the container is `selection` #504945 and both
     // accents measure about 2.7:1 on it -- under the 3:1 floor for a non-text
@@ -583,11 +592,21 @@ class _ActiveJourneyCard extends StatelessWidget {
             'Started $started',
             style: theme.textTheme.bodySmall?.copyWith(color: quiet),
           ),
-          if (journey.items.isNotEmpty) ...[
+          if (!hasLinkedChecklist && journey.items.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.md),
-            // The packing list, as a set of supporting things rather than more
-            // headings: a low tint of the second accent, labels still in ink so
-            // they clear the text contrast and not the non-text one.
+            // The LEGACY packing list: rows written before a trip's items
+            // became a real, tickable checklist. They have no ticks and no
+            // entry in the Pack tab, so this card is the only place they exist
+            // and dropping them would make them unreachable from anywhere.
+            //
+            // Gated on `!hasLinkedChecklist` for the same reason the trip's own
+            // screen gates its header chips: a trip started from the app now
+            // turns its items into a checklist in the same breath, and drawing
+            // them here as well showed one list twice in two visual forms,
+            // one of which could never be ticked -- on two different screens.
+            //
+            // A low tint of the second accent, labels still in ink so they
+            // clear the text contrast and not the non-text one.
             Wrap(
               spacing: AppSpacing.xs,
               runSpacing: AppSpacing.xs,

@@ -381,10 +381,14 @@ class CategoryIcons {
 class CategoryColours {
   CategoryColours._();
 
-  /// The offered colours, as packed ARGB.
+  /// The hand-picked palette, as packed ARGB.
   ///
   /// Ordered so neighbours are far apart in hue, which makes the grid read as a
   /// spread rather than as rows of a gradient.
+  ///
+  /// NOT, on its own, the set the picker offers. [availableFor] draws from this
+  /// plus every built-in category colour; offering only these meant the
+  /// withholding it does could never remove anything.
   static const List<int> swatches = [
     0xFFD8A657, // amber -- Gruvbox yellow, and the app's own accent
     0xFF7DAEA3, // teal
@@ -412,7 +416,7 @@ class CategoryColours {
     0xFFA05A7A, // plum
   ];
 
-  /// The swatches still available for a NEW category of [kind].
+  /// The colours still available for a NEW category of [kind].
   ///
   /// Two colours are withheld, and both for the same reason: a category is
   /// identified by its colour on a chart, in a legend and in a list, so two
@@ -428,15 +432,38 @@ class CategoryColours {
   ///    "Refund" on each, and forcing them apart would be inventing a rule the
   ///    user did not ask for.
   ///
+  /// THE POOL IS [swatches] PLUS EVERY BUILT-IN COLOUR, ON BOTH SIDES.
+  ///
+  /// It used to be [swatches] alone, and the built-in colours have zero
+  /// intersection with that list. So `used` was assembled out of values the
+  /// pool could never contain, the filter removed nothing, and the income and
+  /// expense colour grids came out pixel-identical while the Kind control above
+  /// them changed — the per-kind rule existed, was documented, and was
+  /// unreachable. Withholding has to be able to withhold something, which means
+  /// the things being withheld have to be on offer in the first place.
+  ///
+  /// An income colour is therefore offered on the expense side and vice versa.
+  /// They are never in the same chart, and that is exactly the distinction the
+  /// second bullet is making.
+  ///
   /// Editing an existing category keeps its current colour available, otherwise
   /// opening it and saving would silently move it to a different colour.
   ///
-  /// Ordering and the source list are untouched; this only filters.
+  /// De-duplicated, in first-occurrence order: a value that is both a swatch
+  /// and a built-in is one colour, not the same colour twice.
   static List<int> availableFor({
     required CategoryKind kind,
     Iterable<CustomCategory> existing = const [],
     int? keepColour,
   }) {
+    final pool = <int>{
+      ...swatches,
+      for (final meta in CategoryRegistry.expenseCategories())
+        meta.color.toARGB32(),
+      for (final meta in CategoryRegistry.incomeCategories())
+        meta.color.toARGB32(),
+    };
+
     final used = <int>{
       for (final meta
           in kind == CategoryKind.income
@@ -452,8 +479,119 @@ class CategoryColours {
     if (keepColour != null) used.remove(keepColour);
 
     return [
-      for (final swatch in swatches)
+      for (final swatch in pool)
         if (!used.contains(swatch)) swatch,
     ];
+  }
+
+  /// What a colour is called, so it is identified by a word rather than by
+  /// comparing it against a list of swatches.
+  ///
+  /// AUTHORED, NOT DERIVED. The hue-bucket logic this replaces split the circle
+  /// into nine bands and had thirty-nine colours to put in them: eleven came
+  /// out as "orange", seven as "green", five as "red" — and the swatch this
+  /// palette calls amber was LABELLED "orange", because a bucket only knows the
+  /// bucket. A name is a vocabulary, so it is written down like one.
+  ///
+  /// Covers every colour [availableFor] can offer: [swatches] and both sides'
+  /// built-ins. Built-ins are named for how they look rather than after the
+  /// category they belong to, so a legend does not turn into a second list of
+  /// category names that then have to be told apart from the real one.
+  ///
+  /// Anything else — a colour written by an older build — falls back to naming
+  /// its hue. Same inaccuracy as before, but it is still something to read.
+  static String nameOf(int value) {
+    final authored = _names[value];
+    if (authored != null) return authored;
+    return _hueName(value);
+  }
+
+  /// How many colours the vocabulary names outright.
+  ///
+  /// Asserted against the size of the offered palette, because the two are
+  /// meant to be the same set: a built-in colour added without a name would
+  /// quietly fall through to the hue buckets, which is the bug this replaced.
+  static int get namedColourCount => _names.length;
+
+  /// Colour -> its name, in the order they are offered.
+  static const Map<int, String> _names = {
+    // The swatches, in [swatches] order. These are the palette's own names and
+    // they are what a legend, a screen reader and the row under the grid all
+    // say out loud.
+    0xFFD8A657: 'amber',
+    0xFF7DAEA3: 'teal',
+    0xFFEA6962: 'red',
+    0xFF89B482: 'green',
+    0xFF6C9BC7: 'blue',
+    0xFFD3869B: 'pink',
+    0xFFDE741D: 'orange',
+    0xFFA9B665: 'olive',
+    0xFFC8553D: 'brick',
+    0xFF9C8B7A: 'taupe',
+    0xFFB0A090: 'stone',
+    0xFF5E8C7E: 'pine',
+    0xFFA36BA8: 'orchid',
+    0xFFC08A5E: 'clay',
+    0xFF7A6A9E: 'mauve',
+    0xFF4F8A8B: 'lagoon',
+    0xFFB5763F: 'bronze',
+    0xFF8A9A5B: 'moss',
+    0xFFBE6B62: 'coral',
+    0xFF5F7FA8: 'steel',
+    0xFFD2A24C: 'honey',
+    0xFF7C6F64: 'bark',
+    0xFF6B8E4E: 'fern',
+    0xFFA05A7A: 'plum',
+    // The built-ins, both sides. None of these answers to a swatch's name, so
+    // the two vocabularies do not collide once they share a grid.
+    0xFFA6712B: 'ochre', // Food
+    0xFF826654: 'mocha', // Travel
+    0xFF7A5C8E: 'violet', // Entertainment
+    0xFF478F55: 'clover', // Gear
+    0xFF7A8256: 'sage', // Housing
+    0xFFA6637A: 'rosewood', // Shopping
+    0xFFA63D3D: 'crimson', // Health
+    0xFF5E8C7B: 'jade', // Utilities
+    0xFF9E8B6E: 'sand', // Other
+    0xFF7E5A2E: 'walnut', // Salary
+    0xFF4E7A52: 'laurel', // Freelance
+    0xFF2F6E7E: 'petrol', // Investment
+    0xFFC9A227: 'gold', // Bonus
+    0xFFB5495B: 'rose', // Gift
+    0xFF6C7E8C: 'slate', // Other Income
+  };
+
+  /// The fallback for a colour outside [_names]: its hue, plus a lightness
+  /// qualifier where the lightness is extreme enough to be worth saying.
+  static String _hueName(int value) {
+    final hsl = HSLColor.fromColor(Color(value));
+    final hue = hsl.hue;
+    final light = hsl.lightness;
+    final tone = light < 0.35
+        ? 'dark'
+        : light > 0.72
+        ? 'pale'
+        : '';
+    String name;
+    if (hue < 15 || hue >= 345) {
+      name = 'red';
+    } else if (hue < 40) {
+      name = 'orange';
+    } else if (hue < 70) {
+      name = 'amber';
+    } else if (hue < 160) {
+      name = 'green';
+    } else if (hue < 200) {
+      name = 'teal';
+    } else if (hue < 255) {
+      name = 'blue';
+    } else if (hue < 290) {
+      name = 'purple';
+    } else if (hue < 330) {
+      name = 'pink';
+    } else {
+      name = 'rose';
+    }
+    return tone.isEmpty ? name : '$tone $name';
   }
 }

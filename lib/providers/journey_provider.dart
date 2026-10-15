@@ -336,8 +336,9 @@ class JourneyProvider extends ChangeNotifier {
       journey,
       participants: [...journey.participants, participant],
       // Adding somebody is the clearest possible statement that this is no
-      // longer a solo trip, so the flag stops applying. Otherwise a trip marked
-      // solo would hide the very section the user is now trying to use.
+      // longer a solo trip, so the flag stops applying. A trip could not be
+      // both declared solo and have a roster without the two contradicting
+      // each other on the same screen.
       isSolo: false,
     );
     return participant;
@@ -345,9 +346,10 @@ class JourneyProvider extends ChangeNotifier {
 
   /// Declares a trip solo, or takes the declaration back.
   ///
-  /// The way out matters as much as the way in. A trip marked solo hides its
-  /// shared section entirely, so without this the user could only get the
-  /// section back by restarting the app.
+  /// One direction is set from the start-trip form and the other from the trip's
+  /// own Shared block, which means the flag has to be reversible from the trip
+  /// and not only at creation. Declaring a trip solo and then finding no way to
+  /// undeclare it is the app refusing a decision the user is entitled to change.
   Future<void> setSolo(String journeyId, {required bool solo}) async {
     final journey = getJourneyById(journeyId);
     if (journey == null || journey.isSolo == solo) return;

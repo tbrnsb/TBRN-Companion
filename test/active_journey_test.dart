@@ -30,12 +30,24 @@ double _contrast(Color a, Color b) {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-Widget _app(JourneyProvider journeys, ThemeData theme) {
+Widget _app(JourneyProvider journeys, ThemeData theme) =>
+    _appWith(journeys, ChecklistProvider(), theme);
+
+/// Same screen, with the checklist provider the test wants to control.
+///
+/// The default above hands the tree a fresh, uninitialised provider, which is
+/// right for a test that never opens the Pack tab and wrong for the one that
+/// has to put a real checklist behind a trip.
+Widget _appWith(
+  JourneyProvider journeys,
+  ChecklistProvider checklists,
+  ThemeData theme,
+) {
   return MultiProvider(
     providers: [
       ChangeNotifierProvider<JourneyProvider>.value(value: journeys),
       ChangeNotifierProvider(create: (_) => LocationProvider()),
-      ChangeNotifierProvider(create: (_) => ChecklistProvider()),
+      ChangeNotifierProvider<ChecklistProvider>.value(value: checklists),
     ],
     child: MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -260,5 +272,75 @@ void main() {
         );
       });
     }
+  });
+
+  group('the packing list is shown once, not twice', () {
+    // THE FAULT. The card drew `journey.items` as a row of untickable chips
+    // whenever the trip had any, with no regard for whether those items had
+    // already become a real checklist. Every trip started from the app now
+    // does have one, so a trip with a linked checklist showed its items here
+    // as decoration AND on the trip's own screen and in the Pack tab as
+    // tickable rows: two visual forms for one list, one of which could never
+    // be ticked, on two different screens.
+    //
+    // The chips are the LEGACY fallback and nothing else: rows written before
+    // items became a checklist have no ticks and no entry in the Pack tab, so
+    // dropping them here would make them unreachable from anywhere.
+    testWidgets('a trip with a linked checklist draws no chips', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+
+      final journeys = JourneyProvider();
+      final checklists = ChecklistProvider();
+      addTearDown(journeys.dispose);
+      addTearDown(checklists.dispose);
+      await tester.runAsync(() async {
+        await StorageService().clear();
+        await journeys.initialize();
+        await checklists.initialize();
+        // The way the app itself starts a trip: items in, checklist out.
+        await journeys.startJourney(
+          origin: 'Kathmandu',
+          destination: 'Pokhara',
+          items: ['Boots', 'Waterproof jacket'],
+          checklists: checklists,
+        );
+      });
+
+      await tester.pumpWidget(_appWith(journeys, checklists, AppTheme.dark()));
+      await settleUi(tester);
+
+      expect(find.text('ACTIVE JOURNEY'), findsOneWidget);
+      expect(
+        find.text('Boots'),
+        findsNothing,
+        reason:
+            'the item is a tickable row on the trip screen and in the Pack '
+            'tab; drawing it here too shows the same list twice',
+      );
+      expect(find.text('Waterproof jacket'), findsNothing);
+    });
+
+    testWidgets('a trip written before checklists still shows its items', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+
+      // No checklist provider passed to startJourney, which is the state every
+      // trip on an older device is in.
+      final journeys = await _withActiveJourney(tester);
+
+      await tester.pumpWidget(_app(journeys, AppTheme.dark()));
+      await settleUi(tester);
+
+      expect(
+        find.text('Boots'),
+        findsOneWidget,
+        reason:
+            'these rows have no ticks and no Pack-tab entry, so this card is '
+            'the only place they exist',
+      );
+    });
   });
 }

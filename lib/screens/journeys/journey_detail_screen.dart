@@ -57,6 +57,16 @@ class JourneyDetailScreen extends StatelessWidget {
               icon: const Icon(Icons.check_circle_outline_rounded),
               label: const Text('Complete'),
             ),
+          PopupMenuButton<String>(
+            key: const ValueKey('journey-overflow'),
+            tooltip: 'More options',
+            onSelected: (value) {
+              if (value == 'delete') _confirmDelete(context, current);
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'delete', child: Text('Delete trip')),
+            ],
+          ),
         ],
       ),
       body: ListView(
@@ -226,8 +236,8 @@ class JourneyDetailScreen extends StatelessWidget {
           ] else
             ...checklists.map((c) => _ChecklistRow(checklist: c)),
 
-          // Only renders once the trip has at least one person on it, so the
-          // block cannot be a dead section on a solo trip.
+          // Renders on every trip and takes its own shape for one declared
+          // solo, so it is never a dead block and never an absent one.
           TripSharedSection(journeyId: current.id),
 
           const SizedBox(height: AppSpacing.lg),
@@ -288,6 +298,65 @@ class JourneyDetailScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Removes the trip, and only after saying what that costs.
+  ///
+  /// [JourneyProvider.deleteJourney] existed for as long as journeys have and
+  /// had no call site anywhere in the app, so a trip could be completed but
+  /// never removed — while every other thing this app stores (a checklist, a
+  /// place, a transaction, a category) can be. Completing is not a substitute:
+  /// it ends the trip and leaves it in the history forever.
+  ///
+  /// The confirmation names what is NOT deleted, because that is the part a
+  /// user cannot infer. Spending, packing lists and saved places are their own
+  /// records and stay; only the trip goes. The screen leaves with it, since it
+  /// re-resolves the trip by id and would otherwise fall back to the snapshot it
+  /// was constructed with — a detail page for something that no longer exists.
+  static Future<void> _confirmDelete(
+    BuildContext context,
+    Journey journey,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete trip?'),
+        content: Text(
+          'This removes "${journey.title}". Its packing lists, its spending '
+          'and its saved places are kept — they are your records rather than '
+          "the trip's — and there is no undo.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(dialogContext).colorScheme.error,
+            ),
+            // The write lives HERE rather than after `await showDialog`. A
+            // future resumes in the zone that awaited it, so a delete driven
+            // from the outer method would put a storage write back into the
+            // fake-async zone whenever this screen is under test — where it
+            // can never finish and holds the box lock. As a button handler it
+            // runs in whatever zone the tap came from.
+            onPressed: () async {
+              await context.read<JourneyProvider>().deleteJourney(journey.id);
+              if (dialogContext.mounted) Navigator.pop(dialogContext, true);
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    // The trip is already gone by here. This only leaves the screen, which
+    // re-resolves the trip by id and would otherwise fall back to the snapshot
+    // it was constructed with — a detail page for something that no longer
+    // exists.
+    if (context.mounted) Navigator.of(context).pop();
   }
 }
 

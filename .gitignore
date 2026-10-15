@@ -83,3 +83,6 @@ session-ses_*.md
 *.jks
 *.keystore
 android/key.properties
+
+# Tooling captures (screenshots taken while driving an emulator/device)
+.captures/

@@ -255,6 +255,72 @@ void main() {
       expect(find.byKey(const ValueKey('open-trip-summary')), findsNothing);
     });
 
+    testWidgets('a trip the user declared solo still offers a way back', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, _tallPhone);
+
+      await tester.runAsync(() async {
+        await StorageService().clear();
+        await StorageService().addJourney(
+          Journey(
+            id: 'declared-solo',
+            origin: 'Kathmandu',
+            destination: 'Pokhara',
+            startTime: DateTime.now().subtract(const Duration(days: 1)),
+            isSolo: true,
+          ),
+        );
+      });
+      final p = await _providers(tester);
+      final trip = (await tester.runAsync(
+        () => StorageService().getJourney('declared-solo'),
+      ))!;
+
+      await tester.pumpWidget(_app(p, JourneyDetailScreen(journey: trip)));
+      await _settle(tester);
+
+      // The section is drawn rather than hidden. Declaring a trip solo is a
+      // statement about how it is going, not a locked door: the user may
+      // still end up travelling with someone, and the only control that can
+      // say so was behind the guard that hid the whole section.
+      expect(find.text('Shared'), findsOneWidget);
+      expect(
+        find.text('Solo'),
+        findsOneWidget,
+        reason: 'the section must say what the trip is, not vanish',
+      );
+      expect(
+        find.byKey(const ValueKey('make-trip-shared')),
+        findsOneWidget,
+        reason: 'the only way out of solo was to restart the app',
+      );
+      // Declared solo is a statement, not a half-finished shared trip, so
+      // nothing else in the section is offered.
+      expect(find.byKey(const ValueKey('add-participant-field')), findsNothing);
+      expect(find.text('Which one are you?'), findsNothing);
+      expect(find.byKey(const ValueKey('open-trip-summary')), findsNothing);
+
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const ValueKey('make-trip-shared')));
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+      });
+      await _settle(tester);
+
+      expect(
+        p.journeys.getJourneyById('declared-solo')!.isSolo,
+        isFalse,
+        reason: 'the flag did not clear',
+      );
+      // And the trip now reads as a shared one nobody has joined yet, which
+      // is the same thing a non-solo trip with no roster shows.
+      expect(find.text('Solo so far'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('add-participant-field')),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('the add field fits at 360dp on a solo trip', (tester) async {
       usePhoneLayout(tester, _tallPhone);
 
@@ -317,6 +383,184 @@ void main() {
       // chip selection.
       expect(find.text('You (you)'), findsNothing);
       expect(find.text('Raj (you)'), findsNothing);
+    });
+  });
+
+  group('a trip can be deleted from its own screen', () {
+    // THE FAULT. `JourneyProvider.deleteJourney` has been there the whole time
+    // and has no call site anywhere in the app. The detail screen's app bar
+    // carried exactly one action — Complete — so a trip could be ended but
+    // never removed, and the only way to get rid of one was to complete it and
+    // leave it in the history forever. Every OTHER thing this app stores
+    // (a checklist, a place, a transaction, a category) can be deleted.
+    //
+    // Confirmation is not optional here. A trip owns its packing lists, its
+    // spending and its places, and none of that comes back with it.
+    Future<(JourneyProvider, Journey)> pumpTrip(WidgetTester tester) async {
+      await tester.runAsync(() async {
+        await StorageService().clear();
+        await StorageService().addJourney(
+          Journey(
+            id: 'to-delete',
+            origin: 'Kathmandu',
+            destination: 'Pokhara',
+            startTime: DateTime.now().subtract(const Duration(days: 1)),
+          ),
+        );
+      });
+      final p = await _providers(tester);
+      final trip = (await tester.runAsync(
+        () => StorageService().getJourney('to-delete'),
+      ))!;
+
+      await tester.pumpWidget(_app(p, JourneyDetailScreen(journey: trip)));
+      await _settle(tester);
+      return (p.journeys, trip);
+    }
+
+    testWidgets('the app bar offers it, and it asks first', (tester) async {
+      usePhoneLayout(tester, _tallPhone);
+      final (journeys, _) = await pumpTrip(tester);
+
+      expect(find.byType(JourneyDetailScreen), findsOneWidget);
+
+      await tester.tap(find.byTooltip('More options'));
+      await _settle(tester);
+      expect(find.text('Delete trip'), findsOneWidget);
+
+      await tester.tap(find.text('Delete trip'));
+      await _settle(tester);
+
+      // It asks, and says what is at stake.
+      expect(find.text('Delete trip?'), findsOneWidget);
+      expect(find.text('Cancel'), findsOneWidget);
+      // Nothing has happened yet.
+      expect(journeys.getJourneyById('to-delete'), isNotNull);
+
+      await tester.tap(find.text('Cancel'));
+      await _settle(tester);
+      expect(
+        journeys.getJourneyById('to-delete'),
+        isNotNull,
+        reason: 'cancelling must leave the trip exactly where it was',
+      );
+      expect(find.byType(JourneyDetailScreen), findsOneWidget);
+    });
+
+    testWidgets('confirming removes it and leaves the screen', (tester) async {
+      usePhoneLayout(tester, _tallPhone);
+      final (journeys, _) = await pumpTrip(tester);
+
+      await tester.tap(find.byTooltip('More options'));
+      await _settle(tester);
+      await tester.tap(find.text('Delete trip'));
+      await _settle(tester);
+
+      // The write is real file IO, so it is driven from a real async zone.
+      await tester.runAsync(() async {
+        await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+      });
+      await _settle(tester);
+
+      expect(
+        journeys.getJourneyById('to-delete'),
+        isNull,
+        reason: 'the provider still holds a trip that was confirmed deleted',
+      );
+      // And the screen is gone rather than showing a trip that no longer
+      // exists: it falls back to the snapshot it was constructed with, which
+      // would be a detail page for a deleted trip.
+      expect(find.byType(JourneyDetailScreen), findsNothing);
+    });
+
+    testWidgets('the trip leaves the active slot with it', (tester) async {
+      usePhoneLayout(tester, _tallPhone);
+      final (journeys, trip) = await pumpTrip(tester);
+      expect(journeys.activeJourney?.id, trip.id);
+
+      await tester.tap(find.byTooltip('More options'));
+      await _settle(tester);
+      await tester.tap(find.text('Delete trip'));
+      await _settle(tester);
+      await tester.runAsync(() async {
+        await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+      });
+      await _settle(tester);
+
+      expect(
+        journeys.activeJourney,
+        isNull,
+        reason: 'the deleted trip is still offered as the one in progress',
+      );
+    });
+    testWidgets('what the confirmation promises to keep, is kept', (
+      tester,
+    ) async {
+      usePhoneLayout(tester, _tallPhone);
+
+      // The trip comes with the two things the dialog names. A promise about
+      // data safety is the kind of claim that quietly becomes false the day
+      // somebody adds a cascade, so it is asserted rather than written down.
+      await tester.runAsync(() async {
+        await StorageService().clear();
+        await StorageService().addJourney(
+          Journey(
+            id: 'to-delete',
+            origin: 'Kathmandu',
+            destination: 'Pokhara',
+            startTime: DateTime.now().subtract(const Duration(days: 1)),
+          ),
+        );
+        await StorageService().addTransaction(
+          Expense(
+            id: 'taxi',
+            amount: 400,
+            category: ExpenseCategory.travel,
+            description: 'Taxi',
+            journeyId: 'to-delete',
+            date: DateTime.now(),
+          ),
+        );
+        await StorageService().addChecklist(
+          Checklist(
+            id: 'pack',
+            name: 'Pack for Pokhara',
+            description: '',
+            journeyId: 'to-delete',
+          ),
+        );
+      });
+      final p = await _providers(tester);
+      final trip = (await tester.runAsync(
+        () => StorageService().getJourney('to-delete'),
+      ))!;
+
+      await tester.pumpWidget(_app(p, JourneyDetailScreen(journey: trip)));
+      await _settle(tester);
+
+      await tester.tap(find.byTooltip('More options'));
+      await _settle(tester);
+      await tester.tap(find.text('Delete trip'));
+      await _settle(tester);
+      await tester.runAsync(() async {
+        await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+      });
+      await _settle(tester);
+
+      expect(p.journeys.getJourneyById('to-delete'), isNull);
+      expect(
+        p.checklists.getChecklistsForJourney('to-delete'),
+        isNotEmpty,
+        reason: 'the packing list is the user\'s record, not the trip\'s',
+      );
+      expect(
+        p.transactions.transactions.where((t) => t.journeyId == 'to-delete'),
+        isNotEmpty,
+        reason: 'the spending really happened; only the trip is being removed',
+      );
     });
   });
 

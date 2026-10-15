@@ -243,6 +243,82 @@ void main() {
       }
     });
 
+    test('the two kinds are offered different colours', () {
+      // THE FAULT. The offered colours were the 24 swatches alone, and the
+      // built-in category colours have ZERO intersection with that list, so
+      // `used` was assembled out of a set the pool could never contain, the
+      // filter removed nothing, and Income and Expense drew pixel-identical
+      // grids while the Kind control above them changed. The rule the function
+      // documents — same colour on the other side of the ledger is fine, on
+      // this side it is a collision — was unreachable.
+      final expense = CategoryColours.availableFor(kind: CategoryKind.expense);
+      final income = CategoryColours.availableFor(kind: CategoryKind.income);
+
+      expect(
+        expense.length,
+        isNot(income.length),
+        reason: 'withholding per kind must change what is offered',
+      );
+      // From one pool of swatches plus every built-in colour on both sides:
+      // nine built-ins are withheld from the expense picker and six from the
+      // income one, so income has three more to offer.
+      final builtInCount =
+          CategoryRegistry.expenseCategories().length -
+          CategoryRegistry.incomeCategories().length;
+      expect(income.length - expense.length, builtInCount);
+    });
+
+    test('a built-in colour is withheld from its own kind only', () {
+      // The claim, stated so it cannot pass vacuously. The old tests only ever
+      // asserted that an offered colour was NOT a built-in one, which a pool
+      // that simply never contained any built-in colour passes for free.
+      for (final meta in CategoryRegistry.expenseCategories()) {
+        final value = meta.color.toARGB32();
+        expect(
+          CategoryColours.availableFor(kind: CategoryKind.expense),
+          isNot(contains(value)),
+          reason: '"${meta.name}" already uses this on the expense side',
+        );
+        expect(
+          CategoryColours.availableFor(kind: CategoryKind.income),
+          contains(value),
+          reason:
+              '"${meta.name}" is an EXPENSE built-in, so an income category '
+              'may use the colour -- they are never in the same chart',
+        );
+      }
+
+      for (final meta in CategoryRegistry.incomeCategories()) {
+        final value = meta.color.toARGB32();
+        expect(
+          CategoryColours.availableFor(kind: CategoryKind.income),
+          isNot(contains(value)),
+          reason: '"${meta.name}" already uses this on the income side',
+        );
+        expect(
+          CategoryColours.availableFor(kind: CategoryKind.expense),
+          contains(value),
+          reason: '"${meta.name}" is an INCOME built-in',
+        );
+      }
+    });
+
+    test('a custom colour colliding with a built-in is what gets withheld', () {
+      // The half the swatch-only pool could not exercise: a category that
+      // already holds a built-in colour of its own kind must not be able to
+      // hand that colour to another one.
+      final taken = CategoryRegistry.expenseCategories().first.color.toARGB32();
+      final available = CategoryColours.availableFor(
+        kind: CategoryKind.expense,
+        existing: [
+          CustomCategory(name: 'Coffee', colorValue: taken),
+          CustomCategory(name: 'Tea'),
+        ],
+      );
+
+      expect(available, isNot(contains(taken)));
+    });
+
     test('a colour already used by a custom category is withheld', () {
       final taken = CategoryColours.swatches.first;
       final available = CategoryColours.availableFor(
@@ -251,6 +327,21 @@ void main() {
       );
 
       expect(available, isNot(contains(taken)));
+    });
+
+    test('editing a category keeps a BUILT-IN colour available', () {
+      // The same courtesy for a colour that is now in the pool. A category
+      // that already holds one — written by a build that offered the built-ins,
+      // or handed one on import — must not open as nothing-selected and then
+      // save as something the user never chose.
+      final mine = CategoryRegistry.incomeCategories().first.color.toARGB32();
+      final available = CategoryColours.availableFor(
+        kind: CategoryKind.income,
+        existing: [CustomCategory(name: 'Allowance', colorValue: mine)],
+        keepColour: mine,
+      );
+
+      expect(available, contains(mine));
     });
 
     test('the SAME colour is allowed on income and expense', () {

@@ -30,6 +30,11 @@ import 'add_location_screen.dart';
 class LocationDetailScreen extends StatelessWidget {
   const LocationDetailScreen({super.key, required this.location});
 
+  /// The place as it was when this screen was pushed.
+  ///
+  /// A navigation argument, not the source of truth. Anything this screen READS
+  /// comes from the provider instead — see [place] — because the screen is a
+  /// long-lived route and the place is editable from here.
   final Location location;
 
   @override
@@ -40,12 +45,26 @@ class LocationDetailScreen extends StatelessWidget {
       (s) => s.currency.symbol,
     );
 
+    // Re-resolved rather than taken from the argument. [location] is a snapshot
+    // of the moment the route was pushed, so the arrival switch read its value
+    // from a field that could never change: the provider recorded the tap and
+    // the switch stayed where it was, leaving the user to conclude the control
+    // had done nothing. The subtitle is the same value read a second time, so
+    // the switch and the sentence under it could disagree with each other.
+    //
+    // Null only when the place has since been deleted, and then the snapshot is
+    // the least-wrong thing to keep drawing rather than throwing on a route
+    // that is already on screen.
+    final place =
+        context.watch<LocationProvider>().getLocationById(location.id) ??
+        location;
+
     // Every transaction ever filed against this place, across all months and
     // both directions.
     final transactions =
         context
             .watch<TransactionProvider>()
-            .transactionsAtLocation(location.id)
+            .transactionsAtLocation(place.id)
             .toList()
           ..sort((a, b) => b.date.compareTo(a.date));
 
@@ -56,7 +75,7 @@ class LocationDetailScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(location.name),
+        title: Text(place.name),
         actions: [
           IconButton(
             key: const ValueKey('location-detail-maps'),
@@ -65,9 +84,9 @@ class LocationDetailScreen extends StatelessWidget {
             onPressed: () => PlaceLauncher.openOrExplain(
               context,
               PlaceLink(
-                latitude: location.latitude,
-                longitude: location.longitude,
-                name: location.name,
+                latitude: place.latitude,
+                longitude: place.longitude,
+                name: place.name,
               ),
             ),
           ),
@@ -75,8 +94,7 @@ class LocationDetailScreen extends StatelessWidget {
             key: const ValueKey('location-detail-edit'),
             tooltip: 'Edit place',
             icon: const Icon(Icons.edit_rounded),
-            onPressed: () =>
-                AddLocationScreen.show(context, location: location),
+            onPressed: () => AddLocationScreen.show(context, location: place),
           ),
         ],
       ),
@@ -84,8 +102,8 @@ class LocationDetailScreen extends StatelessWidget {
         padding: AppSpacing.screenPadding,
         children: [
           _Header(
-            location: location,
-            icon: PlaceIcons.resolve(location.icon),
+            location: place,
+            icon: PlaceIcons.resolve(place.icon),
             currency: currency,
           ),
           const SizedBox(height: AppSpacing.lg),
@@ -141,10 +159,10 @@ class LocationDetailScreen extends StatelessWidget {
             child: SwitchListTile(
               key: const ValueKey('place-notifications-toggle'),
               contentPadding: EdgeInsets.zero,
-              value: location.notificationsEnabled,
+              value: place.notificationsEnabled,
               title: const Text('Notify when I arrive'),
               subtitle: Text(
-                location.notificationsEnabled
+                place.notificationsEnabled
                     ? 'Within '
                           '${(LocationProvider.arrivalRadiusMeters / 1000).toStringAsFixed(1)} km, '
                           'while the app is running'
@@ -155,7 +173,7 @@ class LocationDetailScreen extends StatelessWidget {
               ),
               onChanged: (value) => context
                   .read<LocationProvider>()
-                  .setNotificationsEnabled(location.id, enabled: value),
+                  .setNotificationsEnabled(place.id, enabled: value),
             ),
           ),
 
@@ -174,9 +192,9 @@ class LocationDetailScreen extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
               child: Text(
-                'Nothing has been recorded at ${location.name} yet. '
+                'Nothing has been recorded at ${place.name} yet. '
                 'Transactions logged inside its '
-                '${location.radiusMeters.toStringAsFixed(0)} m radius will '
+                '${place.radiusMeters.toStringAsFixed(0)} m radius will '
                 'appear here.',
                 style: textTheme.bodyMedium?.copyWith(
                   color: colorScheme.onSurfaceVariant,

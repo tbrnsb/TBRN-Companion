@@ -91,14 +91,16 @@ class TransactionProvider extends ChangeNotifier {
 
   /// Most recently used categories, newest first.
   ///
-  /// Resolves metadata through [TransactionExtensions.categoryMeta] so an
-  /// expense yields expense metadata (icon + colour) and an income yields
-  /// income metadata. Going through [CategoryRegistry.metaForIncome] for
-  /// everything gave every expense the "Other Income" icon and colour.
+  /// Expenses only. Both of its callers are the EXPENSE category picker (see
+  /// [popularCategories]), and walking the whole ledger put income categories
+  /// there: a chip named "Random" on the expense form, whose only real effect
+  /// is to let an expense be filed with an income category — wrong half of the
+  /// ledger, wrong balance, and nothing on screen to say so.
   List<CategoryMeta> get recentCategories {
     // [myLedger]: these chips answer "what do I spend on", so another
     // participant's trip categories must not crowd out the user's own.
-    final sorted = [...myLedger]..sort((a, b) => b.date.compareTo(a.date));
+    final sorted = [...myLedger.where((t) => t.isExpense)]
+      ..sort((a, b) => b.date.compareTo(a.date));
     final seen = <String>{};
     final result = <CategoryMeta>[];
     for (final t in sorted) {
@@ -113,11 +115,12 @@ class TransactionProvider extends ChangeNotifier {
   ///
   /// Feeds the expense category picker, so the empty fallback is expense
   /// categories — income categories here would offer salary/freelance chips
-  /// where food/travel belong.
+  /// where food/travel belong. Counting only expenses is what keeps that
+  /// promise: an income row must not win a slot and must not set the fallback.
   List<CategoryMeta> get popularCategories {
     final counts = <String, int>{};
     final metas = <String, CategoryMeta>{};
-    for (final t in myLedger) {
+    for (final t in myLedger.where((t) => t.isExpense)) {
       final meta = t.categoryMeta;
       counts[meta.id] = (counts[meta.id] ?? 0) + 1;
       metas[meta.id] = meta;

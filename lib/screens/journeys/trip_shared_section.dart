@@ -16,10 +16,14 @@ import 'package:daily_companion/widgets/widgets.dart';
 /// each person fronted, and the way into the summary that turns all of it into
 /// "who pays whom".
 ///
-/// It renders on EVERY trip, including one with nobody else on it, because the
-/// field that adds the first person lives in here. Hiding the section until a
-/// participant existed made the whole feature unreachable: a solo trip had no way
-/// to become shared, because the only way in was the section that was not there.
+/// It renders on EVERY trip. Two shapes:
+///
+///  - a trip that is going to be shared, solo roster or not, gets the whole
+///    thing;
+///  - a trip the user DECLARED solo gets one control, which turns sharing back
+///    on. It used to render nothing at all, which looked like a decision and was
+///    a trap: `isSolo` could be set from the start-trip form and then never
+///    unset from anywhere.
 class TripSharedSection extends StatelessWidget {
   const TripSharedSection({super.key, required this.journeyId});
 
@@ -29,21 +33,73 @@ class TripSharedSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final journeys = context.watch<JourneyProvider>();
     final journey = journeys.getJourneyById(journeyId);
-    // A vanished journey is the only reason to render nothing. An EMPTY roster
-    // used to hide this section too, which made the feature unreachable: the
-    // only call site of addParticipant in the whole app is the field below, so a
-    // solo trip could never become a shared one. There was no other way in.
-    //
-    // `isSolo` is different from an empty roster and does hide it. A trip with
-    // no participants is a shared trip nobody has joined YET, and "Solo so far"
-    // plus the field is the right answer to that. A trip the user declared solo
-    // is one they said they did not want to share, and repeating the offer every
-    // time they open it is the app not believing them. The escape hatch is at
-    // the end of this section, not in place of it being absent -- they can turn
-    // sharing back on whenever they like.
-    if (journey == null || journey.isSolo) return const SizedBox.shrink();
+    // A vanished journey is the only reason to render nothing at all. An EMPTY
+    // roster used to hide this section too, which made the feature unreachable:
+    // the only call site of addParticipant in the whole app is the field below,
+    // so a trip with nobody on it could never get anybody on it. There was no
+    // other way in.
+    if (journey == null) return const SizedBox.shrink();
 
     final hasPeople = journey.participants.isNotEmpty;
+
+    // A trip the user DECLARED solo takes its own branch rather than the whole
+    // section disappearing. Declaring it solo is a statement about how the trip
+    // is going, not a locked door — and hiding the section hid the only control
+    // that could take it back, so the flag could not be undone except by
+    // restarting the app and editing the trip from scratch.
+    //
+    // What it does NOT get is the machinery: no roster, no "which one are you",
+    // no add field. Those belong to a trip that is going to be shared, and
+    // offering the add field first would make "solo" mean "shared with nobody
+    // yet" — the very thing the flag exists to distinguish. One control, which
+    // is the one that turns sharing back on.
+    if (journey.isSolo) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: AppSpacing.lg),
+          SectionHeader(
+            'Shared',
+            trailing: Text(
+              'Solo',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          AppSurface(
+            tier: AppSurfaceTier.raised,
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'You marked this trip as one you are doing alone, so there is '
+                  'nothing to split and nobody to add.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    key: const ValueKey('make-trip-shared'),
+                    onPressed: () => context.read<JourneyProvider>().setSolo(
+                      journeyId,
+                      solo: false,
+                    ),
+                    icon: const Icon(Icons.group_add_outlined, size: 16),
+                    label: const Text('This trip is shared after all'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -67,9 +123,10 @@ class TripSharedSection extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // On a solo trip there is nobody to be, so the who-am-I question is
-              // not asked and the roster is not drawn — there is nothing in
-              // either. The add field still is, because it is the way in.
+              // With nobody on the trip yet there is nobody to be, so the
+              // who-am-I question is not asked and the roster is not drawn —
+              // there is nothing in either. The add field still is, because it
+              // is the way in.
               if (hasPeople) ...[
                 _WhoAmI(journey: journey),
                 const SizedBox(height: AppSpacing.md),
@@ -86,22 +143,6 @@ class TripSharedSection extends StatelessWidget {
                 const SizedBox(height: AppSpacing.md),
               ],
               _AddParticipantField(journey: journey),
-              const SizedBox(height: AppSpacing.xs),
-              // THE WAY OUT. Without it a trip marked solo could only get its
-              // shared section back by restarting the app, because the section
-              // is hidden entirely while the flag is set.
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  key: const ValueKey('make-trip-shared'),
-                  onPressed: () => context.read<JourneyProvider>().setSolo(
-                    journeyId,
-                    solo: false,
-                  ),
-                  icon: const Icon(Icons.group_add_outlined, size: 16),
-                  label: const Text('This trip is shared after all'),
-                ),
-              ),
               if (journey.isShared) ...[
                 const SizedBox(height: AppSpacing.md),
                 SizedBox(

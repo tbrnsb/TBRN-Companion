@@ -92,9 +92,21 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
     _destinationController.text = existing?.destinationLabel ?? '';
     _category = existing?.category ?? ExpenseCategory.food;
     if (existing == null) {
+      // The same predicate the picker chips use, because the prefilled default
+      // is the one place an income category gets to act before anything is
+      // drawn: it named "Random" and prefiled an expense with it, so the sheet
+      // opened already wrong rather than merely offering something wrong.
       final recentMeta = context
           .read<TransactionProvider>()
           .recentCategories
+          .where(
+            (m) => offeredOnExpenseForm(
+              m,
+              expenseCustomNames: context
+                  .read<TransactionProvider>()
+                  .recentCustomCategories,
+            ),
+          )
           .firstOrNull;
       if (recentMeta != null) {
         _category = recentMeta.id.startsWith('custom:')
@@ -903,15 +915,14 @@ class _CategoryPicker extends StatelessWidget {
   final List<String> customCategories;
   final void Function(ExpenseCategory category, String? customName) onSelected;
 
-  /// `recent`/`popular` come straight from the provider, which counts expense
-  /// and income together, so they can contain an income category such as
-  /// `salary`. This picker only understands expense categories — an id it does
-  /// not recognise used to be mapped through `orElse: ExpenseCategory.other`,
-  /// so tapping "Salary" silently selected "Other". Drop them instead.
-  static bool _isExpenseMeta(CategoryMeta meta) {
-    if (meta.id.startsWith('custom:')) return true;
-    return ExpenseCategory.values.any((c) => c.name == meta.id);
-  }
+  /// `recent`/`popular` are read off the ledger, and the provider already
+  /// restricts them to expense rows. This filter is the second line rather than
+  /// the first: the provider cannot know what a picker will do with an id, and
+  /// this is the place that decides what an id MEANS here. It is a predicate on
+  /// the registry, not on the list, so it holds no matter who hands the picker
+  /// a meta.
+  bool _isExpenseMeta(CategoryMeta meta) =>
+      offeredOnExpenseForm(meta, expenseCustomNames: customCategories);
 
   static ExpenseCategory? _categoryFor(CategoryMeta meta) {
     if (meta.id.startsWith('custom:')) return ExpenseCategory.other;
@@ -1114,4 +1125,37 @@ class _SelectedCategoryRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Whether [meta] is a category the expense form may offer.
+///
+/// Public and free of widget state on purpose: the picker chips, the prefilled
+/// default and any test all have to agree on what "belongs on the expense form"
+/// means, and a private method on the picker can only be reached by building
+/// one.
+///
+/// Two different questions, because they fail in two different ways:
+///
+/// - a built-in id is offered when it names one of the nine expense
+///   categories. An id the picker did not recognise used to be mapped through
+///   `orElse: ExpenseCategory.other`, so tapping "Salary" silently selected
+///   "Other";
+/// - a `custom:` id is offered only when the name it carries is one the
+///   EXPENSE side has saved. Ids are `custom:<lowercased name>` (see
+///   [CustomCategory.id]), so this is a lookup against [expenseCustomNames] and
+///   not a prefix test — the prefix test is what let a custom INCOME category
+///   such as `custom:random` onto the expense form.
+///
+/// A `suggested:` id is deliberately still refused, which is what the previous
+/// filter did: those resolve to a type that is not one of the nine, and the
+/// picker has no row for them.
+bool offeredOnExpenseForm(
+  CategoryMeta meta, {
+  required List<String> expenseCustomNames,
+}) {
+  if (meta.id.startsWith('custom:')) {
+    final name = meta.id.substring('custom:'.length);
+    return expenseCustomNames.any((n) => n.toLowerCase() == name);
+  }
+  return ExpenseCategory.values.any((c) => c.name == meta.id);
 }

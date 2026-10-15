@@ -234,8 +234,8 @@ void main() {
     // The distinction matters because they LOOK the same: a journey with no
     // participants and a journey declared solo are both lists of one. But the
     // first is a shared trip waiting for people and keeps offering the field;
-    // the second is a trip the user said they did not want to share, and shows
-    // the section not at all.
+    // the second is a trip the user said they did not want to share, and offers
+    // only the control that turns sharing back on.
     test('the flag survives a save and reload', () async {
       final journeys = JourneyProvider();
       addTearDown(journeys.dispose);
@@ -280,8 +280,9 @@ void main() {
     });
 
     test('a solo trip can be made shared again', () async {
-      // The way out matters as much as the way in: the section is hidden while
-      // the flag is set, so without this the only way back is restarting.
+      // The flag is set from the start-trip form and cleared from the trip's
+      // own Shared block, so both directions have to work and neither may be
+      // reachable only at creation.
       final journeys = JourneyProvider();
       addTearDown(journeys.dispose);
       await journeys.initialize();

@@ -485,7 +485,9 @@ class _CategoryEditorState extends State<_CategoryEditor> {
                 // Named, so a colour is not something the user has to compare
                 // against a list to identify.
                 Text(
-                  _colour == null ? 'Default' : _colourName(_colour!),
+                  _colour == null
+                      ? 'Default'
+                      : CategoryColours.nameOf(_colour!),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),
@@ -635,7 +637,7 @@ class _SwatchChoice extends StatelessWidget {
       key: ValueKey(value == null ? 'swatch-default' : 'swatch-$value'),
       button: true,
       selected: selected,
-      label: value == null ? 'Default colour' : _colourName(value!),
+      label: value == null ? 'Default colour' : CategoryColours.nameOf(value!),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppRadii.small),
@@ -651,7 +653,7 @@ class _SwatchChoice extends StatelessWidget {
             ),
           ),
           // The default is a DIAGONALLY STRUCK box, not a blank one: an empty
-          // swatch next to twenty-four colours reads as a colour that failed to
+          // swatch next to a grid of colours reads as a colour that failed to
           // load rather than as "no colour chosen".
           child: value == null
               ? Icon(
@@ -730,41 +732,4 @@ class _Preview extends StatelessWidget {
       child: Icon(icon, size: 30, color: color),
     );
   }
-}
-
-/// A human name for a swatch, so a colour is not something to be identified by
-/// comparing it against a list.
-///
-/// Names the HUE, not the palette: there is no "Gruvbox yellow" a person would
-/// recognise without the reference, and the whole list is gruvbox-adjacent.
-String _colourName(int value) {
-  final hsl = HSLColor.fromColor(Color(value));
-  final hue = hsl.hue;
-  final light = hsl.lightness;
-  final tone = light < 0.35
-      ? 'dark'
-      : light > 0.72
-      ? 'pale'
-      : '';
-  String name;
-  if (hue < 15 || hue >= 345) {
-    name = 'red';
-  } else if (hue < 40) {
-    name = 'orange';
-  } else if (hue < 70) {
-    name = 'amber';
-  } else if (hue < 160) {
-    name = 'green';
-  } else if (hue < 200) {
-    name = 'teal';
-  } else if (hue < 255) {
-    name = 'blue';
-  } else if (hue < 290) {
-    name = 'purple';
-  } else if (hue < 330) {
-    name = 'pink';
-  } else {
-    name = 'rose';
-  }
-  return tone.isEmpty ? name : '$tone $name';
 }

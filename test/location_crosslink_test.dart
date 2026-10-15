@@ -218,7 +218,17 @@ void main() {
 
   group('a saved place answers for itself', () {
     /// The place screen with [transactions] already linked to it.
-    Future<void> pumpPlace(
+    ///
+    /// Returns what it built, so a test can check that a tap reached the
+    /// provider and not only that something was drawn.
+    Future<
+      ({
+        TransactionProvider transactions,
+        SettingsProvider settings,
+        LocationProvider locations,
+      })
+    >
+    pumpPlace(
       WidgetTester tester,
       Location location,
       List<Transaction> transactions,
@@ -262,6 +272,8 @@ void main() {
       for (var i = 0; i < 12; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
+
+      return (transactions: provider, settings: settings, locations: locations);
     }
 
     Expense spend(double amount, String what, {int day = 1}) => Expense(
@@ -370,6 +382,68 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(ExpenseDetailScreen), findsOneWidget);
+    });
+
+    testWidgets('the arrival switch follows the tap, not the page it was '
+        'built from', (tester) async {
+      usePhoneLayout(tester, TestViewports.phonePortrait);
+
+      final p = await pumpPlace(tester, place(), const []);
+
+      Switch theSwitch() =>
+          tester.widget<Switch>(find.byType(Switch, skipOffstage: false));
+
+      // On by default: a place saved to be reminded about should be.
+      expect(theSwitch().value, isTrue);
+      expect(find.text('Notify when I arrive'), findsOneWidget);
+      expect(find.textContaining('while the app is running'), findsOneWidget);
+
+      await tester.runAsync(() async {
+        await tester.tap(
+          find.byKey(const ValueKey('place-notifications-toggle')),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+      });
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(
+        p.locations.getLocationById('home')!.notificationsEnabled,
+        isFalse,
+        reason: 'the provider did not record the change',
+      );
+      // THE FAULT. The screen took the place as a constructor argument and read
+      // it from there, so the provider updated and the switch stayed where it
+      // was — the user turns it off, sees it still on, and concludes nothing
+      // happened. Subtitle and switch state together, because either one alone
+      // could be a different widget than the one that changed.
+      expect(
+        theSwitch().value,
+        isFalse,
+        reason: 'the switch still shows the value the page was built with',
+      );
+      expect(
+        find.text('Turned off for this place'),
+        findsOneWidget,
+        reason: 'the subtitle still describes the old state',
+      );
+      expect(find.textContaining('while the app is running'), findsNothing);
+
+      // And back on, so the control is two-way rather than one-way.
+      await tester.runAsync(() async {
+        await tester.tap(
+          find.byKey(const ValueKey('place-notifications-toggle')),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+      });
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(p.locations.getLocationById('home')!.notificationsEnabled, isTrue);
+      expect(theSwitch().value, isTrue);
+      expect(find.text('Turned off for this place'), findsNothing);
     });
   });
 }
