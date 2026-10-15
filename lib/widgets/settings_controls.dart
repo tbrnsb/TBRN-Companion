@@ -427,6 +427,146 @@ class SettingsNavRow extends StatelessWidget {
   }
 }
 
+/// A settings row that is a BINARY TOGGLE — on or off, no third state and no
+/// sheet to pick one from.
+///
+/// WHY IT IS NOT A MODE OF [SettingsOptionRow]. That row needs a list of
+/// options and opens a sheet to choose between them; a switch is two states,
+/// and a sheet in front of a decision that needs no deliberation is a modal for
+/// its own sake. The GEOMETRY is shared on purpose, though — the same
+/// [AppSpacing.md] inset, the same label-over-caption stack — because the thing
+/// that made the standalone `SwitchListTile` it replaced look wrong on the
+/// place screen was precisely that it did not share it. A ListTile brings its
+/// own inset and its own idea of where a trailing control goes, and on a card
+/// that already had padding the two ideas disagreed with every other row in the
+/// app by 16 pixels.
+class SettingsSwitchRow extends StatelessWidget {
+  const SettingsSwitchRow({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.onChanged,
+    this.supporting,
+    this.icon,
+  });
+
+  /// What this setting is called, in the section's own terms.
+  final String label;
+
+  /// Whether it is on.
+  final bool value;
+
+  /// Called with the new state. The caller persists it.
+  final ValueChanged<bool> onChanged;
+
+  /// A line under the label, so the row can say what its state MEANS — how far
+  /// the arrival radius reaches, or that a feature is off here.
+  final String? supporting;
+
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    // ONE announcement, label and state together, the way [SettingsOptionRow]
+    // announces "label, currently value". A switch whose semantics are only the
+    // bare role and a position ("switch, on") says what state the row is in
+    // without ever saying WHICH setting that is about.
+    return Semantics(
+      container: true,
+      button: true,
+      toggled: value,
+      label: '$label, currently ${value ? 'on' : 'off'}',
+      child: InkWell(
+        onTap: () => onChanged(!value),
+        borderRadius: BorderRadius.circular(AppRadii.medium),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
+          child: Row(
+            // START, where the option and nav rows centre.
+            //
+            // The option row centres and pins its label column and glyph back
+            // to the top with Aligns, so that its VALUE can sit on the row's
+            // axis. Measured, those Aligns do nothing in the places the family
+            // is actually used: a settings list is a ListView, so the Row's
+            // cross extent is unbounded, and an Align with no room to expand
+            // just shrink-wraps — what lands on the first line is the label
+            // column, because it is the tallest child, and the value and the
+            // chevron end up CENTRED on the block.
+            //
+            // Centred is right for a value, which is a fact about the whole
+            // row. It is wrong for a SWITCH, which has to read as attached to
+            // the label it switches: a toggle floating between a two-line label
+            // and its caption belongs to neither. `start` puts the label column
+            // and the switch on the same first line, with no Aligns to explain
+            // and no geometry to re-derive — at this row's real height it is
+            // also the half-pixel answer, since the Switch is as tall as the
+            // label block, but it is the one that stays correct if the block
+            // ever grows.
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (icon != null) ...[
+                // ON THE FIRST LINE, with the nudge that keeps a 20px glyph on
+                // the label's optical centre rather than its box top — the same
+                // nudge the option row uses.
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Icon(icon, size: 20, color: scheme.onSurfaceVariant),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+              ],
+              Expanded(
+                flex: 2,
+                // THE LABEL NEVER WRAPS, and it is the wider of the two
+                // columns, for the same reason as in the option row: the label
+                // is what the row IS, so it gets the larger share and the
+                // caption is the one that ellipsises.
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyLarge,
+                    ),
+                    if (supporting != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 1),
+                        child: Text(
+                          supporting!,
+                          // ONE LINE, and ellipsised beyond it, so this row
+                          // never ends up taller than the rows around it.
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            height: 1.25,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              // A real [Switch], not a tick or a chevron: the control's whole
+              // affordance is that you can see and hit it, and a bespoke one
+              // would be a second switch in the app to learn.
+              Switch(value: value, onChanged: onChanged),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// One labelled group of rows, on the raised tier.
 ///
 /// A card, not a bare heading plus loose rows: the groups are what make the page

@@ -13,6 +13,7 @@ import 'package:daily_companion/theme/app_theme.dart';
 import 'package:daily_companion/utils/format.dart';
 import 'package:daily_companion/utils/location_settings.dart';
 import 'package:daily_companion/widgets/section_header.dart';
+import 'package:daily_companion/widgets/settings_controls.dart';
 
 import '../transactions/expense_detail_screen.dart';
 import '../transactions/income_detail_screen.dart';
@@ -150,7 +151,6 @@ class LocationDetailScreen extends StatelessWidget {
           ],
 
           const SizedBox(height: AppSpacing.lg),
-          const SizedBox(height: AppSpacing.lg),
           // PER PLACE, because the reason for one is that a place you saved to
           // be reminded about and a place you happened to pin are not the same
           // thing. A single global switch cannot tell those apart, so it is
@@ -164,21 +164,15 @@ class LocationDetailScreen extends StatelessWidget {
           AppSurface(
             tier: AppSurfaceTier.raised,
             padding: const EdgeInsets.all(AppSpacing.md),
-            child: SwitchListTile(
+            child: SettingsSwitchRow(
               key: const ValueKey('place-notifications-toggle'),
-              contentPadding: EdgeInsets.zero,
+              label: 'Notify when I arrive',
               value: place.notificationsEnabled,
-              title: const Text('Notify when I arrive'),
-              subtitle: Text(
-                place.notificationsEnabled
-                    ? 'Within '
-                          '${(LocationProvider.arrivalRadiusMeters / 1000).toStringAsFixed(1)} km, '
-                          'while the app is running'
-                    : 'Turned off for this place',
-                style: textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
+              supporting: place.notificationsEnabled
+                  ? 'Within '
+                        '${(LocationProvider.arrivalRadiusMeters / 1000).toStringAsFixed(1)} km, '
+                        'while the app is running'
+                  : 'Turned off for this place',
               onChanged: (value) => _setNotifications(context, place, value),
             ),
           ),
