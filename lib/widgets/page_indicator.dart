@@ -33,8 +33,23 @@ class PageDot extends StatelessWidget {
   /// Sized rather than padded on purpose. Padding the pip up to a 32-pixel
   /// target made a row of three exactly one pixel too wide at 360dp; a fixed
   /// width gets the same target without the row's arithmetic depending on it.
+  ///
+  /// The height is the row's height, NOT the touch target. Growing it to a
+  /// 44dp target — which is what the month chevrons one widget away use, and
+  /// what this row was below — pushed the pager's own dots past the bottom of
+  /// the viewport at a 1.3 text scale, so the control meant to move between
+  /// pages went off screen. The target therefore OVERFLOWS the row: [Stack]
+  /// with `clipBehavior: Clip.none` gives a 44dp hit area that costs the layout
+  /// nothing.
   static const double _targetWidth = AppSpacing.xl + AppSpacing.xs;
-  static const double _targetHeight = AppSpacing.lg;
+  static const double _rowHeight = AppSpacing.lg;
+
+  /// The height actually tappable, which is larger than [_rowHeight].
+  ///
+  /// 44 rather than Material's 48, because the chevrons beside it on the same
+  /// screen are 44 and two controls of different sizes are the problem being
+  /// fixed here.
+  static const double _touchHeight = AppSpacing.xl + AppSpacing.sm;
 
   /// The alpha an inactive page dot is painted at.
   ///
@@ -52,33 +67,51 @@ class PageDot extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
+    final pip = AnimatedContainer(
+      duration: AppMotion.fast,
+      // The selected pip was 12×8 and the inactive 8×8, so "which page am I on"
+      // was answered by a change of SHAPE rather than a change of fill — which
+      // reads as a different control next to the other three. Same square both
+      // ways; only the colour moves.
+      width: AppSpacing.xs,
+      height: AppSpacing.xs,
+      decoration: BoxDecoration(
+        color: selected
+            ? scheme.primary
+            : scheme.onSurfaceVariant.withValues(alpha: inactiveDotAlpha),
+        borderRadius: BorderRadius.circular(AppSpacing.xxs),
+      ),
+    );
+
     return SizedBox(
       width: _targetWidth,
-      height: _targetHeight,
-      child: Semantics(
-        button: true,
-        selected: selected,
-        label: 'Page ${index + 1}',
-        child: InkWell(
-          key: ValueKey('$keyPrefix-dot-$index'),
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(AppRadii.small),
-          child: Center(
-            child: AnimatedContainer(
-              duration: AppMotion.fast,
-              width: selected ? AppSpacing.sm : AppSpacing.xs,
-              height: AppSpacing.xs,
-              decoration: BoxDecoration(
-                color: selected
-                    ? scheme.primary
-                    : scheme.onSurfaceVariant.withValues(
-                        alpha: inactiveDotAlpha,
-                      ),
-                borderRadius: BorderRadius.circular(AppSpacing.xxs),
+      // The ROW is [_rowHeight] whatever the touch target is. See [_rowHeight].
+      height: _rowHeight,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          // The touch area, centred on the row and allowed to overflow it.
+          Positioned(
+            top: -(_touchHeight - _rowHeight) / 2,
+            bottom: -(_touchHeight - _rowHeight) / 2,
+            left: 0,
+            right: 0,
+            child: Semantics(
+              button: true,
+              selected: selected,
+              label: 'Page ${index + 1}',
+              child: InkWell(
+                key: ValueKey('$keyPrefix-dot-$index'),
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(AppRadii.small),
+                child: const SizedBox.expand(),
               ),
             ),
           ),
-        ),
+          // The pip itself, painted above the hit area so a ripple reads.
+          IgnorePointer(child: pip),
+        ],
       ),
     );
   }

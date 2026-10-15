@@ -29,9 +29,14 @@ class LocationsScreen extends StatelessWidget {
           if (provider.locations.isEmpty) {
             return EmptyState(
               icon: Icons.location_on_rounded,
-              title: 'No saved locations yet',
-              message: 'Add a place to track geofence context and routines.',
-              actionLabel: 'Add Location',
+              title: 'No saved places yet',
+              // Plain words. "Geofence" and "routines" appeared nowhere
+              // else in the app's copy, so they told a first-time user nothing
+              // about what the feature does for them.
+              message:
+                  "Add a place and we'll keep track of what you spend "
+                  'there.',
+              actionLabel: 'Add place',
               onAction: () => _showLocationDialog(context, null),
             );
           }

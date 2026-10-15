@@ -10,6 +10,7 @@ import 'package:daily_companion/providers/transaction_provider.dart';
 import 'package:daily_companion/screens/transactions/add_transaction_sheet.dart';
 import 'package:daily_companion/screens/transactions/expense_detail_screen.dart';
 import 'package:daily_companion/screens/transactions/income_detail_screen.dart';
+import 'package:daily_companion/theme/app_chart_colors.dart';
 import 'package:daily_companion/theme/app_theme.dart';
 import 'package:daily_companion/utils/date_window.dart';
 import 'package:daily_companion/utils/format.dart';
@@ -1106,10 +1107,23 @@ class _TransactionTile extends StatelessWidget {
         width: 42,
         height: 42,
         decoration: BoxDecoration(
-          color: meta.color.withValues(alpha: 0.15),
+          // Resolved against the page this row stands on.
+          color: AppCategorySurfaces.on(
+            meta,
+            colorScheme,
+            page: Theme.of(context).scaffoldBackgroundColor,
+          ).withValues(alpha: 0.15),
           borderRadius: AppRadii.smallRadius,
         ),
-        child: Icon(meta.icon, color: meta.color, size: 20),
+        child: Icon(
+          meta.icon,
+          color: AppCategorySurfaces.on(
+            meta,
+            colorScheme,
+            page: Theme.of(context).scaffoldBackgroundColor,
+          ),
+          size: 20,
+        ),
       ),
       title: Text(
         transaction.description,

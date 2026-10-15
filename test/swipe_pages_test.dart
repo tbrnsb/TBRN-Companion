@@ -136,9 +136,14 @@ void main() {
       await settleUi(tester);
 
       final withFew = _heightOf(tester);
+      // 312, not 300. The dot row's tap target was raised from 24 to 44 to
+      // meet the same 44 the month chevrons use on the same screen, and that
+      // row is inside the measured box. The property this test exists to prove
+      // is that a two-category month is not padded out to the height of an
+      // eight-category one — which the comparison below still asserts.
       expect(
         withFew,
-        lessThan(300),
+        lessThan(320),
         reason: 'a two-category card was padded to ${withFew}px',
       );
 

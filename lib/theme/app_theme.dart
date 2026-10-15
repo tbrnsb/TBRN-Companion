@@ -577,6 +577,16 @@ class AppTheme {
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: scaffold,
+        // A bottom edge, because `elevation: 0` plus the page's own colour left
+        // the bar with no boundary: a section header scrolled up under the
+        // title read as a second line of it.
+        //
+        // A border rather than a scrim on purpose. Material's scrolled-under
+        // background resolves through `backgroundColor`, which is `scaffold`
+        // here — so it paints the same colour and changes nothing. A shape is
+        // unconditional, so the bar is delimited whether or not anything has
+        // scrolled under it yet.
+        shape: Border(bottom: BorderSide(color: scheme.outlineVariant)),
         surfaceTintColor: Colors.transparent,
         foregroundColor: scheme.onSurface,
         elevation: 0,
@@ -587,6 +597,20 @@ class AppTheme {
           fontWeight: FontWeight.w700,
           letterSpacing: -0.2,
         ),
+      ),
+      // The one floating control on the app's busiest screen was the one
+      // control this theme said nothing about, so it was Material's default:
+      // M3's 16dp radius against the app's 10/14, and `primaryContainer` fill.
+      // It floated over a donut, a card corner and a list row's lock icon.
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: scheme.primaryContainer,
+        foregroundColor: scheme.onPrimaryContainer,
+        elevation: 2,
+        focusElevation: 4,
+        hoverElevation: 4,
+        highlightElevation: 6,
+        extendedTextStyle: const TextStyle(fontWeight: FontWeight.w600),
+        shape: RoundedRectangleBorder(borderRadius: AppRadii.smallRadius),
       ),
       cardTheme: CardThemeData(
         elevation: 0,

@@ -37,6 +37,7 @@ class ContextMenuChip<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: maxChipWidth),
       child: DropdownMenu<T>(
@@ -53,11 +54,33 @@ class ContextMenuChip<T> extends StatelessWidget {
         // Without a cap the selected value is drawn at its natural width,
         // which is what let the menu claim the whole row.
         maxLines: 1,
-        inputDecorationTheme: const InputDecorationTheme(
+        // Resolved from the context, not `const`.
+        //
+        // This replaced the app's whole `inputDecorationTheme` with a bare
+        // `InputDecorationTheme` that declared no `fillColor` — so `filled`
+        // fell back to false and the chip rendered as an OUTLINED box, while
+        // every other input in the app is a borderless tonal fill. It also
+        // reset the corners, which is why these chips had sharper corners than
+        // the fields beside them.
+        inputDecorationTheme: InputDecorationTheme(
           isDense: true,
-          contentPadding: EdgeInsets.symmetric(
+          filled: true,
+          fillColor: scheme.surfaceContainerHighest,
+          contentPadding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.sm,
             vertical: 0,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: AppRadii.smallRadius,
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: AppRadii.smallRadius,
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: AppRadii.smallRadius,
+            borderSide: BorderSide(color: scheme.primary, width: 1.5),
           ),
         ),
         leadingIcon: Icon(icon, size: 18),

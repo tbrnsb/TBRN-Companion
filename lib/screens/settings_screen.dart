@@ -488,10 +488,16 @@ class _DataSectionState extends State<_DataSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Went through _SettingsSection like every other group. This header
+        // hand-rolled the same structure and used `titleMedium` in mixed case,
+        // so "Data" sat 170px under "CATEGORIES" rendered in a different type
+        // system — one line of omission, not a decision.
         Text(
-          'Data',
-          style: textTheme.titleMedium?.copyWith(
+          'DATA',
+          style: textTheme.labelSmall?.copyWith(
             color: colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.1,
           ),
         ),
         const SizedBox(height: AppSpacing.xs),
@@ -609,20 +615,27 @@ class _CountLine extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxs),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: textTheme.bodySmall),
-          Text(
-            '$value',
-            style: textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: value == 0 ? colorScheme.onSurfaceVariant : null,
+    return Semantics(
+      // Ten of these sit under one heading on this screen, and every other
+      // row in Settings already reads as one control to a screen reader. Left
+      // bare, a traversal of the Data section is ten unlabelled number pairs.
+      label: '$label, $value',
+      excludeSemantics: true,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxs),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: textTheme.bodySmall),
+            Text(
+              '$value',
+              style: textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: value == 0 ? colorScheme.onSurfaceVariant : null,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

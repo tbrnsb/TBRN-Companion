@@ -9,6 +9,7 @@ import 'package:daily_companion/providers/journey_provider.dart';
 import 'package:daily_companion/providers/settings_provider.dart';
 import 'package:daily_companion/providers/transaction_provider.dart';
 import 'package:daily_companion/theme/app_theme.dart';
+import 'package:daily_companion/theme/app_chart_colors.dart';
 import 'package:daily_companion/utils/format.dart';
 import 'package:daily_companion/widgets/widgets.dart';
 
@@ -149,16 +150,27 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
   /// Falls back to a neutral "all" meta rather than the last enum entry, so a
   /// limit saved against a category the app no longer offers still READS as
   /// something rather than silently becoming a different category's budget.
-  CategoryMeta _metaFor(String id) {
-    if (isAllCategories(id)) return _allCategoriesMeta;
-    return CategoryRegistry.metaById(id) ?? _allCategoriesMeta;
+  CategoryMeta _metaFor(String id, ColorScheme scheme) {
+    if (isAllCategories(id)) return _allCategoriesMeta(scheme);
+    return CategoryRegistry.metaById(id) ?? _allCategoriesMeta(scheme);
   }
 
-  static const CategoryMeta _allCategoriesMeta = CategoryMeta(
+  /// The pseudo-category for "no category chosen".
+  ///
+  /// Its colour is a warm brown that reads as "unremarkable" against TBRN's
+  /// cream and as a smudge on Gruvbox's grey, Catppuccin's blue and
+  /// Solitude's blue-grey — it is a TBRN literal in a screen that otherwise
+  /// takes everything from the scheme.
+  ///
+  /// Tinted from the scheme here rather than in the [CategoryMeta] literal,
+  /// because `const` is exactly what made it fixed: this is a row that means
+  /// "everything", so it wears the app's own neutral ink. The row resolves it
+  /// per surface through `AppCategorySurfaces.on`.
+  static CategoryMeta _allCategoriesMeta(ColorScheme scheme) => CategoryMeta(
     id: allCategoriesKey,
     name: 'All categories',
     icon: Icons.pie_chart_outline_rounded,
-    color: Color(0xFF8A7A66),
+    color: scheme.onSurfaceVariant,
     popularity: 0,
   );
 
@@ -242,7 +254,10 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
             key: const ValueKey('budget-category-select'),
             initialValue: _categoryId,
             decoration: InputDecoration(
-              prefixIcon: Icon(_metaFor(_categoryId).icon, size: 18),
+              prefixIcon: Icon(
+                _metaFor(_categoryId, theme.colorScheme).icon,
+                size: 18,
+              ),
             ),
             items: [
               // "All" first, because a limit on the period's TOTAL is the
@@ -275,7 +290,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
             period: _period,
             categoryId: _categoryId,
             currencySymbol: currency,
-            meta: _metaFor(_categoryId),
+            meta: _metaFor(_categoryId, theme.colorScheme),
           ),
           const SizedBox(height: AppSpacing.sm),
           // The total stays, because it is the context for the one reading above
@@ -359,7 +374,14 @@ class _CategoryBudget extends StatelessWidget {
     return _BudgetRow(
       storageKey: BudgetKey.forCategory(categoryId, period).raw,
       icon: meta.icon,
-      colour: meta.color,
+      // Resolved against the `flat` tier, because this row IS a flat surface
+      // (see `_BudgetRow`'s AppSurface below). It was a TBRN warm-brown literal
+      // for "All categories", painted on all four palettes.
+      colour: AppCategorySurfaces.on(
+        meta,
+        Theme.of(context).colorScheme,
+        tier: AppSurfaceTier.flat,
+      ),
       title: meta.name,
       limit: budgets.limitFor(label: categoryId, period: period),
       hasLimit: budgets.hasLimit(label: categoryId, period: period),
@@ -593,6 +615,23 @@ class _BudgetRow extends StatelessWidget {
                             color: scheme.onSurfaceVariant,
                           ),
                         ),
+                      // Inside the Expanded, not a sibling of it. As a direct
+                      // child of the outer Column it sat flush to the card
+                      // padding while the title and subtitle above it were
+                      // indented past the icon, so one card had two left edges.
+                      const SizedBox(height: AppSpacing.xxs),
+                      Text(
+                        hasLimit
+                            ? '${AppFormat.money(spent, symbol: currencySymbol)} spent · '
+                                  '${status.describe((v) => AppFormat.money(v, symbol: currencySymbol))}'
+                            : '${AppFormat.money(spent, symbol: currencySymbol)} spent, no limit set',
+                        key: ValueKey('budget-caption-$storageKey'),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: status.isOverspent
+                              ? scheme.error
+                              : scheme.onSurfaceVariant,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -625,25 +664,14 @@ class _BudgetRow extends StatelessWidget {
                 child: LinearProgressIndicator(
                   key: ValueKey('budget-bar-$storageKey'),
                   value: status.progress,
-                  minHeight: AppSpacing.xxs + 2,
+                  // On the scale. This was `AppSpacing.xxs + 2`, which is 6 and
+                  // is not a step the scale has.
+                  minHeight: AppSpacing.xxs,
                   color: barColour,
                   backgroundColor: scheme.surfaceContainerHighest,
                 ),
               ),
             ],
-            const SizedBox(height: AppSpacing.xxs),
-            Text(
-              hasLimit
-                  ? '${AppFormat.money(spent, symbol: currencySymbol)} spent · '
-                        '${status.describe((v) => AppFormat.money(v, symbol: currencySymbol))}'
-                  : '${AppFormat.money(spent, symbol: currencySymbol)} spent, no limit set',
-              key: ValueKey('budget-caption-$storageKey'),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: status.isOverspent
-                    ? scheme.error
-                    : scheme.onSurfaceVariant,
-              ),
-            ),
           ],
         ),
       ),

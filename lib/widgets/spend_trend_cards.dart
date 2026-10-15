@@ -765,7 +765,9 @@ class _Key extends StatelessWidget {
           height: 10,
           decoration: BoxDecoration(
             color: color,
-            borderRadius: BorderRadius.circular(3),
+            // AppRadii.small, not a literal 3 — see the note on the
+            // same swatch in `spend_breakdown_card.dart`.
+            borderRadius: AppRadii.smallRadius,
           ),
         ),
         const SizedBox(width: AppSpacing.xxs),

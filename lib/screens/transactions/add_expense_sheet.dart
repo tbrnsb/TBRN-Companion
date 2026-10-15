@@ -9,6 +9,7 @@ import 'package:daily_companion/providers/location_provider.dart';
 import 'package:daily_companion/providers/settings_provider.dart';
 import 'package:daily_companion/providers/transaction_provider.dart';
 import 'package:daily_companion/services/transaction_location_service.dart';
+import 'package:daily_companion/theme/app_chart_colors.dart';
 import 'package:daily_companion/theme/app_theme.dart';
 import 'package:daily_companion/widgets/context_menu_chip.dart';
 
@@ -1036,6 +1037,14 @@ class _CategoryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    // Resolved against the sheet's own surface. This app themes
+    // `bottomSheetTheme.backgroundColor` to `scheme.surface`, which is NOT the
+    // scaffold — so the page colour would be the wrong background here.
+    final tint = AppCategorySurfaces.on(
+      meta,
+      colorScheme,
+      page: colorScheme.surface,
+    );
 
     return Semantics(
       button: true,
@@ -1051,10 +1060,10 @@ class _CategoryTile extends StatelessWidget {
             vertical: AppSpacing.xs,
           ),
           decoration: BoxDecoration(
-            color: selected ? meta.color.withValues(alpha: 0.18) : null,
+            color: selected ? tint.withValues(alpha: 0.18) : null,
             borderRadius: AppRadii.smallRadius,
             border: Border.all(
-              color: selected ? meta.color : colorScheme.outlineVariant,
+              color: selected ? tint : colorScheme.outlineVariant,
               width: selected ? 1.5 : 1,
             ),
           ),
@@ -1064,13 +1073,13 @@ class _CategoryTile extends StatelessWidget {
               Icon(
                 meta.icon,
                 size: 18,
-                color: selected ? meta.color : colorScheme.onSurfaceVariant,
+                color: selected ? tint : colorScheme.onSurfaceVariant,
               ),
               const SizedBox(width: AppSpacing.xs),
               Text(
                 meta.name,
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: selected ? meta.color : colorScheme.onSurface,
+                  color: selected ? tint : colorScheme.onSurface,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 ),
               ),

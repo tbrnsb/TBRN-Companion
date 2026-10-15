@@ -24,7 +24,10 @@ class AppStatTile extends StatelessWidget {
       padding: const EdgeInsets.all(AppSpacing.sm),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
+        // A RADIUS, from the radii scale. This was `circular(12)`, which is
+        // `AppSpacing.sm` — a spacing constant used as a corner radius, so these
+        // tiles had visibly different corners from the cards they sit among.
+        borderRadius: AppRadii.mediumRadius,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

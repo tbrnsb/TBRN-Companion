@@ -8,6 +8,7 @@ import 'package:daily_companion/providers/settings_provider.dart';
 import 'package:daily_companion/providers/transaction_provider.dart';
 import 'package:daily_companion/services/notification_service.dart';
 import 'package:daily_companion/services/place_launcher.dart';
+import 'package:daily_companion/theme/app_chart_colors.dart';
 import 'package:daily_companion/theme/app_theme.dart';
 import 'package:daily_companion/utils/format.dart';
 import 'package:daily_companion/utils/location_settings.dart';
@@ -476,8 +477,22 @@ class _TransactionRow extends StatelessWidget {
         ListTile(
           contentPadding: EdgeInsets.zero,
           leading: CircleAvatar(
-            backgroundColor: meta.color.withValues(alpha: 0.15),
-            child: Icon(meta.icon, size: 18, color: meta.color),
+            // Resolved against the page: this history list is a direct child of
+            // the Scaffold, so a row stands on the page rather than on a card.
+            backgroundColor: AppCategorySurfaces.on(
+              meta,
+              colorScheme,
+              page: Theme.of(context).scaffoldBackgroundColor,
+            ).withValues(alpha: 0.15),
+            child: Icon(
+              meta.icon,
+              size: 18,
+              color: AppCategorySurfaces.on(
+                meta,
+                colorScheme,
+                page: Theme.of(context).scaffoldBackgroundColor,
+              ),
+            ),
           ),
           title: Text(
             transaction.description.isEmpty

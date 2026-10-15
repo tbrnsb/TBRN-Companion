@@ -797,6 +797,7 @@ class _JourneyTile extends StatelessWidget {
         ? DateFormat('MMM d, y • h:mm a').format(journey.endTime!)
         : 'In progress';
     final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     final status = journey.status;
 
     // Where the trip got to. Null when it has no checklist, which is different
@@ -832,17 +833,19 @@ class _JourneyTile extends StatelessWidget {
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 2),
+              const SizedBox(height: AppSpacing.xxs),
               Row(
                 children: [
                   Icon(Icons.circle, size: 8, color: statusColor),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: AppSpacing.xs),
                   Text(
                     status.label,
-                    style: TextStyle(
+                    // `labelMedium` carries the size and the weight already.
+                    // This was a bare `TextStyle` with no role behind it, so it
+                    // discarded the theme's type for this one line.
+                    style: textTheme.labelMedium?.copyWith(
                       color: statusColor,
                       fontWeight: FontWeight.w600,
-                      fontSize: 12,
                     ),
                   ),
                 ],
