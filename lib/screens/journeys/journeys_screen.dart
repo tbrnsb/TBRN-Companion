@@ -11,7 +11,9 @@ import 'package:daily_companion/providers/location_provider.dart';
 import 'package:daily_companion/screens/journeys/journey_detail_screen.dart';
 import 'package:daily_companion/screens/journeys/journey_detail_sheets.dart';
 import 'package:daily_companion/screens/journeys/heading_home_sheet.dart';
+import 'package:daily_companion/widgets/place_autocomplete_field.dart';
 import 'package:daily_companion/theme/app_accents.dart';
+import 'package:daily_companion/services/notification_service.dart';
 import 'package:daily_companion/theme/app_chart_colors.dart';
 import 'package:daily_companion/theme/app_theme.dart';
 import 'package:daily_companion/utils/format.dart';
@@ -211,18 +213,36 @@ class _JourneysScreenState extends State<JourneysScreen> {
         ),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
-          TextField(
+          PlaceAutocompleteField(
             controller: _originController,
-            decoration: const InputDecoration(
-              labelText: 'Where are you starting?',
-            ),
+            label: 'Where are you starting?',
+            onUseCurrentLocation: () async {
+              final locationProvider = context.read<LocationProvider>();
+              if (locationProvider.currentLocationId != null) {
+                final location = locationProvider.getLocationById(
+                  locationProvider.currentLocationId!,
+                );
+                if (location != null) {
+                  _originController.text = location.name;
+                }
+              }
+            },
           ),
           const SizedBox(height: 12),
-          TextField(
+          PlaceAutocompleteField(
             controller: _destinationController,
-            decoration: const InputDecoration(
-              labelText: 'Where are you going?',
-            ),
+            label: 'Where are you going?',
+            onUseCurrentLocation: () async {
+              final locationProvider = context.read<LocationProvider>();
+              if (locationProvider.currentLocationId != null) {
+                final location = locationProvider.getLocationById(
+                  locationProvider.currentLocationId!,
+                );
+                if (location != null) {
+                  _destinationController.text = location.name;
+                }
+              }
+            },
           ),
           const SizedBox(height: 12),
           _PackingListEditor(
@@ -275,6 +295,43 @@ class _JourneysScreenState extends State<JourneysScreen> {
             ],
           ),
           const SizedBox(height: AppSpacing.xs),
+          TextButton(
+            onPressed: () async {
+              final presets = context.read<ChecklistProvider>().presets;
+              if (presets.isEmpty) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text('No presets available')));
+                return;
+              }
+              final selectedPreset = await showDialog<Checklist>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: Text('Choose a preset'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: presets
+                        .map(
+                          (preset) => ListTile(
+                            title: Text(preset.name),
+                            onTap: () => Navigator.of(context).pop(preset),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+              );
+              if (selectedPreset != null) {
+                setState(() {
+                  _plannedItems.addAll(
+                    selectedPreset.items.map((item) => item.name),
+                  );
+                });
+              }
+            },
+            child: const Text('Choose a preset'),
+          ),
+          const SizedBox(height: AppSpacing.xs),
           // A checkbox, not a switch: the label is the whole point, and a
           // switch with no words beside it is a guess about what is on.
           CheckboxListTile(
@@ -297,6 +354,46 @@ class _JourneysScreenState extends State<JourneysScreen> {
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
+          ),
+          const SizedBox(height: 12),
+          TextButton(
+            onPressed: () async {
+              final selectedTime = await showTimePicker(
+                context: context,
+                initialTime: TimeOfDay.now(),
+              );
+              if (selectedTime != null) {
+                final now = DateTime.now();
+                final scheduledTime = DateTime(
+                  now.year,
+                  now.month,
+                  now.day,
+                  selectedTime.hour,
+                  selectedTime.minute,
+                );
+                await NotificationService.scheduleAt(
+                  id: 'reminder_${now.millisecondsSinceEpoch}',
+                  title: 'Reminder',
+                  body: 'Time to start your journey!',
+                  scheduledTime: scheduledTime,
+                );
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Row(
+                      children: const [
+                        Icon(Icons.access_time_rounded, size: 20),
+                        SizedBox(width: 8),
+                        Expanded(child: Text('Reminder set for the same day')),
+                      ],
+                    ),
+                    behavior: SnackBarBehavior.floating,
+                    margin: const EdgeInsets.all(AppSpacing.md),
+                  ),
+                );
+              }
+            },
+            child: const Text('REMINDER?'),
           ),
           const SizedBox(height: 12),
           TextField(

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:timezone/timezone.dart' as tz;
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _plugin =
@@ -239,5 +240,47 @@ class NotificationService {
     );
 
     await _plugin.show(nextNotificationId(), title, body, details);
+  }
+
+  /// Schedule a notification for a specific time.
+  ///
+  /// The notification will fire even if the app is closed.
+  static Future<void> scheduleAt({
+    required String id,
+    required String title,
+    required String body,
+    required DateTime scheduledTime,
+  }) async {
+    if (kIsWeb) return;
+
+    const androidDetails = AndroidNotificationDetails(
+      'journey_reminders',
+      'Journey reminders',
+      importance: Importance.max,
+      priority: Priority.high,
+      channelDescription: 'Scheduled reminders for trips and important events',
+    );
+    const iosDetails = DarwinNotificationDetails();
+    const linuxDetails = LinuxNotificationDetails();
+    const details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+      linux: linuxDetails,
+    );
+
+    await _plugin.zonedSchedule(
+      id.hashCode,
+      title,
+      body,
+      tz.TZDateTime.from(scheduledTime, tz.local),
+      details,
+      androidScheduleMode: AndroidScheduleMode.alarmClock,
+      matchDateTimeComponents: DateTimeComponents.dateAndTime,
+    );
+  }
+
+  /// Cancel a scheduled notification by its ID.
+  static Future<void> cancel(String id) async {
+    await _plugin.cancel(id.hashCode);
   }
 }

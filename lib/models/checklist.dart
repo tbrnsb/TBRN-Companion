@@ -8,6 +8,7 @@ class Checklist {
   final String? linkedLocationId;
   final String? journeyId;
   final bool isEverydayEssentials;
+  final bool isPreset;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -19,6 +20,7 @@ class Checklist {
     this.linkedLocationId,
     this.journeyId,
     this.isEverydayEssentials = false,
+    this.isPreset = false,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) : id = id ?? const Uuid().v4(),
@@ -35,6 +37,7 @@ class Checklist {
       'linkedLocationId': linkedLocationId,
       'journeyId': journeyId,
       'isEverydayEssentials': isEverydayEssentials ? 1 : 0,
+      'isPreset': isPreset ? 1 : 0,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -52,6 +55,7 @@ class Checklist {
       linkedLocationId: json['linkedLocationId'],
       journeyId: json['journeyId'],
       isEverydayEssentials: json['isEverydayEssentials'] == 1,
+      isPreset: json['isPreset'] == 1,
       items: items,
       createdAt: DateTime.parse(json['createdAt']),
       updatedAt: DateTime.parse(json['updatedAt']),
@@ -66,6 +70,7 @@ class Checklist {
     String? linkedLocationId,
     String? journeyId,
     bool? isEverydayEssentials,
+    bool? isPreset,
     bool clearJourney = false,
   }) {
     return Checklist(
@@ -76,6 +81,7 @@ class Checklist {
       linkedLocationId: linkedLocationId ?? this.linkedLocationId,
       journeyId: clearJourney ? null : (journeyId ?? this.journeyId),
       isEverydayEssentials: isEverydayEssentials ?? this.isEverydayEssentials,
+      isPreset: isPreset ?? this.isPreset,
       createdAt: createdAt,
       updatedAt: DateTime.now(),
     );

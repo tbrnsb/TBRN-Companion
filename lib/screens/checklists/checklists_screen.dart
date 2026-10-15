@@ -319,6 +319,21 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                           _showDeleteConfirmation(context, provider, checklist);
                         },
                       ),
+                      PopupMenuItem(
+                        child: const Text('Save as preset'),
+                        onTap: () async {
+                          await provider.saveAsPreset(checklist.id);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  '${checklist.name} saved as preset',
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                      ),
                     ],
                   ),
                 ],

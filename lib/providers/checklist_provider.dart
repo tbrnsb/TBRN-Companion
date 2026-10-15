@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:daily_companion/models/index.dart';
 import 'package:daily_companion/services/storage_service.dart';
 import 'package:daily_companion/utils/iterable_ext.dart';
+import 'package:uuid/uuid.dart';
 
 class ChecklistProvider extends ChangeNotifier {
   final StorageService _storageService = StorageService();
@@ -328,6 +329,47 @@ class ChecklistProvider extends ChangeNotifier {
       }
     }
   }
+
+  // Save a checklist as a preset (remove journey link)
+  Future<void> saveAsPreset(String checklistId) async {
+    final checklist = _checklists.firstWhere((c) => c.id == checklistId);
+    final preset = checklist.copyWith(
+      isPreset: true,
+      journeyId: null, // Clear journeyId to make it a standalone preset
+    );
+    await updateChecklist(preset);
+  }
+
+  // Create a new preset
+  Future<void> createPreset(String name, List<String> items) async {
+    final preset = Checklist(
+      id: Uuid().v4(),
+      name: name,
+      description: 'Preset checklist',
+      items: items
+          .map(
+            (item) => ChecklistItem(
+              id: Uuid().v4(),
+              checklistId: '',
+              name: item,
+              isChecked: false,
+              createdAt: DateTime.now(),
+            ),
+          )
+          .toList(),
+      isPreset: true,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+    await addChecklist(preset);
+  }
+
+  // Get all presets
+  List<Checklist> get presets => _checklists.where((c) => c.isPreset).toList();
+
+  // Get non-preset checklists (for normal use)
+  List<Checklist> get regularChecklists =>
+      _checklists.where((c) => !c.isPreset).toList();
 }
 
 /// How much of a trip is packed. "4 of 9".
