@@ -86,3 +86,6 @@ android/key.properties
 
 # Tooling captures (screenshots taken while driving an emulator/device)
 .captures/
+
+# Orchestrator session state (not app source)
+.orchestrator/
