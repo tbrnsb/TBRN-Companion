@@ -288,7 +288,11 @@ class _JourneysScreenState extends State<JourneysScreen> {
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             subtitle: Text(
-              'No people section, no splitting.',
+              // Not "no people section": a solo trip still draws a Shared
+              // block with a header and a way back to sharing. What it does
+              // not draw is the roster, the add field, or the splitting UI,
+              // and that is what this line is promising.
+              'Nobody to add, nothing to split.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
