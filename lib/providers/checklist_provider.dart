@@ -330,14 +330,48 @@ class ChecklistProvider extends ChangeNotifier {
     }
   }
 
-  // Save a checklist as a preset (remove journey link)
-  Future<void> saveAsPreset(String checklistId) async {
-    final checklist = _checklists.firstWhere((c) => c.id == checklistId);
-    final preset = checklist.copyWith(
+  /// Saves a copy of an existing checklist as a reusable preset.
+  ///
+  /// A COPY, not a conversion: the earlier version flipped `isPreset` on the
+  /// original row, so saving a trip's packing list as a template silently
+  /// DETACHED the list from the trip — the pack tab went empty behind a
+  /// snackbar that said the save had worked. The source stays where it is,
+  /// still linked, still tickable; the preset is a fresh standalone row with
+  /// its own unticked items, following the same clone shape as
+  /// [duplicateChecklist].
+  ///
+  /// Answers whether the preset was actually written. The write goes through
+  /// [StorageService] directly rather than [addChecklist], because the caller
+  /// shows a snackbar based on the answer and `addChecklist` swallows every
+  /// error into [_error] — going through it reported "saved as preset" on a
+  /// write that had failed.
+  Future<bool> saveAsPreset(String checklistId) async {
+    final source = _checklists.where((c) => c.id == checklistId).firstOrNull;
+    if (source == null) return false;
+    final preset = Checklist(
+      name: source.name,
+      description: source.description,
       isPreset: true,
-      journeyId: null, // Clear journeyId to make it a standalone preset
     );
-    await updateChecklist(preset);
+    // Header AND items inside ONE catch. The item copies used to run through
+    // `addItemToChecklist`, which swallows its own failures, so a preset whose
+    // template body never landed still answered "saved" — a template with no
+    // items is exactly the failure the bool exists to report.
+    try {
+      await _storageService.addChecklist(preset);
+      for (final item in source.items) {
+        final copy = ChecklistItem(checklistId: preset.id, name: item.name);
+        await _storageService.addChecklistItem(copy);
+        preset.items.add(copy);
+      }
+    } catch (e) {
+      _error = 'Failed to save preset: $e';
+      notifyListeners();
+      return false;
+    }
+    _checklists.add(preset);
+    notifyListeners();
+    return true;
   }
 
   // Create a new preset

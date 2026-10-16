@@ -111,7 +111,7 @@ class _JourneysScreenState extends State<JourneysScreen> {
                       await HeadingHomeSheet.show(context, active);
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.sm),
                 ],
                 if (geofenceAlert != null) ...[
                   ContextCard(
@@ -119,10 +119,10 @@ class _JourneysScreenState extends State<JourneysScreen> {
                     title: 'Saved place alert',
                     child: Text(geofenceAlert),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.sm),
                 ],
                 _buildStartJourneyCard(context, journeyProvider),
-                const SizedBox(height: 24),
+                const SizedBox(height: AppSpacing.lg),
                 _SummaryRow(provider: journeyProvider),
                 const SizedBox(height: AppSpacing.lg),
                 // The month grid that used to live here is now the calendar in
@@ -132,22 +132,20 @@ class _JourneysScreenState extends State<JourneysScreen> {
                 // ledger already owns. Recent journeys below is the journey
                 // tab's actual job.
                 const SectionHeader('Recent journeys'),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.xs),
                 if (journeyProvider.journeys.isEmpty)
-                  const AppSurface(
-                    tier: AppSurfaceTier.flat,
-                    padding: EdgeInsets.all(AppSpacing.lg),
-                    // Says what the section is for AND where the next trip
-                    // comes from. The bare sentence it replaced named neither
-                    // the screen nor a way forward, and the card that starts a
-                    // trip sits directly above it.
-                    child: Center(
-                      child: Text(
-                        'Your trips will be listed here. Use "Start a new '
-                        'journey" above to log the first one.',
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
+                  // Says what the section is for AND where the next trip
+                  // comes from. The bare sentence it replaced named neither
+                  // the screen nor a way forward, and the card that starts a
+                  // trip sits directly above it. Same component as every other
+                  // empty list in the app; the copy is asserted verbatim by
+                  // journey_items_test.
+                  const EmptyState(
+                    icon: Icons.flight_takeoff_rounded,
+                    title: 'No journeys yet',
+                    message:
+                        'Your trips will be listed here. Use "Start a '
+                        'new journey" above to log the first one.',
                   )
                 else
                   ...journeyProvider.journeys.map(
@@ -193,6 +191,177 @@ class _JourneysScreenState extends State<JourneysScreen> {
     _itemEntryController.clear();
   }
 
+  /// Fills [controller] with the name of the place the app thinks you are at.
+  ///
+  /// The button used to do nothing at all when there was no current location
+  /// — no sound, no word, no reason — which is the worst possible answer for
+  /// a control that looks like it should work.
+  void _fillFromCurrentLocation(
+    BuildContext context,
+    TextEditingController controller,
+  ) {
+    final locationProvider = context.read<LocationProvider>();
+    final currentId = locationProvider.currentLocationId;
+    final location = currentId == null
+        ? null
+        : locationProvider.getLocationById(currentId);
+
+    if (location == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No current location saved yet'),
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.all(AppSpacing.md),
+        ),
+      );
+      return;
+    }
+    controller.text = location.name;
+  }
+
+  /// Opens the preset picker and folds the chosen template into the list.
+  ///
+  /// Items already in the list are skipped, case-insensitively, for the same
+  /// reason the typed entry skips them: adding the same thing twice by
+  /// accident is a bug the user then has to clean up by hand.
+  Future<void> _choosePreset(BuildContext context) async {
+    final presets = context.read<ChecklistProvider>().presets;
+    if (presets.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No presets yet — save one from a checklist’s menu first',
+          ),
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.all(AppSpacing.md),
+        ),
+      );
+      return;
+    }
+
+    final selectedPreset = await showDialog<Checklist>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Choose a preset'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: presets.length,
+            itemBuilder: (context, index) {
+              final preset = presets[index];
+              return ListTile(
+                title: Text(preset.name),
+                subtitle: Text(
+                  '${preset.items.length} ${preset.items.length == 1 ? 'item' : 'items'}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                onTap: () => Navigator.of(context).pop(preset),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+    if (selectedPreset == null || !mounted) return;
+
+    setState(() {
+      for (final item in selectedPreset.items) {
+        final name = item.name.trim();
+        if (name.isEmpty) continue;
+        final alreadyThere = _plannedItems.any(
+          (existing) => existing.toLowerCase() == name.toLowerCase(),
+        );
+        if (!alreadyThere) _plannedItems.add(name);
+      }
+    });
+  }
+
+  /// Schedules ONE reminder for the start of this trip.
+  ///
+  /// The time offered starts from the planned start when there is one — the
+  /// reminder is about the trip, so the trip's own time is the sensible
+  /// default. A time that has already passed today is bumped to TOMORROW
+  /// rather than silently scheduled in the past, where it would never fire.
+  ///
+  /// One id, not one per tap: rescheduling replaces the previous reminder
+  /// instead of stacking a second alarm the user cannot find.
+  Future<void> _scheduleReminder(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final now = DateTime.now();
+
+    final selectedTime = await showTimePicker(
+      context: context,
+      initialTime: _plannedStart != null
+          ? TimeOfDay.fromDateTime(_plannedStart!)
+          : TimeOfDay.now(),
+    );
+    if (selectedTime == null || !mounted) return;
+
+    final base = _plannedStart ?? now;
+    var scheduled = DateTime(
+      base.year,
+      base.month,
+      base.day,
+      selectedTime.hour,
+      selectedTime.minute,
+    );
+    // Rolls forward until it is actually AHEAD of now. Adding a single day
+    // left a planned start from two or more days ago still in the past,
+    // where the alarm never fires while the snackbar promises it will — the
+    // CHANGELOG says "rolls to tomorrow", and that has to be true for any
+    // date the picker can produce, not just yesterday.
+    while (!scheduled.isAfter(now)) {
+      scheduled = scheduled.add(const Duration(days: 1));
+    }
+
+    final destination = _destinationController.text.trim();
+    // ONE fixed id, deliberately: a reminder set for a later trip replaces
+    // this slot's previous entry instead of stacking a second alarm behind
+    // it. The service derives the platform id deterministically from this
+    // string, so the replacement also holds across app restarts, and the
+    // snackbar below always names the time that is currently armed.
+    final scheduledOk = await NotificationService.scheduleAt(
+      id: 'journey_start_reminder',
+      title: 'Journey reminder',
+      body: destination.isEmpty
+          ? 'Time to start your journey!'
+          : 'Time to start your journey to $destination!',
+      scheduledTime: scheduled,
+    );
+
+    messenger.showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              scheduledOk ? Icons.alarm_rounded : Icons.alarm_off_rounded,
+              size: 20,
+            ),
+            const SizedBox(width: AppSpacing.xs),
+            Expanded(
+              child: Text(
+                scheduledOk
+                    ? 'Reminder set for ${DateFormat.yMMMd().add_jm().format(scheduled)}'
+                    : 'The reminder could not be set',
+              ),
+            ),
+          ],
+        ),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(AppSpacing.md),
+      ),
+    );
+  }
+
   Widget _buildStartJourneyCard(
     BuildContext context,
     JourneyProvider journeyProvider,
@@ -211,47 +380,48 @@ class _JourneysScreenState extends State<JourneysScreen> {
           style: Theme.of(context).textTheme.titleSmall
               ?.copyWith(fontWeight: FontWeight.w600),
         ),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        childrenPadding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          0,
+          AppSpacing.md,
+          AppSpacing.md,
+        ),
         children: [
           PlaceAutocompleteField(
             controller: _originController,
             label: 'Where are you starting?',
-            onUseCurrentLocation: () async {
-              final locationProvider = context.read<LocationProvider>();
-              if (locationProvider.currentLocationId != null) {
-                final location = locationProvider.getLocationById(
-                  locationProvider.currentLocationId!,
-                );
-                if (location != null) {
-                  _originController.text = location.name;
-                }
-              }
-            },
+            onUseCurrentLocation: () =>
+                _fillFromCurrentLocation(context, _originController),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.sm),
           PlaceAutocompleteField(
             controller: _destinationController,
             label: 'Where are you going?',
-            onUseCurrentLocation: () async {
-              final locationProvider = context.read<LocationProvider>();
-              if (locationProvider.currentLocationId != null) {
-                final location = locationProvider.getLocationById(
-                  locationProvider.currentLocationId!,
-                );
-                if (location != null) {
-                  _destinationController.text = location.name;
-                }
-              }
-            },
+            onUseCurrentLocation: () =>
+                _fillFromCurrentLocation(context, _destinationController),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.sm),
           _PackingListEditor(
             entryController: _itemEntryController,
             items: _plannedItems,
             onAdd: _addPlannedItems,
             onRemove: (item) => setState(() => _plannedItems.remove(item)),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.sm),
+          // NEXT TO THE EDITOR IT FEEDS, and left-aligned like every other
+          // action on this card: a bare TextButton in a Column centres itself
+          // horizontally, which is why the old pair of them drifted to the
+          // middle of the sheet while everything around them sat on the left
+          // edge.
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => _choosePreset(context),
+              icon: const Icon(Icons.playlist_add_check_rounded, size: 18),
+              label: const Text('Add from preset'),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xxs),
           Row(
             children: [
               Expanded(
@@ -294,44 +464,16 @@ class _JourneysScreenState extends State<JourneysScreen> {
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.xs),
-          TextButton(
-            onPressed: () async {
-              final presets = context.read<ChecklistProvider>().presets;
-              if (presets.isEmpty) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text('No presets available')));
-                return;
-              }
-              final selectedPreset = await showDialog<Checklist>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: Text('Choose a preset'),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: presets
-                        .map(
-                          (preset) => ListTile(
-                            title: Text(preset.name),
-                            onTap: () => Navigator.of(context).pop(preset),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ),
-              );
-              if (selectedPreset != null) {
-                setState(() {
-                  _plannedItems.addAll(
-                    selectedPreset.items.map((item) => item.name),
-                  );
-                });
-              }
-            },
-            child: const Text('Choose a preset'),
+          const SizedBox(height: AppSpacing.xxs),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => _scheduleReminder(context),
+              icon: const Icon(Icons.alarm_rounded, size: 18),
+              label: const Text('Remind me'),
+            ),
           ),
-          const SizedBox(height: AppSpacing.xs),
+          const SizedBox(height: AppSpacing.sm),
           // A checkbox, not a switch: the label is the whole point, and a
           // switch with no words beside it is a guess about what is on.
           CheckboxListTile(
@@ -355,54 +497,14 @@ class _JourneysScreenState extends State<JourneysScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 12),
-          TextButton(
-            onPressed: () async {
-              final selectedTime = await showTimePicker(
-                context: context,
-                initialTime: TimeOfDay.now(),
-              );
-              if (selectedTime != null) {
-                final now = DateTime.now();
-                final scheduledTime = DateTime(
-                  now.year,
-                  now.month,
-                  now.day,
-                  selectedTime.hour,
-                  selectedTime.minute,
-                );
-                await NotificationService.scheduleAt(
-                  id: 'reminder_${now.millisecondsSinceEpoch}',
-                  title: 'Reminder',
-                  body: 'Time to start your journey!',
-                  scheduledTime: scheduledTime,
-                );
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Row(
-                      children: const [
-                        Icon(Icons.access_time_rounded, size: 20),
-                        SizedBox(width: 8),
-                        Expanded(child: Text('Reminder set for the same day')),
-                      ],
-                    ),
-                    behavior: SnackBarBehavior.floating,
-                    margin: const EdgeInsets.all(AppSpacing.md),
-                  ),
-                );
-              }
-            },
-            child: const Text('REMINDER?'),
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.sm),
           TextField(
             controller: _notesController,
             minLines: 2,
             maxLines: 4,
             decoration: const InputDecoration(labelText: 'Trip notes'),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.md),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
@@ -465,7 +567,7 @@ class _JourneysScreenState extends State<JourneysScreen> {
                     content: const Row(
                       children: [
                         Icon(Icons.check_circle, color: Colors.white),
-                        SizedBox(width: 12),
+                        SizedBox(width: AppSpacing.xs),
                         Expanded(child: Text('Journey started!')),
                       ],
                     ),
@@ -556,15 +658,15 @@ class _SummaryRow extends StatelessWidget {
         Row(
           children: [
             Expanded(child: _tile(context, stats[0])),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppSpacing.sm),
             Expanded(child: _tile(context, stats[1])),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.sm),
         Row(
           children: [
             Expanded(child: _tile(context, stats[2])),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppSpacing.sm),
             Expanded(child: _tile(context, stats[3])),
           ],
         ),

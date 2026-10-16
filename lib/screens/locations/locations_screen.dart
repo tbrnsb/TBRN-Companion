@@ -48,9 +48,9 @@ class LocationsScreen extends StatelessWidget {
               padding: AppSpacing.screenPaddingWithFab,
               children: [
                 _SummaryCard(provider: provider),
-                const SizedBox(height: 24),
+                const SizedBox(height: AppSpacing.lg),
                 const SectionHeader('Saved places'),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.xs),
                 ...provider.locations.map(
                   (location) =>
                       _LocationTile(location: location, provider: provider),
@@ -72,7 +72,7 @@ class LocationsScreen extends StatelessWidget {
                 _showLocationDialog(context, null);
               },
               icon: const Icon(Icons.add_location_alt_rounded),
-              label: const Text('Add Location'),
+              label: const Text('Add location'),
             ),
     );
   }
@@ -290,7 +290,10 @@ class _LocationTile extends StatelessWidget {
             ),
           ),
         ),
-        const Divider(indent: 64, height: 1),
+        // 72, the title's own left edge on a default ListTile: 16 content
+        // padding + 40 avatar + 16 gap. 64 stopped the rule short of the
+        // label it underlines.
+        const Divider(indent: 72, height: 1),
       ],
     );
   }

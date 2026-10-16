@@ -287,12 +287,18 @@ class _SettingsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title.toUpperCase(),
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.1,
+        // The same left inset [SettingsGroup] gives its titles: without it
+        // this heading sat 8px left of every group heading drawn by the
+        // family, on the same screen.
+        Padding(
+          padding: const EdgeInsets.only(left: AppSpacing.xs),
+          child: Text(
+            title.toUpperCase(),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
+            ),
           ),
         ),
         const SizedBox(height: AppSpacing.xs),
@@ -492,12 +498,15 @@ class _DataSectionState extends State<_DataSection> {
         // hand-rolled the same structure and used `titleMedium` in mixed case,
         // so "Data" sat 170px under "CATEGORIES" rendered in a different type
         // system — one line of omission, not a decision.
-        Text(
-          'DATA',
-          style: textTheme.labelSmall?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.1,
+        Padding(
+          padding: const EdgeInsets.only(left: AppSpacing.xs),
+          child: Text(
+            'DATA',
+            style: textTheme.labelSmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
+            ),
           ),
         ),
         const SizedBox(height: AppSpacing.xs),

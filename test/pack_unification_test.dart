@@ -628,7 +628,7 @@ void main() {
       await tester.pumpWidget(appOf(p, const ChecklistsScreen()));
       await settleUi(tester);
 
-      expect(find.text('Your Checklists'), findsOneWidget);
+      expect(find.text('Your checklists'), findsOneWidget);
       expect(find.text('Pack for Pokhara'), findsOneWidget);
 
       // The user's own list comes FIRST, the context card second. They used to
@@ -641,7 +641,7 @@ void main() {
       // the cause. Comparing positions of the FIRST match states the rule
       // directly: the user's heading is above the card, and the card is above
       // nothing that matters.
-      final userHeading = tester.getTopLeft(find.text('Your Checklists'));
+      final userHeading = tester.getTopLeft(find.text('Your checklists'));
       final packRow = tester.getTopLeft(find.text('Pack for Pokhara'));
       final contextCard = tester.getTopLeft(
         find.text('Everyday Essentials').first,

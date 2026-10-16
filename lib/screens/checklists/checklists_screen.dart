@@ -26,7 +26,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
     // body; this only has to know when the list crosses the empty/not-empty
     // line, which is the same answer the empty state is built from.
     final isEmpty = context.select<ChecklistProvider, bool>(
-      (p) => p.checklists.isEmpty,
+      (p) => p.regularChecklists.isEmpty,
     );
 
     return Scaffold(
@@ -41,7 +41,11 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                 return const Center(child: CircularProgressIndicator());
               }
 
-              final locationLinkedChecklists = checklistProvider.checklists
+              // From the REGULAR lists, not the raw ones: a preset is a
+              // template for journeys, and a template attached to the place
+              // you happen to be standing in is not a packing reminder.
+              final locationLinkedChecklists = checklistProvider
+                  .regularChecklists
                   .where(
                     (c) =>
                         c.linkedLocationId != null &&
@@ -50,7 +54,9 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                   )
                   .toList();
 
-              final isEmpty = checklistProvider.checklists.isEmpty;
+              // No local `isEmpty`: the build-level one above reads the
+              // same expression, and a second copy shadowed it — two answers
+              // to one question, kept in step only by luck.
 
               return ListView(
                 // Clears the FAB; see AppSpacing.screenPaddingWithFab.
@@ -72,7 +78,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                       message: journeyProvider.activeJourney == null
                           ? 'Create your first checklist'
                           : 'Create a checklist, or pack for the trip you have going',
-                      actionLabel: 'Create Checklist',
+                      actionLabel: 'Add checklist',
                       onAction: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(
@@ -82,9 +88,15 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                       },
                     )
                   else ...[
-                    const SectionHeader('Your Checklists'),
-                    const SizedBox(height: AppSpacing.sm),
+                    const SectionHeader('Your checklists'),
+                    const SizedBox(height: AppSpacing.xs),
                     ..._buildChecklistCards(context, checklistProvider),
+                  ],
+                  if (checklistProvider.presets.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.md),
+                    const SectionHeader('Presets'),
+                    const SizedBox(height: AppSpacing.xs),
+                    ..._buildPresetRows(context, checklistProvider),
                   ],
                   const SizedBox(height: AppSpacing.md),
                   if (locationLinkedChecklists.isNotEmpty)
@@ -97,7 +109,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                       context,
                       checklistProvider.everydayEssentials!,
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppSpacing.xs),
                   ],
                 ],
               );
@@ -133,7 +145,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
         : 'Ready for this stop';
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: ContextCard(
         icon: Icons.location_on_rounded,
         title: 'Geofence reminder · $title',
@@ -215,7 +227,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
     final colorScheme = Theme.of(context).colorScheme;
     final journeyProvider = context.read<JourneyProvider>();
 
-    return provider.checklists.where((c) => !c.isEverydayEssentials).map((
+    return provider.regularChecklists.where((c) => !c.isEverydayEssentials).map((
       checklist,
     ) {
       return Column(
@@ -245,7 +257,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                       color: colorScheme.primary,
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -280,7 +292,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                                 ?.copyWith(color: colorScheme.secondary),
                           ),
                         if (checklist.items.isNotEmpty) ...[
-                          const SizedBox(height: 8),
+                          const SizedBox(height: AppSpacing.xs),
                           ClipRRect(
                             borderRadius: AppRadii.smallRadius,
                             child: LinearProgressIndicator(
@@ -294,7 +306,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.xs),
                   Text(
                     '${checklist.items.where((i) => i.isChecked).length}/${checklist.items.length}',
                     style: Theme.of(context).textTheme.labelLarge
@@ -321,17 +333,111 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                       ),
                       PopupMenuItem(
                         child: const Text('Save as preset'),
-                        onTap: () async {
-                          await provider.saveAsPreset(checklist.id);
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                        onTap: () {
+                          // Captured BEFORE the await: once the menu is gone
+                          // and the write is in flight, this closure's
+                          // context may belong to a disposed subtree, and the
+                          // messenger is the only thing the snackbar needs.
+                          final messenger = ScaffoldMessenger.of(context);
+                          final name = checklist.name;
+                          provider.saveAsPreset(checklist.id).then((saved) {
+                            messenger.showSnackBar(
                               SnackBar(
                                 content: Text(
-                                  '${checklist.name} saved as preset',
+                                  saved
+                                      ? '$name saved as preset'
+                                      : 'Could not save "$name" as a preset',
                                 ),
                               ),
                             );
-                          }
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const Divider(indent: 64, height: 1),
+        ],
+      );
+    }).toList();
+  }
+
+  /// The saved presets, as their own section under the real lists.
+  ///
+  /// A preset has to be VISIBLE somewhere: "Save as preset" that makes a
+  /// checklist vanish from the screen reads as data loss, not as saving. These
+  /// rows are lighter than the checklist cards — no progress bar, because
+  /// nothing is being packed from here — but they share the same leading
+  /// glyph, the same inset, and the same trailing menu, so the two sections
+  /// read as one family.
+  List<Widget> _buildPresetRows(
+    BuildContext context,
+    ChecklistProvider provider,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return provider.presets.map((preset) {
+      return Column(
+        key: ValueKey<String>(preset.id),
+        children: [
+          InkWell(
+            onTap: () {
+              // The place to USE a preset is the journey sheet, which is
+              // where the packing list is being built. Opening the editor
+              // from here would let ticks on a template's items drift, and a
+              // template with ticked items is a confusing thing to start a
+              // trip from.
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    '"${preset.name}" is available when you start a journey',
+                  ),
+                ),
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.sm),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: colorScheme.secondaryContainer,
+                    child: Icon(
+                      Icons.playlist_add_check_rounded,
+                      color: colorScheme.secondary,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          preset.name,
+                          style: textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          '${preset.items.length} ${preset.items.length == 1 ? 'item' : 'items'} — used when starting a journey',
+                          style: textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  PopupMenuButton(
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        child: const Text('Delete'),
+                        onTap: () {
+                          _showDeleteConfirmation(context, provider, preset);
                         },
                       ),
                     ],
@@ -354,7 +460,11 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
     showDialog(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: const Text('Delete checklist?'),
+        // The noun follows the thing: "Delete preset?" reads correctly from
+        // the preset section, where the row is not a checklist to the user.
+        title: Text(
+          checklist.isPreset ? 'Delete preset?' : 'Delete checklist?',
+        ),
         content: Text(
           'Are you sure you want to delete "${checklist.name}"? This action cannot be undone.',
         ),

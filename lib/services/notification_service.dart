@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
 class NotificationService {
@@ -59,7 +60,29 @@ class NotificationService {
     }
   }
 
+  /// Whether the timezone database has been loaded.
+  ///
+  /// `tz.local` answers in UTC until it is, which would schedule every
+  /// reminder hours off from the time the user picked — silently, because UTC
+  /// is a perfectly valid timezone to schedule in.
+  static bool _timezonesLoaded = false;
+
+  static void _ensureTimezones() {
+    if (_timezonesLoaded) return;
+    try {
+      tz_data.initializeTimeZones();
+      _timezonesLoaded = true;
+    } catch (_) {
+      // Already loaded, or the data is unavailable — either way there is
+      // nothing more to load.
+    }
+  }
+
   static Future<void> _initialize() async {
+    // BEFORE anything schedules: `tz.local` answers in UTC until the database
+    // is loaded, and every zonedSchedule goes through it.
+    _ensureTimezones();
+
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const ios = DarwinInitializationSettings();
     const linux = LinuxInitializationSettings(defaultActionName: 'Open app');
@@ -242,16 +265,25 @@ class NotificationService {
     await _plugin.show(nextNotificationId(), title, body, details);
   }
 
-  /// Schedule a notification for a specific time.
+  /// Schedules a one-shot notification for [scheduledTime].
   ///
-  /// The notification will fire even if the app is closed.
-  static Future<void> scheduleAt({
+  /// ONE-SHOT, deliberately: the previous version passed
+  /// `matchDateTimeComponents: DateTimeComponents.dateAndTime`, which tells
+  /// the OS to repeat the notification EVERY DAY at that time — a "leave now"
+  /// reminder for one trip that never stops firing. A journey reminder is a
+  /// single fact about a single day.
+  ///
+  /// Answers whether the platform ACCEPTED the schedule, so the caller can
+  /// report a failure instead of promising an alert that was dropped. On web
+  /// there is no scheduler at all, so the answer is always false.
+  static Future<bool> scheduleAt({
     required String id,
     required String title,
     required String body,
     required DateTime scheduledTime,
   }) async {
-    if (kIsWeb) return;
+    if (kIsWeb) return false;
+    _ensureTimezones();
 
     const androidDetails = AndroidNotificationDetails(
       'journey_reminders',
@@ -268,19 +300,64 @@ class NotificationService {
       linux: linuxDetails,
     );
 
-    await _plugin.zonedSchedule(
-      id.hashCode,
-      title,
-      body,
-      tz.TZDateTime.from(scheduledTime, tz.local),
-      details,
-      androidScheduleMode: AndroidScheduleMode.alarmClock,
-      matchDateTimeComponents: DateTimeComponents.dateAndTime,
-    );
+    // Android 12+ refuses the `alarmClock` mode below unless the user has
+    // granted "Alarms & reminders". The permission itself is declared in
+    // AndroidManifest.xml — without that declaration the toggle does not even
+    // exist and every schedule on a modern phone throws inside the plugin.
+    // This asks ONCE, from the user's own "Remind me" tap, when the toggle is
+    // still off, and gives up honestly when they decline. On Android 11 and
+    // older, or on desktop, `android` is null and nothing here runs.
+    try {
+      final android = _plugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      if (android != null) {
+        final canSchedule = await android.canScheduleExactNotifications();
+        if (canSchedule == false) {
+          final granted = await android.requestExactAlarmsPermission();
+          if (granted != true) return false;
+        }
+      }
+    } catch (_) {
+      // No platform behind the plugin at all (unit test, older engine), the
+      // permission channel is missing, or another request is in flight. Let
+      // the schedule attempt below be the judge: it fails closed on 31+, and
+      // succeeds where no permission gate exists.
+    }
+
+    try {
+      await _plugin.zonedSchedule(
+        _stableId(id),
+        title,
+        body,
+        tz.TZDateTime.from(scheduledTime, tz.local),
+        details,
+        androidScheduleMode: AndroidScheduleMode.alarmClock,
+      );
+      return true;
+    } catch (_) {
+      // The plugin is missing, the platform refused, or the channel cannot be
+      // created. None of those will get better by throwing at the tap handler.
+      return false;
+    }
   }
 
-  /// Cancel a scheduled notification by its ID.
-  static Future<void> cancel(String id) async {
-    await _plugin.cancel(id.hashCode);
+  /// A notification id that is the same number on every run of the app.
+  ///
+  /// [Object.hashCode] for strings is seeded per process: scheduling
+  /// 'journey_start_reminder' on Monday and again on Tuesday produced two
+  /// different ints, so the second alarm stacked next to the first instead of
+  /// replacing it, and a cancel keyed on the string could never find the
+  /// original. FNV-1a over the code units is boring arithmetic with one
+  /// answer, kept inside a positive 32-bit int because the platform channel
+  /// hands Java an `int`.
+  static int _stableId(String id) {
+    var hash = 0x811C9DC5; // FNV-1a 32-bit offset basis.
+    for (final unit in id.codeUnits) {
+      hash ^= unit;
+      hash = (hash * 0x01000193) & 0xFFFFFFFF; // FNV-1a 32-bit prime.
+    }
+    return hash & 0x7FFFFFFF;
   }
 }

@@ -182,8 +182,8 @@ class ChecklistDetailScreen extends StatelessWidget {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddItemDialog(context, shown),
-        tooltip: 'Add Item',
-        child: const Icon(Icons.add),
+        tooltip: 'Add item',
+        child: const Icon(Icons.add_rounded),
       ),
     );
   }
@@ -222,7 +222,7 @@ class ChecklistDetailScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Add Item'),
+        title: const Text('Add item'),
         content: TextField(
           controller: textController,
           decoration: const InputDecoration(hintText: 'Enter item name'),

@@ -4,6 +4,50 @@ Notable changes to this project. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-10-16
+
+A feature release, and every one of the features is usable the moment it
+ships: nothing here changes stored data, and every checklist, trip and
+transaction written by 1.1.1 loads exactly as it did.
+
+### Added
+
+- **The journey sheet suggests the places you have already saved.** "Where are
+  you starting?" and "Where are you going?" filter your saved places as you
+  type, and a locate button fills either field with your current place — with
+  a word on screen when there is no current place yet, instead of the silence
+  it gave the first time.
+- **A checklist can be saved as a preset.** "Save as preset", in the checklist's
+  own menu, copies it into a reusable template — the packing list it came from
+  stays exactly where it was, still linked to its trip.
+- **Presets have a home on the Smart Packing screen.** They sit in their own
+  "Presets" section below your real lists, with the item count and a way to
+  delete one, so saving one never looks like the list vanished.
+- **"Add from preset" folds a template into a new trip.** One pick brings the
+  template's items into the packing list you are building, skipping anything
+  you have already listed.
+- **"Remind me" on the journey sheet sets a single reminder for the trip's
+  start.** It opens on the planned start time when there is one; a time that
+  has already passed today rolls to tomorrow rather than firing never; and the
+  confirmation names the exact time — or says plainly that the reminder could
+  not be set.
+
+### Fixed
+
+- **Reminders are scheduled in your own timezone, and fire once.** The
+  scheduler never loaded the timezone database, so every time was quietly
+  interpreted as UTC and a 10:00 reminder landed at the wrong hour; it also
+  asked the OS to repeat the alert *daily*, so one trip's "leave now" never
+  stopped. Reminders now load the zone data first, fire exactly once, and —
+  if Android refuses the alarm because "Alarms & reminders" is off — say so
+  plainly instead of promising an alert that was dropped.
+- **The place screen's arrival-alert row was the odd one out.** It was the
+  app's one remaining `SwitchListTile`: its label started 16 pixels left of
+  every other row in the app, and its switch floated in the middle of a
+  two-line block instead of sitting on the label it toggles. It now shares the
+  geometry of every other settings row, locked by tests that measure against a
+  real one.
+
 ## [1.1.1] - 2026-10-14
 
 A bug-fix and small-features release. Nothing here breaks existing data: every

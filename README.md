@@ -107,6 +107,32 @@ The gear in the app bar, not a fifth tab.
   import
 - **Deleted**: trashed transactions, which can be put back
 
+## What's new in 1.2.0
+
+A feature release: nothing here breaks existing data, and no storage format
+changed.
+
+### Added
+
+- **The journey sheet suggests places you have already saved.** Both the origin
+  and destination fields filter your saved places as you type, and a locate
+  button fills either with your current place.
+- **Checklists can be saved as presets** — reusable packing templates that keep
+  the list they were saved from right where it was, still linked to its trip.
+  Presets live in their own section on the Smart Packing screen.
+- **"Add from preset"** folds a template's items into the trip you are packing,
+  skipping anything already listed.
+- **"Remind me"** sets a single reminder for the trip's start, defaults to the
+  planned start time, and names the exact time it set — or says when it could
+  not.
+
+### Fixed
+
+- **The place screen's arrival-alert row matched nothing else in the app** — its
+  label sat 16 pixels off every other row, and its switch floated between the
+  label and its caption. It now shares the geometry of every settings row, with
+  tests that measure it against a real one.
+
 ## What's new in 1.1.1
 
 Nothing here breaks existing data: every record written by 1.1.0 loads exactly as

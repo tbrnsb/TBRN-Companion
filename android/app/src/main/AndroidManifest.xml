@@ -33,6 +33,23 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
+      "Remind me" schedules with AlarmManager.setAlarmClock so a 10:00
+      departure reminder fires at 10:00. Android 12+ REFUSES that call —
+      ExactAlarmPermissionException, swallowed at the tap handler — unless
+      this permission is declared and the user has enabled "Alarms &
+      reminders". Without the declaration the toggle does not exist in
+      Settings at all and every schedule on Android 12+ failed silently into
+      a "could not be set" snackbar. Declared here; the app then checks the
+      toggle from the user's own tap (NotificationService.scheduleAt) and
+      opens the system switch once if it is off.
+
+      On Android 13+ the toggle starts OFF (the OS no longer grants it by
+      default), which is exactly why the request happens where the reminder
+      is being set rather than at first launch.
+    -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!--
       Android backs app data up to the user's Google account by default. This
       app promises that nothing leaves the phone, and an OS-level copy to a
       cloud backup service is the one thing that would quietly break that, so
