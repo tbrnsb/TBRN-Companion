@@ -2,6 +2,10 @@
 
 ![Verify](https://github.com/tbrnsb/Daily-companion/actions/workflows/verify.yml/badge.svg)
 
+**Current version: [1.2.0](https://github.com/tbrnsb/Daily-companion/releases/latest)**
+— signed APK and release notes live on the Releases page; what changed is
+under [What's new in 1.2.0](#whats-new-in-120) below.
+
 A pocket companion for money and trips. Log what you spend, keep track of what
 you're packing, and record where a trip has taken you.
 
