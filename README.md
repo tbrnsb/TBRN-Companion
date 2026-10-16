@@ -1,8 +1,8 @@
 # TBRN Companion
 
-![Verify](https://github.com/tbrnsb/Daily-companion/actions/workflows/verify.yml/badge.svg)
+[![Verify](../../actions/workflows/verify.yml/badge.svg)](../../actions/workflows/verify.yml)
 
-**Current version: [1.2.0](https://github.com/tbrnsb/Daily-companion/releases/latest)**
+**Current version: [1.2.0](../../releases/latest)**
 — signed APK and release notes live on the Releases page; what changed is
 under [What's new in 1.2.0](#whats-new-in-120) below.
 
@@ -255,13 +255,12 @@ The full history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Releases
 
-This is the development repository. The public, installable release lives at
+The installable, signed builds live on the public repository
 [tbrnsb/TBRN-Companion](https://github.com/tbrnsb/TBRN-Companion) — grab the APK
 from its [latest release](https://github.com/tbrnsb/TBRN-Companion/releases/latest).
 
-The two are related by content rather than by history: this repo carries the iOS
-platform and the day-to-day work, and the public repo is the scrubbed Android-only
-build with the signed APK attached to each release.
+The two carry the same app code: the public repository adds a signed APK to
+every release, and the private one keeps the day-to-day development history.
 
 ## Installation
 
@@ -269,8 +268,8 @@ Android only. Built and tested against Flutter 3.47.0 on the stable channel and
 Dart 3.13.0.
 
 ```bash
-git clone https://github.com/tbrnsb/Daily-companion.git
-cd Daily-companion
+git clone https://github.com/tbrnsb/TBRN-Companion.git
+cd TBRN-Companion
 flutter pub get
 ```
 
